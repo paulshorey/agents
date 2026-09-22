@@ -61,6 +61,21 @@ local database for cloud development, preserve the hosted URL without printing
 it, and document that production-like database verification belongs on a host
 with direct TCP access.
 
+### GitHub pushes and pull requests
+
+Codex's repository connection and checkout do not guarantee that arbitrary
+shell commands can push or create pull requests during the agent phase. For
+that workflow, make a least-privilege fine-grained PAT available as the normal
+environment variable `GH_TOKEN`, enable task-time access to GitHub, and use
+`gh auth setup-git` so HTTPS Git obtains credentials from GitHub CLI. A local
+variable called `GITHUB_PAT` can hold the same PAT; copy its value into the
+cloud variable named `GH_TOKEN` without printing it.
+
+Do not put an agent-required PAT in a setup-only Secret. Do not persist it in a
+repository `.env`, Git URL, credential file, or setup log. A GitHub App is the
+better long-term choice when many repositories, multiple users, automatic
+rotation, or centrally revocable installation permissions are required.
+
 ### Android
 
 Use the Gradle wrapper. Install a supported JDK, Android command-line tools, exact platform/build-tools versions, and the project NDK when required. Write a portable env file for `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT`; source it in later shells. Warm Gradle with a Kotlin compile or narrow unit test. Build an APK only when useful because it increases setup time and cache size.
@@ -107,3 +122,5 @@ Look for a dev server, watcher, emulator, background log follower, interactive p
 - Codex Cloud environments: https://developers.openai.com/docs/environments/cloud-environment
 - Agent internet access: https://developers.openai.com/docs/cloud/internet-access
 - Codex skills and discovery locations: https://developers.openai.com/docs/build-skills
+- GitHub CLI environment variables: https://cli.github.com/manual/gh_help_environment
+- GitHub personal access tokens: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens

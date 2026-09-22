@@ -61,6 +61,46 @@ Use normal environment variables for values the agent or programs must read afte
 
 Do not reveal, echo, or copy secret values into source files, commits, task prompts, or reports. Confirm the destination and variable names before entering sensitive values in the UI. Preserve existing values when editing an environment unless the user asked to replace them.
 
+### GitHub authentication for pushes and pull requests
+
+`GH_TOKEN` is an environment-variable name understood by GitHub CLI; it is not
+a separate token type. Its value can be a GitHub fine-grained personal access
+token, whose current prefix is `github_pat_`, or another token accepted by
+GitHub. `GH_TOKEN` takes precedence over `GITHUB_TOKEN` for `github.com`.
+
+When agents must push branches or create pull requests after setup:
+
+1. Use a fine-grained PAT restricted to the intended resource owner and the
+   smallest repository set. Grant repository **Contents: read and write** and
+   **Pull requests: read and write**; Metadata read access is included. Add
+   **Workflows: read and write** only when agents must push changes under
+   `.github/workflows/`.
+2. Put the PAT value in the Codex environment's normal variable named
+   `GH_TOKEN`. Do not put it in a setup-only Secret, because the agent phase
+   needs it. Do not create a second token merely because the local variable is
+   named `GITHUB_PAT`; variable names and token types are independent.
+3. Enable task-time network access to `github.com` and `api.github.com`, with
+   the HTTP methods required for Git smart HTTP and the GitHub API. Prefer an
+   allowlist when the UI supports it.
+4. Configure HTTPS Git credentials without storing the token itself:
+
+   ```bash
+   if [ -n "${GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
+     gh auth setup-git
+     gh api user --jq .login >/dev/null
+   fi
+   ```
+
+   Run this in setup and maintenance, or immediately before GitHub work. It
+   configures Git to ask `gh` for credentials; it does not write the PAT into a
+   repository remote URL. Confirm that the remote uses HTTPS when relying on
+   this flow.
+5. Verify only non-secret facts: `gh api user --jq .login`, repository access,
+   and a dry read such as `gh repo view OWNER/REPO`. Never run `gh auth token`,
+   echo the variable, enable shell tracing, or place the token in a command-line
+   URL. Treat task-time variables as exposed to agent-generated programs, so use
+   expiration and least privilege and rotate a token after suspected exposure.
+
 ## Test and finish
 
 Use the environment's test function after every material change. Inspect the complete setup or maintenance output, not only the exit code. If a test fails, fix the smallest responsible layer, save, and rerun; stop after repeated failure with the same external cause and report the exact stage and useful non-secret log excerpt.

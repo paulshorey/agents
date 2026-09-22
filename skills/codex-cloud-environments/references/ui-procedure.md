@@ -19,7 +19,12 @@ Use this only when the user asked to create or change the live Codex Cloud envir
    If approved values exist only in protected local files, do not weaken browser
    security or echo them into tool output to automate entry. Configure everything
    else and leave the exact named fields for secure manual entry.
+   When agents must push or open pull requests, add a least-privilege GitHub PAT
+   as the normal variable `GH_TOKEN`, not as a Secret. Configure the setup and
+   maintenance wrappers to run `gh auth setup-git` when that variable is set.
 8. Set agent network access to the smallest allowlist needed for task-time HTTP/HTTPS operations. Setup already has installation network access. Test hosted database connectivity separately; an HTTP/HTTPS allowlist or unrestricted setting does not prove that a direct database TCP port is reachable through the cloud proxy.
+   GitHub write workflows need `github.com` and `api.github.com` during the
+   agent phase, including write-capable HTTP methods.
 9. Save and run the environment test. Follow the live log until success or a concrete error appears. Correct the script/configuration and rerun.
    A `Too many requests` or capacity message is a platform scheduling failure,
    not evidence against the setup. Close completed test terminals, wait for a
