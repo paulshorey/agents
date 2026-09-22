@@ -45,6 +45,11 @@ Put the connection URL in a normal environment variable if agents need it after 
 
 Use the Gradle wrapper. Install a supported JDK, Android command-line tools, exact platform/build-tools versions, and the project NDK when required. Write a portable env file for `JAVA_HOME`, `ANDROID_HOME`, and `ANDROID_SDK_ROOT`; source it in later shells. Warm Gradle with a Kotlin compile or narrow unit test. Build an APK only when useful because it increases setup time and cache size.
 
+Accept required Android SDK licenses noninteractively. Redirect the license text
+away from the web terminal: `sdkmanager --licenses` can print thousands of
+lines and stall a cloud setup UI even while `yes` is supplying the answers.
+Keep package download and compiler output visible so failures remain diagnosable.
+
 Codex Cloud Linux can compile/test Android and create APK/AAB artifacts. `adb install` requires an attached device or emulator and normally cannot validate installation in a generic cloud workspace.
 
 ### Capacitor and iOS/Android
