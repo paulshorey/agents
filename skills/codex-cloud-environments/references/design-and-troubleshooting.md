@@ -8,6 +8,7 @@ Use this reference when writing or repairing repository bootstraps for Codex Clo
 - A resumed cache checks out the task branch and then runs maintenance. Maintenance must account for dependency and generated-file changes between the cached default-branch commit and the task branch.
 - Editing setup, maintenance, variables, or secrets invalidates the cache automatically. Reset it manually when a repository change invalidates cached state without changing those fields.
 - Setup has network access. Agent-phase network access is separately configured and is off by default. Outbound traffic runs through an HTTP/HTTPS proxy, so installers that assume direct GitHub release access may fail.
+- Do not assume that "unrestricted" agent internet makes arbitrary outbound TCP available. A PostgreSQL/MySQL connection can still fail because the cloud environment's egress path is an HTTP/HTTPS proxy. Test the actual protocol from the environment; use an isolated local database when direct database TCP is unavailable.
 - `export` in setup does not persist into the agent shell. Use an environment setting, a shell startup file, or a generated project env file as appropriate.
 - User skills belong in `$HOME/.agents/skills`; repository-specific skills belong in `<repo>/.agents/skills`. A checkout at `<repo>/.codex` is not a skill discovery location.
 
@@ -25,6 +26,18 @@ A useful checked-in bootstrap:
 - has `--help` plus bounded modes such as `check`, `verify`, `build`, or `maintenance`;
 - exits after setup. Starting servers belongs in a separate command unless the cloud product explicitly provides a supervised start hook.
 
+Prefer runtimes already installed in the universal image when they satisfy the
+project's pinned version. Search managed locations such as mise before using
+`apt`; an inherited `JAVA_HOME` can point at a newer default even when the
+required JDK is already present.
+
+Keep long package installations observable without flooding the browser
+terminal. Capture verbose `apt`/`dpkg` output to a temporary log, use
+`Dpkg::Use-Pty=0`, print a short progress line every 15–30 seconds, and emit the
+captured log only on failure. A completely silent multi-minute command and a
+multi-thousand-line license or package transcript can both make the interactive
+tester look stuck.
+
 ## Project patterns
 
 ### Node, Vite, Next.js, API, or monorepo
@@ -40,6 +53,13 @@ Install the matching client/server extensions, start the service without assumin
 ### Shared or hosted database
 
 Put the connection URL in a normal environment variable if agents need it after setup. Start with a read-only connectivity probe. Migration behavior must follow repository policy; do not infer authorization from mere access. Never run reset or seed against a shared host unless explicitly designed and authorized. If setup persists a setup-only credential for later use, use a user config directory, mode `600`, exact key allowlisting, and shell startup sourcing without output.
+
+Test the database protocol before making a hosted database part of setup. Codex
+Cloud's documented egress proxy is for HTTP/HTTPS traffic; a provider's direct
+PostgreSQL port may remain unreachable. In that case, provision a disposable
+local database for cloud development, preserve the hosted URL without printing
+it, and document that production-like database verification belongs on a host
+with direct TCP access.
 
 ### Android
 
