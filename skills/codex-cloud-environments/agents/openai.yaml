@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Cloud environments"
+  short_description: "Configure and troubleshoot Codex Cloud workspaces"
+  default_prompt: "Configure or troubleshoot this repository’s Codex Cloud environment."
