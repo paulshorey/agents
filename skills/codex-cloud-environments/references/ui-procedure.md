@@ -19,8 +19,12 @@ Use this only when the user asked to create or change the live Codex Cloud envir
    If approved values exist only in protected local files, do not weaken browser
    security or echo them into tool output to automate entry. Configure everything
    else and leave the exact named fields for secure manual entry.
-8. Set agent network access to the smallest allowlist needed for task-time operations. Setup already has installation network access. Hosted databases or provider APIs used during tests require agent-phase access to their hosts.
+8. Set agent network access to the smallest allowlist needed for task-time HTTP/HTTPS operations. Setup already has installation network access. Test hosted database connectivity separately; an HTTP/HTTPS allowlist or unrestricted setting does not prove that a direct database TCP port is reachable through the cloud proxy.
 9. Save and run the environment test. Follow the live log until success or a concrete error appears. Correct the script/configuration and rerun.
+   A `Too many requests` or capacity message is a platform scheduling failure,
+   not evidence against the setup. Close completed test terminals, wait for a
+   cooldown, and retry without changing the configuration. Do not repeatedly
+   invalidate a good cache to work around capacity.
 10. If available, connect a terminal and run a short post-setup check from the actual checkout. Verify `$HOME/.agents/skills`, the project toolchain, and one critical build/test/health path.
 11. Leave repository documentation with the exact checked-in commands and variable names. Report configured settings and any capability intentionally left to another host, such as iOS/Xcode builds.
 
