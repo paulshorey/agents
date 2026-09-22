@@ -6,7 +6,12 @@ Use this only when the user asked to create or change the live Codex Cloud envir
 2. For an existing repository, open its row and record the current setup, maintenance, runtime, variables, secrets, network policy, and cache state. Keep unknown existing values intact.
    Read masked names from the detail page. After opening Edit, do not capture or
    print a full DOM/accessibility snapshot when value inputs may contain
-   credentials; inspect only the specific controls or status text needed.
+   credentials; inspect only the specific controls or status text needed. This
+   includes the native browser application's accessibility tree: it may expose
+   the complete value of a token field even when the page visually masks it.
+   After entering a credential, verify only non-secret metadata through a
+   targeted locator, such as the key name, whether the expected prefix matches,
+   and the value length.
 3. For a new environment, select the exact GitHub repository. Use a clear repository-based name if the UI asks for one.
 4. Choose manual setup when the project has a checked-in bootstrap or needs services/native tools. Use the repository's runtime version where the UI can pin it; let the bootstrap own versions the UI cannot express.
 5. Enter a small setup wrapper that:
