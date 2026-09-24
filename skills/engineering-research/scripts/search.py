@@ -32,7 +32,7 @@ def search(index, item, api_key):
 def main():
     if len(sys.argv) != 2:
         sys.exit("Usage: search.py searches.json")
-    api_key = os.environ.get("PARALLEL_API_KEY") or os.environ.get("PARALLEL_AI_API_KEY")
+    api_key = os.environ.get("PARALLEL_API_KEY")
     if not api_key:
         sys.exit("Set PARALLEL_API_KEY or PARALLEL_AI_API_KEY")
     try:
