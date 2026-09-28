@@ -10,6 +10,53 @@ deployment conventions. Projects are commonly under `~/git`; start in the reques
 repository and read its `AGENTS.md`, README, `.railway/README.md`, package scripts,
 and existing workflow files before choosing commands.
 
+## Local access on this machine
+
+`~/.secrets.sh` exports `RAILWAY_API_TOKEN`. Login shells receive it through the
+shell startup configuration. In a non-login shell, source that file only when the
+variable is missing. Check presence without printing the value:
+
+```bash
+if [ -z "${RAILWAY_API_TOKEN:-}" ] && [ -f "$HOME/.secrets.sh" ]; then
+  . "$HOME/.secrets.sh"
+fi
+test -n "${RAILWAY_API_TOKEN:-}"
+```
+
+Use the standard CLI variable directly. Unset `RAILWAY_TOKEN` for a command if it
+is also present, since that project-token variable takes precedence:
+
+```bash
+env -u RAILWAY_TOKEN railway api 'query { projects(first: 20) { edges { node { id name } } } }'
+```
+
+Workspace-scoped tokens authorize project queries but cannot answer account identity
+queries such as `me`. On this machine, the CLI's `railway whoami` and account-wide
+`railway list` return Unauthorized with a valid workspace token. Use a scoped API
+inventory query or supplied Railway URL to identify the target; do not interpret
+those two CLI errors alone as proof the token is invalid. Projects can have similar
+names across workspaces:
+confirm project ID, environment, and service names before an operation, and stop
+if the token cannot access the intended project. For direct API requests, send
+`Authorization: Bearer <token>` to
+`https://backboard.railway.com/graphql/v2`. Never print the token or returned
+secret variable values. Verify the token's scope again when access changes. A
+Cloudflare 1010 from Python's default `urllib` client is a client block, not a
+Railway authorization result; use the CLI or another HTTP client to distinguish it.
+
+`~/git/dbs` contains a local Railway management app using `RAILWAY_API_TOKEN` in
+`lib/railway.ts`. Read its `AGENTS.md` before working there. The app can inspect
+projects, environments, services, and variables; avoid exposing variable values
+in diagnostics. Local skill files and `~/.secrets.sh` are not copied to cloud
+agents. Give those agents this skill and inject the token through their own
+secret manager when Railway access is needed.
+
+Railway's hosted MCP server uses a `railway login` session or OAuth, not a static
+project token. For a native agent connection with access limited to a selected
+workspace, configure OAuth (for Codex: `railway mcp install --agent codex --oauth`)
+and choose the workspace during consent. The static workspace token remains useful
+for direct GraphQL and `railway api` operations.
+
 ## Choose the control path
 
 - Use the Railway CLI for `.railway/railway.ts`, local repository context, exact
@@ -45,7 +92,9 @@ https://railway.com/project/<PROJECT_ID>/service/<SERVICE_ID>?environmentId=<ENV
 ```
 
 Extract those IDs before using a possibly unrelated local link. When no URL or local
-documentation identifies the target, inspect the authenticated context:
+documentation identifies the target, inspect the authenticated context. With a
+workspace-scoped token, use `railway api` to discover projects first; the identity
+commands below can require broader scope:
 
 ```bash
 railway --version

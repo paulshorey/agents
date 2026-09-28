@@ -1,6 +1,6 @@
 ---
 name: engineering-research
-description: Investigates uncertain facts, integrations, new techniques, and competing implementation approaches by searching the web before making engineering decisions. Use when unsure about a fact, how to integrate something, which library or API to use, or what technical direction to take.
+description: Investigate uncertain facts, integrations, new techniques, and competing implementation approaches by searching the web before making engineering decisions. Use when unsure about a fact, how to integrate something, which library or API to use, or what technical direction to take.
 ---
 
 # Engineering research
