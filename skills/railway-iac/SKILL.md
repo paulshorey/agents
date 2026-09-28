@@ -44,6 +44,15 @@ secret variable values. Verify the token's scope again when access changes. A
 Cloudflare 1010 from Python's default `urllib` client is a client block, not a
 Railway authorization result; use the CLI or another HTTP client to distinguish it.
 
+For a known project and environment, set `RAILWAY_PROJECT_ID` and
+`RAILWAY_ENVIRONMENT_ID` before `railway status` or `railway config` commands.
+This worked with the workspace token on this machine even when `railway link`
+returned Unauthorized. Confirm the selected target in the command output before
+an apply. Railway CLI 5.62.1 supplied `ctx.environmentId` but null environment
+names to an IaC callback in a verified project; inspect context and both plans
+before relying on `ctx.isEnvironment(name)`. An explicit ID guard is a fallback
+for a project with known environment IDs, not a universal requirement.
+
 `~/git/dbs` contains a local Railway management app using `RAILWAY_API_TOKEN` in
 `lib/railway.ts`. Read its `AGENTS.md` before working there. The app can inspect
 projects, environments, services, and variables; avoid exposing variable values
@@ -107,7 +116,8 @@ railway service list --json
 Confirm workspace, project, environment, service, source repository, branch, domains,
 variables, databases, buckets, volumes, and current deployment. A service name or
 branch can differ by environment; encode intentional differences with
-`ctx.isEnvironment(name)` after confirming the existing resources.
+the IaC context after confirming the existing resources and the context fields
+actually populated by the installed CLI.
 
 Interactive developers use `railway login`; truly headless sessions may use
 `railway login --browserless`. CI and unattended agents should use a project token in
