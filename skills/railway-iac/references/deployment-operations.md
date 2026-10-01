@@ -3,6 +3,36 @@
 Read this reference for service configuration, deployments, monorepos, health checks,
 networking, storage, previews, production review, and failure diagnosis.
 
+## Diagnose the failing stage first
+
+Record the exact project/environment/service/deployment IDs, source repository,
+branch, commit, failed stage, and the first useful error. The deployment ID is
+often the `id=` parameter in the user's URL. Compare the failed deployment with
+the active one; an Online service may still be serving an older successful commit.
+
+| Stage or symptom | Inspect | Likely next action |
+| --- | --- | --- |
+| Initialization / Snapshot code | Deployment details, source/ref access, live `railwayConfigFile` | Missing legacy file: migrate/clear the stale path and apply the owning IaC; compilation has not begun |
+| Build | Exact deployment's build logs, builder, root, dependency installation, command | Fix the first dependency/compiler/build-context error; use the repository's narrow checks |
+| Pre-deploy | Migration/release logs and exit status | Correct the release step or connectivity; preserve migration history and avoid database reset/seed |
+| Deploy / startup | Deploy logs, executed command, runtime files, PORT, required variables | Correct start/runtime configuration and verify readiness |
+| Healthcheck / routing | Readiness response, dependencies, allowed Host, target port, DNS/TLS | Verify Railway domain first, then important custom domains |
+| No deployment / skipped | Watch patterns, changed files, branch, focused-preview policy | Establish whether skipping is intended; include shared build inputs where needed |
+| IaC job fails while app builds pass | GitHub config job logs, secret scope, file, IDs, stale plan | Fix the config job; a source deployment does not evaluate TypeScript IaC |
+
+When initialization fails, build logs can be absent. Inspect the deployment's
+failure message/stage in the dashboard or API rather than searching older successful
+build logs or triggering repeated rebuilds. `service config at '.../railway.json'
+not found` is a stale Config as Code reference; changing the start command alone
+will not resolve it. See [authoring and CI](authoring-and-ci.md) for migration.
+
+For an API audit, query explicit setting fields. `status --json` can omit them;
+absence there does not prove `railwayConfigFile` is cleared. Inspect the project's
+`environments` and each environment's `serviceInstances`, selecting `serviceId`,
+`serviceName`, `railwayConfigFile`, `source`, build/start/pre-deploy commands,
+`rootDirectory`, healthcheck, and `watchPatterns`. Use current schema inspection
+when field shapes differ. Keep variable values out of diagnostic output.
+
 ## Build and start configuration
 
 Choose Railpack for conventional source builds and a Dockerfile when the application
@@ -62,6 +92,21 @@ Inspect build logs for dependency/build failures and deploy logs for start, bind
 healthcheck, crash, signal, and migration failures. Supplying the deployment ID avoids
 accidentally reading the latest successful release while investigating a newer failure.
 
+The CLI defaults to the most recent **successful** deployment when one exists.
+Pass the exact failed ID, or use `--latest` deliberately. `--build` and
+`--deployment` choose log type; the deployment ID is a positional argument.
+Use bounded `--lines`/`--since` while investigating instead of leaving a stream
+running. Sanitize application log output before sharing it: log messages may
+contain credentials even when the CLI's plan output is redacted.
+
+After a fix, confirm the intended source branch/commit remains selected, the first
+failure is gone, the resulting deployment reaches SUCCESS, and public readiness
+returns a successful response with required dependencies connected. A clean
+post-apply plan and a passing app deployment are separate checks. If the config
+change does not trigger a rollout, use the existing repository deployment mechanism
+when a new deployment is part of the authorized task; do not upload unrelated local
+feature changes just to test infrastructure.
+
 ## Networking and storage
 
 Use private networking for service-to-service traffic in the same environment:
@@ -92,6 +137,21 @@ IaC changes are planned by CI; a source push does not apply those changes to an 
 created preview. Sync or recreate the preview after base configuration changes. Enable
 bot PR environments only when their build cost and permissions are intended.
 
+Applying to the base does not retroactively update existing previews. Discover
+current previews and reconcile each affected owning partial only when required by
+the task. Preserve each repository's preview source branch; branches can differ
+between services. Do not infer a preview branch from the environment's name.
+For WebArts, read [local connections](local-connections.md) and supply the actual
+`RAILWAY_IAC_BRANCH` before planning. If a partial's services unexpectedly use
+different branches, resolve that discrepancy rather than applying one branch to all.
+
+Focused previews may intentionally deploy only services whose watched paths changed.
+An inherited service's skipped deployment is not itself a failure. Verify the
+affected service actually built and that required dependencies are available.
+Include app files, shared libraries/config, lockfile, workspace manifest, and root
+build inputs in watch patterns where those inputs affect the service. Fixing IaC
+alone does not guarantee the source integration starts a new deployment.
+
 ## Production review
 
 Consider region proximity, private networking, restart policy, at least two replicas for
@@ -102,6 +162,16 @@ universal settings.
 
 ## Failure patterns
 
+- **Initialization says config file not found:** the live service still points to
+  removed `railway.json`/`railway.toml`; audit and clear the reference in affected
+  persistent environments and existing previews, then apply IaC and verify.
+- **Online but newest commit never deployed:** compare active release commit/time
+  with the latest source push, watch-path skip, and failing initialization stage.
+- **Unauthorized identity commands:** with a workspace token, test the exact
+  project query before treating the token as invalid; recheck profile/precedence.
+- **IaC file changes but settings do not:** inspect the config workflow's branch,
+  trigger paths, credentials, selected file, and apply result; ordinary source
+  builds use already-applied settings.
 - **No start command detected:** inspect build context and package scripts; configure an
   explicit service start command, especially in monorepos.
 - **Build succeeds, deploy crashes:** inspect deploy logs, `PORT` binding, required

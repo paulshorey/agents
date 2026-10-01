@@ -1,6 +1,6 @@
 ---
 name: railway-iac
-description: Configure, migrate, plan, apply, deploy, and troubleshoot Railway projects with the Railway CLI and .railway/railway.ts Infrastructure as Code. Use for Railway services, environments, variables, databases, domains, monorepos, CI plans, preview environments, deployment failures, or configuration drift.
+description: Connect to Railway, troubleshoot deployments, and configure or apply TypeScript Infrastructure as Code with the Railway CLI. Use for Railway services, environments, monorepos, preview deployments, CI plan/apply workflows, legacy config migration, and configuration drift.
 ---
 
 # Railway Infrastructure as Code
@@ -10,61 +10,59 @@ deployment conventions. Projects are commonly under `~/git`; start in the reques
 repository and read its `AGENTS.md`, README, `.railway/README.md`, package scripts,
 and existing workflow files before choosing commands.
 
+## Start here
+
+1. Extract project, environment, service, and deployment IDs from the user's URL.
+   Select the matching credential profile and confirm access to that exact project.
+2. Read [local connections and project map](references/local-connections.md) for
+   this machine's profiles, WebArts service ownership, LivX/World distinctions,
+   environment IDs, and CI secret names.
+3. For a failed deployment, read [deployment operations](references/deployment-operations.md)
+   and identify the first failing stage before changing anything.
+4. For IaC changes, imports, or CI, read [authoring and CI](references/authoring-and-ci.md).
+   Review the complete plan, apply the intended file, require a clean follow-up plan,
+   and verify the resulting deployment and public readiness endpoint.
+
+Read the current deployment branch, not just a local feature checkout. Check
+`git status --short` and preserve unrelated changes. A merged runbook or workflow
+may not yet exist in the local checkout; inspect the remote branch or use an
+isolated worktree rather than overwriting user work.
+
 ## Local access on this machine
 
-`~/.secrets.sh` exports `RAILWAY_API_TOKEN`. Login shells receive it through the
-shell startup configuration. In a non-login shell, source that file only when the
-variable is missing. Check presence without printing the value:
+The standard API token name is `RAILWAY_API_TOKEN`:
+
+- Global profile: `~/.secrets.sh`, loaded by `~/.zprofile` for login shells.
+- WebArts: **source `~/.config/railway/webarts.env` explicitly**, even if a global
+  API token is present. The global profile cannot access WebArts.
+- Unset `RAILWAY_TOKEN` when using either workspace API profile; a project token
+  in that variable takes precedence. In CI, use the intended environment's
+  project token in `RAILWAY_TOKEN` instead.
+
+For a read-only check of WebArts dev (subshell keeps the profile local):
 
 ```bash
-if [ -z "${RAILWAY_API_TOKEN:-}" ] && [ -f "$HOME/.secrets.sh" ]; then
-  . "$HOME/.secrets.sh"
-fi
-test -n "${RAILWAY_API_TOKEN:-}"
+(
+  source "$HOME/.config/railway/webarts.env"
+  unset RAILWAY_TOKEN
+  test -n "${RAILWAY_API_TOKEN:-}"
+  export RAILWAY_PROJECT_ID=c6260c51-8b01-4934-8ccb-9cf32456744c
+  export RAILWAY_ENVIRONMENT_ID=4e7d33aa-1de0-441f-a105-352bbe3b6697
+  railway api 'query($id: String!) { project(id: $id) { id name } }' \
+    --raw-var id="$RAILWAY_PROJECT_ID"
+  railway status --json
+)
 ```
 
-Use the standard CLI variable directly. Unset `RAILWAY_TOKEN` for a command if it
-is also present, since that project-token variable takes precedence:
+Run repository plans in a shell with the same profile and explicit target, using
+its pinned CLI. A valid workspace token may return Unauthorized for `whoami`,
+account-wide `list`, or `link`; test a scoped project query before concluding the
+credential is invalid. IDs and token scope must agree before mutation.
 
-```bash
-env -u RAILWAY_TOKEN railway api 'query { projects(first: 20) { edges { node { id name } } } }'
-```
-
-Workspace-scoped tokens authorize project queries but cannot answer account identity
-queries such as `me`. On this machine, the CLI's `railway whoami` and account-wide
-`railway list` return Unauthorized with a valid workspace token. Use a scoped API
-inventory query or supplied Railway URL to identify the target; do not interpret
-those two CLI errors alone as proof the token is invalid. Projects can have similar
-names across workspaces:
-confirm project ID, environment, and service names before an operation, and stop
-if the token cannot access the intended project. For direct API requests, send
-`Authorization: Bearer <token>` to
-`https://backboard.railway.com/graphql/v2`. Never print the token or returned
-secret variable values. Verify the token's scope again when access changes. A
-Cloudflare 1010 from Python's default `urllib` client is a client block, not a
-Railway authorization result; use the CLI or another HTTP client to distinguish it.
-
-For a known project and environment, set `RAILWAY_PROJECT_ID` and
-`RAILWAY_ENVIRONMENT_ID` before `railway status` or `railway config` commands.
-This worked with the workspace token on this machine even when `railway link`
-returned Unauthorized. Confirm the selected target in the command output before
-an apply. Railway CLI 5.62.1 supplied `ctx.environmentId` but null environment
-names to an IaC callback in a verified project; inspect context and both plans
-before relying on `ctx.isEnvironment(name)`. An explicit ID guard is a fallback
-for a project with known environment IDs, not a universal requirement.
-
-`~/git/dbs` contains a local Railway management app using `RAILWAY_API_TOKEN` in
-`lib/railway.ts`. Read its `AGENTS.md` before working there. The app can inspect
-projects, environments, services, and variables; avoid exposing variable values
-in diagnostics. Local skill files and `~/.secrets.sh` are not copied to cloud
-agents. Give those agents this skill and inject the token through their own
-secret manager when Railway access is needed.
-
-Railway's hosted MCP server uses a `railway login` session or OAuth, not a static
-project token. For a native agent connection with access limited to a selected
-workspace, configure OAuth (for Codex: `railway mcp install --agent codex --oauth`)
-and choose the workspace during consent. The static workspace token remains useful
-for direct GraphQL and `railway api` operations.
+Never print credentials or returned secret values. Credential profiles and local
+skills are not automatically copied to cloud agents: supply this skill and inject
+the intended scoped token through that agent's secret manager. A credential profile
+or skill does not grant authorization for additional actions.
 
 ## Choose the control path
 
@@ -90,6 +88,11 @@ Railway; it does not evaluate the TypeScript file.
 system. The dashboard's **Railway Config File** field selects those legacy files.
 Do not point it at `.railway/railway.ts`, and do not manage one service with both
 systems.
+
+The dashboard's build/start/healthcheck fields show the **applied live state**.
+Populated values are expected after IaC apply; do not clear them merely because
+TypeScript also declares them. Keep only the legacy **Railway Config File** field
+empty after migration.
 
 ## Resolve identity before mutation
 
@@ -176,9 +179,13 @@ Non-interactive applies use `--yes`; destructive changes additionally require
 Concurrent dashboard or IaC changes invalidate saved plans; re-plan and review rather
 than bypassing the stale-state guard.
 
-After any mutation, verify the exact affected deployment reaches a terminal successful
-state. Inspect build and deploy logs, confirm the configured start command ran, and
-call the readiness endpoint through the Railway domain and any important custom domain.
+A clean IaC plan proves configuration alignment, not application health. An apply
+may not start a new deployment, and a source build can pass while the IaC job fails.
+Check the separate config job and the source commit of the active release. After a
+configuration change that requires deployment, verify the exact affected deployment
+reaches a terminal successful state. Inspect build and deploy logs, confirm the
+configured start command ran, and call the readiness endpoint through the Railway
+domain and any important custom domain.
 Railway health checks run during deployment, not continuously, so an `Active` state is
 not a substitute for ongoing monitoring.
 
@@ -186,9 +193,10 @@ not a substitute for ongoing monitoring.
 
 Stop and preserve evidence when the target is ambiguous, a plan contains an
 unexplained destroy, a database or volume would be replaced, credentials lack the
-required scope, the live environment changes during review, or a deployment fails.
-Diagnose the first failure before retrying; repeated rebuilds do not fix configuration,
-provider, migration, or application errors.
+required scope, or the live environment changes during review. When a deployment
+fails, continue diagnosis within the authorized task and retry after correcting the
+first failure; repeated rebuilds do not fix configuration, provider, migration,
+or application errors.
 
 Official references:
 
