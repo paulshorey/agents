@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
-from unittest.mock import patch
 from uuid import uuid4
 
 def ident(): return str(uuid4())
@@ -20,9 +19,9 @@ class NativeLifecycle(unittest.TestCase):
         self.git('init','-b','main');self.git('config','user.name','Diagnostic');self.git('config','user.email','diagnostic@example.invalid')
         self.git('remote','add','origin','https://github.com/paulshorey/map.git')
         (self.repo/'source.txt').write_text('baseline\n')
+        (self.repo/'.gitignore').write_text('/.codex/project-coordinator/\n')
         self.git('add','.');self.git('commit','-m','baseline')
         self.base=self.git('rev-parse','HEAD');self.owner=ident()
-        self.paths=patch.object(n,'STATE_ROOT',self.root/'private');self.paths.start()
         self.ctx=n.Project(self.repo,'paulshorey/map')
         n.bind_project(self.ctx,'local-test-project')
         self.pass_id=n.begin(self.ctx,self.owner)['pass']['id']
@@ -32,7 +31,7 @@ class NativeLifecycle(unittest.TestCase):
         return subprocess.run(['git','-C',str(self.repo),*args],capture_output=True,text=True,check=True).stdout.strip()
 
     def tearDown(self):
-        self.paths.stop();self.tmp.cleanup()
+        self.tmp.cleanup()
     def prepared(self,scope='repair'):
             return n.prepare_task(self.ctx,scope,self.base,str(self.prompt),'human request','affected checks')['task']['id']
 
@@ -91,11 +90,35 @@ class NativeLifecycle(unittest.TestCase):
 
     def test_worktrees_share_ownership_but_other_repositories_do_not(self):
         worktree=self.root/'coding';self.git('worktree','add','--detach',str(worktree),self.base)
-        self.assertEqual(n.Project(worktree).state_path,self.ctx.state_path)
+        linked=n.Project(worktree)
+        self.assertEqual(linked.state_path,self.ctx.state_path)
+        self.assertEqual(n.begin(linked,ident())['status'],'blocked')
+        self.assertFalse((worktree/'.codex/project-coordinator').exists())
         other=self.root/'other'
         subprocess.run(['git','clone','--quiet',str(self.repo),str(other)],check=True)
-        subprocess.run(['git','-C',str(other),'remote','set-url','origin','https://github.com/paulshorey/notes.git'],check=True)
+        # A second clone of the same repository owns independent local records.
+        subprocess.run(['git','-C',str(other),'remote','set-url','origin','https://github.com/paulshorey/map.git'],check=True)
         self.assertNotEqual(n.Project(other).state_path,self.ctx.state_path)
+
+    def test_project_records_are_local_private_and_ignored(self):
+        self.assertEqual(self.ctx.state_path,self.repo/'.codex/project-coordinator')
+        self.assertEqual(n.state(self.ctx).stat().st_mode & 0o777,0o700)
+        self.assertEqual((self.ctx.state_path/'tasks.sqlite3').stat().st_mode & 0o777,0o600)
+        self.assertEqual(self.git('status','--porcelain'),'')
+        self.assertEqual(self.git('check-ignore','.codex/project-coordinator/tasks.sqlite3'),
+                         '.codex/project-coordinator/tasks.sqlite3')
+
+    def test_missing_ignore_rule_blocks_private_writes(self):
+        (self.repo/'.gitignore').write_text('')
+        with self.assertRaisesRegex(ValueError,'Ignore /.codex/project-coordinator/'):
+            n.begin(self.ctx,ident())
+
+    def test_symlinked_state_is_rejected(self):
+        target=self.root/'elsewhere';target.mkdir()
+        self.ctx.state_path.rename(target/'original')
+        self.ctx.state_path.symlink_to(target/'original',target_is_directory=True)
+        with self.assertRaisesRegex(ValueError,'cannot be symlinked'):
+            n.begin(self.ctx,ident())
 
 if __name__=='__main__':
     os.umask(0o077);unittest.main(verbosity=2)

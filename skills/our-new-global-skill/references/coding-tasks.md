@@ -1,6 +1,9 @@
 # Native coding tasks and ownership
 
 Use scripts/tasks.py with --cwd PRIMARY_PROJECT and --repository OWNER/REPO.
+Private notes, frozen prompts and the task ledger live in the primary project's
+ignored .codex/project-coordinator directory. Linked worktrees resolve that same
+directory through doctor; they do not create their own coordination records.
 Review origin, project guides, native project/path and the exact committed base.
 Native worktree creation defaults to the repository's default branch; the child
 must stop if it starts at a different base. Do not reset human changes to satisfy

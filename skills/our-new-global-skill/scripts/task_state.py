@@ -4,7 +4,6 @@ Codex owns schedules and coordinator model settings. This module never starts an
 agent, writes automation settings or supplies human messaging authorization.
 """
 from __future__ import annotations
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,7 +15,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 SKILL = Path(__file__).resolve().parent.parent
-STATE_ROOT = Path.home() / ".codex/project-coordinator"
 # Coding preference is independent of the model selected for a scheduled run.
 DEFAULT_CODING_MODEL = "gpt-6.1-sol"
 DEFAULT_CODING_REASONING = "high"
@@ -34,8 +32,16 @@ class Project:
         if expected_repository and self.repository.lower() != expected_repository.lower():
             raise ValueError("Checkout origin does not match the requested project")
         self.common = git(self.path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-        key = hashlib.sha256((self.repository.lower()+"\0"+self.common).encode()).hexdigest()[:16]
-        self.state_path = STATE_ROOT / key
+        # Git lists the main worktree first. Linked coding worktrees must share
+        # its ledger, even though their own ignored files are separate.
+        first = git(self.path, "worktree", "list", "--porcelain", "-z").split("\0", 1)[0]
+        if not first.startswith("worktree "):
+            raise ValueError("Cannot identify the project's primary checkout")
+        self.primary = Path(first.removeprefix("worktree ")).resolve()
+        if (git(self.primary, "rev-parse", "--is-bare-repository") == "true"
+                or git(self.primary, "rev-parse", "--path-format=absolute", "--git-common-dir") != self.common):
+            raise ValueError("Project state requires the primary non-bare checkout")
+        self.state_path = self.primary / ".codex/project-coordinator"
 
 
 def project(context):
@@ -85,8 +91,12 @@ def verify_repository(context, cwd=None):
 def state(context):
     project(context)
     path = context.state_path
-    if path.is_symlink():
+    if path.is_symlink() or path.parent.is_symlink():
         raise ValueError("Private project state cannot be symlinked")
+    try:
+        git(context.primary, "check-ignore", "--no-index", str(path / "tasks.sqlite3"))
+    except ValueError as exc:
+        raise ValueError("Ignore /.codex/project-coordinator/ in the project before writing private state") from exc
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     return path
 

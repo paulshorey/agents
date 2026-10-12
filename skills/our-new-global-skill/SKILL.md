@@ -23,9 +23,11 @@ python3 scripts/github-status.py --cwd PROJECT --repository OWNER/REPO
 ```
 
 Use absolute script paths when your shell is in the project. `doctor` returns the
-private state directory under ~/.codex/project-coordinator. Read its ACTIVE.md and
-linked evidence; it holds continuity across fresh scheduled chats. Native thread
-identity defaults to actual CODEX_THREAD_ID. A different active pass blocks ownership:
+private state directory at PROJECT/.codex/project-coordinator in the project's primary
+checkout. Read its ACTIVE.md and linked evidence; it holds continuity across fresh
+scheduled chats. Keep /.codex/project-coordinator/ ignored by Git. Linked coding
+worktrees share the primary checkout's directory; use doctor to resolve it.
+Native thread identity defaults to actual CODEX_THREAD_ID. A different active pass blocks ownership:
 read that exact native thread before recovering it with `end --recovered`. Age or
 notLoaded status alone never proves it stopped. Do not create a second writer.
 
