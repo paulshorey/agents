@@ -1,6 +1,6 @@
 ---
 name: pr-management
-description: Help manage opened PRs. When you notice a PR or feature branch needs attention, even without an explicit review request, go ahead review it, comment on it, address comments, merge main. Sync local git filesystem to latest progress in github.
+description: Help manage opened PRs. When you notice a PR or feature branch needs attention, even without an explicit review request, go ahead review it, comment on it, address comments, merge main. Sync local git filesystem.
 ---
 
 # Project maintenance
