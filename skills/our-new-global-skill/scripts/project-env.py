@@ -21,10 +21,11 @@ ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 MARKER = b"\0__COORDINATOR_LOGIN_ENV__\0"
 
 
-def login_environment() -> dict[str, str]:
+def login_environment(cwd: Path) -> dict[str, str]:
     probe = subprocess.run(
         ["/bin/zsh", "-lc", 'printf "\\0__COORDINATOR_LOGIN_ENV__\\0"; /usr/bin/env -0'],
         capture_output=True,
+        cwd=cwd,
         timeout=20,
         check=True,
     )
@@ -82,7 +83,7 @@ def build_environment(cwd: Path, extra_required: set[str], shell_only: bool = Fa
     declared = {key for key in declared if ENV_NAME.fullmatch(key)}
 
     parent = os.environ.copy()
-    shell = login_environment()
+    shell = login_environment(cwd)
     working = parent.copy()
     working.update({key: value for key, value in shell.items() if key not in working or not working[key]})
     try:

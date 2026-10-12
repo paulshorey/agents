@@ -5,6 +5,7 @@ import io
 import os
 from pathlib import Path
 import tempfile
+import subprocess
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
@@ -15,6 +16,15 @@ spec.loader.exec_module(helper)
 
 
 class EnvironmentTests(unittest.TestCase):
+    def test_login_probe_uses_the_selected_project_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reply = subprocess.CompletedProcess([], 0, helper.MARKER + b'PROJECT_SECRET=fixture\0', b'')
+            with patch.object(helper.subprocess, 'run', return_value=reply) as probe:
+                values = helper.login_environment(root)
+            self.assertEqual(probe.call_args.kwargs['cwd'], root)
+            self.assertEqual(values['PROJECT_SECRET'], 'fixture')
+
     def test_shell_only_never_loads_dotenv_values(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
