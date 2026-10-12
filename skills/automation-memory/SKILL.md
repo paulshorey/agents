@@ -17,8 +17,8 @@ provided by the user. Expand `$CODEX_HOME` from the environment, defaulting to
    missing, use active and archived chat listings to find the latest prior run
    matching this automation ID and project. Report unavailable history as a
    limitation. Verify current status before relying on an earlier observation.
-3. **Write the next handoff.** Before finishing, update the same `memory.md` with
-   the observation time, actual current chat ID from native metadata or
+3. **Write the next handoff.** Before finishing, overwrite the same `memory.md` with
+   new context: observation time, actual current chat ID from native metadata or
    `CODEX_THREAD_ID`, what happened, unfinished work
    with its IDs and ownership, pending decisions, and next actions. Preserve
    unresolved context; label uncertainty or interrupted work explicitly.
