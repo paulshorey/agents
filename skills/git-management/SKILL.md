@@ -1,6 +1,6 @@
 ---
 name: git-management
-description: When starting, continuing, or finishing changes in a Git repository, and whenever committing or pushing task work - keep each new task on a separate feature branch. Open or edit a PR as the engineering handoff for each task.
+description: When starting, continuing, or finishing changes in a Git repository, and whenever committing or pushing task work - keep each new task on a separate feature branch. Push changes. Open or edit a PR as the engineering handoff for each task.
 ---
 
 # Git task management
