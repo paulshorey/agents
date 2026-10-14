@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+agents_root=$(CDPATH= cd -- "$(dirname -- "$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$0")")/.." && pwd)
+exec python3 "$agents_root/scripts/inventory.py" "$@"

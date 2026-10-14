@@ -28,3 +28,12 @@ Use `scripts/install.py` to check/install links and preserve existing settings.
 Do not update managed tools or overwrite configuration incidentally. The current
 task's authorization determines which external changes to apply; configuration
 does not grant permission to mutate unrelated projects or DNS records.
+
+For persistent agent customizations, use `config/inventory.json` and
+`docs/INVENTORY.md` to find ownership, credential locations, consumers, and update
+instructions. Update the inventory and relevant runbook in the same task; record
+meaningful configuration/grant/credential-reference changes in `CHANGELOG.md`.
+Reference existing manifests instead of duplicating settings. Never record secret
+values, fragments, or hashes. Run `agents-config validate` and regenerate inventory
+docs before committing. Local checks do not establish authentication; use explicit
+read-only live checks when needed, and keep status reports in ignored local storage.

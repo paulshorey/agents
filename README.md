@@ -7,6 +7,27 @@ installation backups, DNS plans, and runtime journals stay out of Git.
 
 ## Start here
 
+For a credential, setting, or customization, start with the
+[configuration inventory](docs/INVENTORY.md). It records locations, ownership,
+consumers, variable names, and update/recovery instructions without secret values.
+The source index is [`config/inventory.json`](config/inventory.json); existing
+manifests remain authoritative for their settings and installed paths.
+
+```sh
+~/.agents/bin/agents-config list cloudflare
+~/.agents/bin/agents-config show cloudflare.dns-token
+~/.agents/bin/agents-config check
+~/.agents/bin/agents-config check --live --save-status
+```
+
+Checks are read-only unless `--save-status` explicitly saves sanitized observations
+under ignored `local/inventory/`. Live checks read registered provider state without
+DNS changes or contact-form messages. An old status report does not establish current
+access. See [inventory maintenance](docs/runbooks/utilities.md),
+[Cloudflare token updates](docs/runbooks/cloudflare-token.md),
+[Railway profiles](docs/runbooks/railway.md), and
+[configuration ownership/recovery](docs/runbooks/configuration.md).
+
 For work on Railway and Cloudflare, read
 [`deploy-railway-with-cloudflare`](skills/deploy-railway-with-cloudflare/SKILL.md)
 and [`railway-iac`](skills/railway-iac/SKILL.md). The latter documents this machine’s
@@ -34,6 +55,9 @@ It does not send contact-form messages or modify infrastructure.
 | `config/mcp.json` | Shared, secret-free Railway MCP launcher and Cloudflare endpoint |
 | `config/links.json` | Application symlink destinations and source ownership |
 | `config/env.sh` | Tool PATH setup, without credentials |
+| `config/inventory.json`, `config/inventory.schema.json` | Customization and credential references, validated without secret values |
+| `config/codex.defaults.toml` | Deliberately managed, non-secret Codex preferences |
+| `docs/INVENTORY.md`, `docs/runbooks/`, `CHANGELOG.md` | Generated inventory, update/recovery instructions, and meaningful change history |
 | `config/hosting/*.json` | Non-secret project IDs, branches, domains, and profile references |
 | `config/skill-sources.json`, `licenses/` | Upstream revisions, local adaptations, provider licenses |
 | `tools/package.json`, `tools/package-lock.json` | Exact Cloudflare CLI dependency versions |
@@ -64,9 +88,11 @@ The installer establishes these links:
 | `~/.codex/AGENTS.md` | `rules/AGENTS.md` |
 | `~/.zprofile` | `local/shell/zprofile` |
 
-Codex uses TOML rather than `mcp.json`. The installer renders only the shared
-Railway/Cloudflare MCP sections into the active Codex configuration and preserves
-all other settings, servers, plugins, and comments. The complete application config
+Codex uses TOML rather than `mcp.json`. The installer renders the shared
+Railway/Cloudflare MCP sections and preferences declared in `config/codex.defaults.toml`
+into the active Codex configuration. It preserves other settings, servers, plugins,
+and comments. Removing a declared preference relinquishes ownership without deleting
+its active value. The complete application config
 is kept local because Codex maintains host paths, preferences, and runtime values.
 Shared MCP configuration remains version controlled. Existing nonempty Cursor
 configuration must be merged into the shared JSON before installation; it is never
@@ -260,6 +286,8 @@ resources before applying any whole-project IaC graph.
 
 ```sh
 python3 -m unittest discover -s ~/.agents/tests -v
+~/.agents/bin/agents-config validate
+~/.agents/bin/agents-config docs --check
 npm audit --prefix ~/.agents/tools --omit=dev
 ~/.agents/bin/cf --version
 python3 ~/.agents/scripts/install.py
@@ -278,6 +306,12 @@ Read `~/git/AGENTS.md` before working on the user’s repositories or local serv
 Preserve their existing ports, process ownership, private routing, and unrelated work.
 Configuration establishes capability; the current user request establishes mutation
 scope. Do not reset provider resources or grant broader access merely to simplify setup.
+
+When changing persistent agent configuration, update its inventory entry and runbook,
+record meaningful changes in `CHANGELOG.md`, and run `agents-config docs` to regenerate
+the readable inventory. Git records ordinary file edits; the changelog records why
+customizations or external grants changed. Secret values need an encrypted backup or
+a provider replacement procedure; cloning this repository restores references only.
 
 ## Primary references
 

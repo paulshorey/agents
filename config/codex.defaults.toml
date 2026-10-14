@@ -1,0 +1,8 @@
+# Deliberately managed, non-secret preferences captured from the current setup.
+# scripts/install.py owns these keys; other application settings stay local.
+model = "gpt-6.1-sol"
+model_reasoning_effort = "xhigh"
+model_verbosity = "high"
+model_reasoning_summary = "detailed"
+web_search = "live"
+service_tier = "default"

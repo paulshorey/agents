@@ -13,6 +13,50 @@ import tempfile
 import tomllib
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_KEYS = {'model', 'model_reasoning_effort', 'model_verbosity',
+                'model_reasoning_summary', 'web_search', 'service_tier'}
+
+
+def load_defaults(root):
+    path = root / 'config/codex.defaults.toml'
+    defaults = tomllib.loads(path.read_text()) if path.exists() else {}
+    if set(defaults) - DEFAULT_KEYS or any(not isinstance(v, str) or not v or '\n' in v for v in defaults.values()):
+        raise ValueError('Managed Codex defaults accept only documented non-secret preference keys with single-line string values.')
+    return defaults
+
+
+def render_defaults(text, defaults):
+    """Replace only owned root keys, preserving unrelated TOML and comments."""
+    current = tomllib.loads(text)
+    changed = {key: value for key, value in defaults.items() if current.get(key) != value}
+    if not changed:
+        return text
+    lines, kept, index = text.splitlines(keepends=True), [], 0
+    while index < len(lines):
+        start = index
+        line = lines[index]
+        if not line.strip() or line.lstrip().startswith('#'):
+            kept.append(line)
+            index += 1
+            continue
+        if line.lstrip().startswith('['):
+            kept.extend(lines[index:])
+            break
+        # Parse complete root assignments, including multiline strings/arrays.
+        while index < len(lines):
+            index += 1
+            try:
+                statement = tomllib.loads(''.join(lines[start:index]))
+                break
+            except tomllib.TOMLDecodeError:
+                if index == len(lines):
+                    raise ValueError('Could not preserve a root TOML assignment.')
+        if len(statement) != 1 or next(iter(statement)) not in changed:
+            kept.extend(lines[start:index])
+    prefix = ''.join(f'{key} = {json.dumps(value)}\n' for key, value in changed.items())
+    result = prefix + ''.join(kept)
+    tomllib.loads(result)
+    return result
 
 
 def expand(value, home):
@@ -65,11 +109,11 @@ def install(root=ROOT, home=Path.home(), apply=False):
             raise ValueError('Shared MCP definitions accept HTTPS URLs or command/args only; keep credentials local.')
     codex_target = home / '.codex/config.toml'
     current = codex_target.read_text() if codex_target.exists() else ''
-    desired = render_codex(current, servers, root)
+    desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
     codex_source = root / 'local/codex/config.toml'
     problems = []
     if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
-        problems.append('Codex managed MCP sections need rendering')
+        problems.append('Codex managed preferences or MCP sections need rendering')
     shell_target = home / '.zprofile'
     shell_current = shell_target.read_text() if shell_target.exists() else ''
     shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'

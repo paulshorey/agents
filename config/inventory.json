@@ -1,0 +1,480 @@
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "id": "cloudflare.dns-token",
+      "kind": "credential",
+      "owner": "agents",
+      "description": "All-domains DNS token used by the pinned CLI, hosting helper, and hosted MCP.",
+      "runbook": "docs/runbooks/cloudflare-token.md",
+      "path_ref": {
+        "file": "config/hosting/paul.json",
+        "pointer": "/cloudflare/profile"
+      },
+      "variables": [
+        "CLOUDFLARE_API_TOKEN"
+      ],
+      "permissions": [
+        "Zone: DNS Edit for all zones",
+        "Zone: Zone Read for all zones",
+        "User: User Details Read"
+      ],
+      "consumers": [
+        "cloudflare.cli",
+        "cloudflare.mcp",
+        "hosting.paul"
+      ],
+      "notes": [
+        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
+        "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone."
+      ]
+    },
+    {
+      "id": "railway.webarts-token",
+      "kind": "credential",
+      "owner": "agents",
+      "description": "Explicit Railway workspace profile for WebArts and Paul.",
+      "runbook": "docs/runbooks/railway.md",
+      "path_ref": {
+        "file": "config/hosting/paul.json",
+        "pointer": "/railway/profile"
+      },
+      "variables": [
+        "RAILWAY_API_TOKEN"
+      ],
+      "permissions": [
+        "Existing workspace access; do not infer scope from account identity endpoint failures"
+      ],
+      "consumers": [
+        "railway.mcp",
+        "hosting.paul"
+      ],
+      "notes": [
+        "The existing profile remains outside this repository. It is owner-only mode 600. Inventory records its location; this task does not migrate or rotate it."
+      ]
+    },
+    {
+      "id": "railway.legacy-profile",
+      "kind": "runtime",
+      "owner": "reference",
+      "description": "Legacy shell credential source for another Railway workspace.",
+      "runbook": "docs/runbooks/railway.md",
+      "path": "~/.secrets.sh",
+      "variables": [
+        "RAILWAY_API_TOKEN"
+      ],
+      "notes": [
+        "Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile."
+      ]
+    },
+    {
+      "id": "environment.cloudflare",
+      "kind": "environment",
+      "owner": "agents",
+      "description": "Cloudflare authentication and target selector variable names.",
+      "runbook": "docs/runbooks/cloudflare-token.md",
+      "variables": [
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID",
+        "CLOUDFLARE_ZONE_ID"
+      ],
+      "references": [
+        {
+          "file": "config/hosting/paul.json",
+          "pointer": "/cloudflare"
+        }
+      ],
+      "notes": [
+        "CLOUDFLARE_API_TOKEN is secret. Account/zone IDs are non-secret selectors.",
+        "Pinned CLI and MCP wrappers load the credential profile over inherited variables. Hosting API uses manifest account/zone selectors before profile selectors. CLOUDFLARE_ZONE_ID is optional and absent from the current all-domains profile.",
+        "If a zone selector is absent from the profile, an inherited CLOUDFLARE_ZONE_ID can still be a fallback. Inspect or unset it when switching project context."
+      ]
+    },
+    {
+      "id": "environment.railway",
+      "kind": "environment",
+      "owner": "agents",
+      "description": "Railway workspace credentials, CI credentials, and target selectors.",
+      "runbook": "docs/runbooks/railway.md",
+      "variables": [
+        "RAILWAY_API_TOKEN",
+        "RAILWAY_TOKEN",
+        "RAILWAY_PROJECT_ID",
+        "RAILWAY_ENVIRONMENT_ID",
+        "RAILWAY_SERVICE_ID",
+        "RAILWAY_IAC_BRANCH"
+      ],
+      "references": [
+        {
+          "file": "config/hosting/paul.json",
+          "pointer": "/railway"
+        }
+      ],
+      "notes": [
+        "RAILWAY_API_TOKEN and RAILWAY_TOKEN are secret. IDs and branch names are selectors.",
+        "Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry."
+      ]
+    },
+    {
+      "id": "configuration.cursor",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Shared secret-free MCP JSON linked into Cursor.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 0,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/0"
+        }
+      ],
+      "notes": [
+        "Run scripts/install.py to inspect links and rendering; --apply backs up and installs changes."
+      ]
+    },
+    {
+      "id": "configuration.codex",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Application-maintained Codex TOML with managed preferences and MCP sections.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 1,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/1"
+        }
+      ],
+      "notes": [
+        "Run scripts/install.py to inspect links and rendering; --apply backs up and installs changes."
+      ]
+    },
+    {
+      "id": "configuration.shell",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Preserved login-shell settings with a managed agent-tool PATH hook.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 2,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/2"
+        }
+      ],
+      "notes": [
+        "Run scripts/install.py to inspect links and rendering; --apply backs up and installs changes."
+      ]
+    },
+    {
+      "id": "configuration.rules",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Global agent judgment and configuration-maintenance instructions.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 3,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/3"
+        }
+      ],
+      "notes": [
+        "Run scripts/install.py to inspect links and rendering; --apply backs up and installs changes."
+      ]
+    },
+    {
+      "id": "configuration.codex-defaults",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Version-controlled, deliberately managed non-secret Codex preferences.",
+      "runbook": "docs/runbooks/configuration.md",
+      "path": "config/codex.defaults.toml",
+      "references": [
+        {
+          "file": "config/codex.defaults.toml"
+        }
+      ],
+      "consumers": [
+        "configuration.codex"
+      ],
+      "notes": [
+        "The installer owns model, model_reasoning_effort, model_verbosity, model_reasoning_summary, web_search, and service_tier when present in this file.",
+        "Captured from the current machine without changing their values. Other preferences, host paths, and application state remain in the ignored active config. Project config and runtime overrides can take precedence."
+      ]
+    },
+    {
+      "id": "cloudflare.mcp",
+      "kind": "integration",
+      "owner": "agents",
+      "description": "Official hosted Cloudflare MCP with token-backed internal auth.",
+      "runbook": "docs/runbooks/cloudflare-token.md",
+      "references": [
+        {
+          "file": "config/mcp.json",
+          "pointer": "/mcpServers/cloudflare"
+        },
+        {
+          "file": "scripts/mcp-headers.py"
+        }
+      ],
+      "notes": [
+        "The header helper emits credentials to the application auth pipe. Never invoke it to display or log its output.",
+        "Codex uses the owner-only profile through the header helper. Cursor has its own OAuth connection state and may require sign-in. A URL alone is not authenticated access."
+      ]
+    },
+    {
+      "id": "railway.mcp",
+      "kind": "integration",
+      "owner": "agents",
+      "description": "Official native Railway MCP using an explicit workspace profile.",
+      "runbook": "docs/runbooks/railway.md",
+      "references": [
+        {
+          "file": "config/mcp.json",
+          "pointer": "/mcpServers/railway"
+        },
+        {
+          "file": "scripts/railway-mcp.py"
+        }
+      ],
+      "notes": [
+        "bin/railway-mcp selects the WebArts profile by default; another workspace requires an explicit profile."
+      ]
+    },
+    {
+      "id": "cloudflare.cli",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "Pinned official cf CLI with explicit local credential loading.",
+      "runbook": "docs/runbooks/utilities.md",
+      "references": [
+        {
+          "file": "tools/package.json",
+          "pointer": "/dependencies/cf"
+        },
+        {
+          "file": "tools/package-lock.json"
+        },
+        {
+          "file": "bin/cf"
+        },
+        {
+          "file": "scripts/run-cf.py"
+        }
+      ],
+      "notes": [
+        "Restore from the lockfile with npm ci --prefix ~/.agents/tools --ignore-scripts. Preserve existing Wrangler workflows."
+      ]
+    },
+    {
+      "id": "railway.cli",
+      "kind": "tool",
+      "owner": "external",
+      "description": "Existing native Railway CLI used by project and MCP operations.",
+      "runbook": "docs/runbooks/railway.md",
+      "notes": [
+        "Installed outside this repository. Use railway --version to check the installed version. Project repositories own their CLI and SDK pins; this inventory does not update them."
+      ]
+    },
+    {
+      "id": "hosting.paul",
+      "kind": "integration",
+      "owner": "agents",
+      "description": "Paul Railway environments, source branches, domains, and credential-profile references.",
+      "runbook": "docs/runbooks/railway.md",
+      "references": [
+        {
+          "file": "config/hosting/paul.json"
+        },
+        {
+          "file": "config/hosting/example.json"
+        }
+      ],
+      "notes": [
+        "The Paul manifest owns stable IDs and main/dev versus prod/production mappings. scripts/hosting.py validates those identities before DNS work. A broad credential does not authorize unrelated mutations."
+      ]
+    },
+    {
+      "id": "environment.path",
+      "kind": "environment",
+      "owner": "agents",
+      "description": "Agent utility PATH setup without global secret injection.",
+      "runbook": "docs/runbooks/configuration.md",
+      "variables": [
+        "PATH"
+      ],
+      "references": [
+        {
+          "file": "config/env.sh"
+        }
+      ],
+      "consumers": [
+        "configuration.shell"
+      ],
+      "notes": [
+        "The shell hook adds ~/.agents/bin. Existing terminals can source config/env.sh; desktop processes may need explicit absolute utility paths."
+      ]
+    },
+    {
+      "id": "skills.catalog",
+      "kind": "skills",
+      "owner": "agents",
+      "description": "All local skill entrypoints, imported skill provenance, and adaptations.",
+      "runbook": "docs/runbooks/utilities.md",
+      "references": [
+        {
+          "file": "config/skill-sources.json"
+        }
+      ],
+      "notes": [
+        "docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history."
+      ]
+    },
+    {
+      "id": "utilities.catalog",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "Tracked helper scripts and executable wrappers.",
+      "runbook": "docs/runbooks/utilities.md",
+      "references": [
+        {
+          "file": "tools/package.json"
+        },
+        {
+          "file": ".github/workflows/validate.yml"
+        }
+      ],
+      "notes": [
+        "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata."
+      ]
+    },
+    {
+      "id": "context.global",
+      "kind": "context",
+      "owner": "agents",
+      "description": "Version-controlled global agent context and maintenance rules.",
+      "runbook": "docs/runbooks/configuration.md",
+      "references": [
+        {
+          "file": "rules/AGENTS.md"
+        },
+        {
+          "file": "README.md"
+        },
+        {
+          "file": "CHANGELOG.md"
+        }
+      ],
+      "notes": [
+        "Persistent customization tasks must update inventory references, runbooks, and meaningful change history in the same PR."
+      ]
+    },
+    {
+      "id": "application.codex-auth",
+      "kind": "runtime",
+      "owner": "application",
+      "description": "Codex-managed sign-in and credential storage.",
+      "runbook": "docs/runbooks/configuration.md",
+      "notes": [
+        "Credential storage is controlled by the active cli_auth_credentials_store setting. Codex may use its native auth file or OS credential store.",
+        "Use codex login status to inspect sign-in and the supported login flow to restore it. Do not copy auth data into shared config. Local inventory checks do not read auth storage."
+      ]
+    },
+    {
+      "id": "application.codex-mcp",
+      "kind": "runtime",
+      "owner": "application",
+      "description": "Application-managed MCP runtimes alongside the two shared provider definitions.",
+      "runbook": "docs/runbooks/configuration.md",
+      "notes": [
+        "The current application config also registers node_repl and computer-use. Their executable paths and lifecycle are application-managed; the installer preserves these sections."
+      ]
+    },
+    {
+      "id": "application.codex-plugins",
+      "kind": "integration",
+      "owner": "application",
+      "description": "Registered plugin enablement, managed through Codex application settings.",
+      "runbook": "docs/runbooks/configuration.md",
+      "plugins": [
+        {
+          "id": "github@openai-curated",
+          "enabled": true
+        },
+        {
+          "id": "visualize@openai-bundled",
+          "enabled": false
+        },
+        {
+          "id": "browser@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "computer-use@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "chrome@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "codex-app-tools@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "unified-computer-use@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "code-review@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "computer-history@openai-bundled",
+          "enabled": true
+        },
+        {
+          "id": "postman@postman",
+          "enabled": true
+        }
+      ],
+      "notes": [
+        "Enablement snapshot registered on 2026-10-14. It is not an installer input; check compares registered plugin toggles with local state without displaying application config.",
+        "Plugin caches, OAuth grants, hooks, and runtime state remain application-owned. Inventory documents the customization and update location, not credential contents."
+      ]
+    },
+    {
+      "id": "local.backups",
+      "kind": "runtime",
+      "owner": "application",
+      "description": "Ignored installer backups, plans, journals, verification reports, and screenshots.",
+      "runbook": "docs/runbooks/configuration.md",
+      "path": "local/",
+      "notes": [
+        "Installer backups can contain credentials or private application settings. Keep them ignored and owner-only; backup references and recovery steps live in the runbooks.",
+        "local/inventory/status.json is a sanitized observation, not durable proof of current provider access. Git does not back up secret values; keep an encrypted backup or a replacement procedure."
+      ]
+    },
+    {
+      "id": "configuration.inventory",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Customization metadata index, schema, generated documentation, and change history.",
+      "runbook": "docs/runbooks/utilities.md",
+      "references": [
+        {
+          "file": "config/inventory.json"
+        },
+        {
+          "file": "config/inventory.schema.json"
+        }
+      ],
+      "notes": [
+        "Edit registered metadata in config/inventory.json; existing manifests own settings and locations. Run agents-config docs to regenerate the Markdown view.",
+        "The schema forbids secret-value fields. Local verification results remain ignored observations; meaningful changes belong in CHANGELOG.md and Git/PR history."
+      ]
+    }
+  ]
+}
