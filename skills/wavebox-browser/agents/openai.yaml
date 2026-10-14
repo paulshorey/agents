@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wavebox Browser"
+  short_description: "Navigate Wavebox groups, tabs, and cookie spaces"
+  default_prompt: "Use $wavebox-browser to open Railway in the web@artspaces.net group and verify the selected tab’s space."

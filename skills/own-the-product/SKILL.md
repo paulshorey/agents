@@ -1,6 +1,6 @@
 ---
 name: own-the-product
-description: If you notice something simple can be improved or fixed, go ahead and implement it now. If you notice product design or architecture can be improved, propose the improvement or explain the problem in your response.
+description: If you notice something simple can be improved or fixed, go ahead and implement it now. If you notice product design or architecture can be improved, propose the improvement or explain the problem in your response. If you're struggling to do something or a simple task or automation is taking too long, take initiative to improve it or propose a solution.
 ---
 
 # Own the product
