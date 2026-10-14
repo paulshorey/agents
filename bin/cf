@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+agents_root=$(CDPATH= cd -- "$(dirname -- "$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$0")")/.." && pwd)
+if [ ! -x "$agents_root/tools/node_modules/.bin/cf" ]; then
+  printf '%s\n' 'Cloudflare CLI missing. Run: npm ci --prefix ~/.agents/tools' >&2
+  exit 1
+fi
+exec python3 "$agents_root/scripts/run-cf.py" "$@"

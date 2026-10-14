@@ -1,0 +1,24 @@
+{
+  "links": [
+    {
+      "source": "config/mcp.json",
+      "target": "~/.cursor/mcp.json",
+      "kind": "json"
+    },
+    {
+      "source": "local/codex/config.toml",
+      "target": "~/.codex/config.toml",
+      "kind": "codex"
+    },
+    {
+      "source": "local/shell/zprofile",
+      "target": "~/.zprofile",
+      "kind": "shell"
+    },
+    {
+      "source": "rules/AGENTS.md",
+      "target": "~/.codex/AGENTS.md",
+      "kind": "text"
+    }
+  ]
+}

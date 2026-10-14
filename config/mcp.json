@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "railway": {
+      "command": "bash",
+      "args": ["-c", "exec \"$HOME/.agents/bin/railway-mcp\""]
+    },
+    "cloudflare": { "url": "https://mcp.cloudflare.com/mcp" }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "Example",
+  "repository": "owner/repository",
+  "repository_path": "~/git/repository",
+  "railway": {
+    "profile": "~/.config/railway/workspace.env",
+    "workspace_id": "WORKSPACE_ID",
+    "project_id": "PROJECT_ID",
+    "service_id": "SERVICE_ID",
+    "service_name": "web",
+    "port": 3000,
+    "iac_file": ".railway/railway.ts"
+  },
+  "cloudflare": {
+    "profile": "~/.agents/local/credentials/cloudflare.env",
+    "zone_name": "example.com"
+  },
+  "environments": {
+    "dev": { "id": "ENVIRONMENT_ID", "branch": "main", "domain": "dev.example.com", "health_path": "/api/health" },
+    "production": { "id": "ENVIRONMENT_ID", "branch": "prod", "domain": "example.com", "health_path": "/api/health" }
+  }
+}
