@@ -7,6 +7,27 @@ installation backups, DNS plans, and runtime journals stay out of Git.
 
 ## Start here
 
+For a credential, setting, or customization, start with the
+[configuration inventory](docs/INVENTORY.md). It records locations, ownership,
+consumers, variable names, and update/recovery instructions without secret values.
+The source index is [`config/inventory.json`](config/inventory.json); existing
+manifests remain authoritative for their settings and installed paths.
+
+```sh
+~/.agents/bin/agents-config list cloudflare
+~/.agents/bin/agents-config show cloudflare.dns-token
+~/.agents/bin/agents-config check
+~/.agents/bin/agents-config check --live --save-status
+```
+
+Checks are read-only unless `--save-status` explicitly saves sanitized observations
+under ignored `local/inventory/`. Live checks read registered provider state without
+DNS changes or contact-form messages. An old status report does not establish current
+access. See [inventory maintenance](docs/runbooks/utilities.md),
+[Cloudflare token updates](docs/runbooks/cloudflare-token.md),
+[Railway profiles](docs/runbooks/railway.md), and
+[configuration ownership/recovery](docs/runbooks/configuration.md).
+
 For work on Railway and Cloudflare, read
 [`deploy-railway-with-cloudflare`](skills/deploy-railway-with-cloudflare/SKILL.md)
 and [`railway-iac`](skills/railway-iac/SKILL.md). The latter documents this machine’s
@@ -34,10 +55,15 @@ It does not send contact-form messages or modify infrastructure.
 | `config/mcp.json` | Shared, secret-free Railway MCP launcher and Cloudflare endpoint |
 | `config/links.json` | Application symlink destinations and source ownership |
 | `config/env.sh` | Tool PATH setup, without credentials |
+| `config/inventory.json`, `config/inventory.schema.json` | Customization and credential references, validated without secret values |
+| `config/codex.defaults.toml` | Deliberately managed, non-secret Codex preferences |
+| `config/profiles.json` | Credential profile IDs and file locations shared by launchers and hosting |
+| `docs/INVENTORY.md`, `docs/runbooks/`, `CHANGELOG.md` | Generated inventory, update/recovery instructions, and meaningful change history |
 | `config/hosting/*.json` | Non-secret project IDs, branches, domains, and profile references |
 | `config/skill-sources.json`, `licenses/` | Upstream revisions, local adaptations, provider licenses |
-| `tools/package.json`, `tools/package-lock.json` | Exact Cloudflare CLI dependency versions |
+| `tools/package.json`, `tools/package-lock.json`, `tools/python-requirements.txt` | Pinned Cloudflare CLI and hash-verified TOML editor |
 | `scripts/`, `bin/`, `tests/` | Installation, credential loading, DNS reconciliation, and verification |
+| `AGENTS.md` | Repository entrypoint linking agents to the inventory and maintenance instructions |
 | `rules/AGENTS.md` | Global agent context, linked into Codex |
 
 Ignored `local/` contains owner-only credential files, rendered Codex/shell config,
@@ -50,6 +76,9 @@ Do not copy their contents into this repository or symlink an authentication dat
 
 ```sh
 npm ci --prefix ~/.agents/tools --ignore-scripts
+mkdir -p ~/.agents/local
+chmod 700 ~/.agents/local
+python3 -m pip --isolated install --disable-pip-version-check --require-hashes --no-deps --only-binary=:all: --index-url https://pypi.org/simple --target ~/.agents/local/python-packages -r ~/.agents/tools/python-requirements.txt
 python3 ~/.agents/scripts/install.py          # inspect; exits 1 if installation is needed
 python3 ~/.agents/scripts/install.py --apply  # back up existing files, merge managed config, install links
 python3 ~/.agents/scripts/install.py          # should report status: current
@@ -64,9 +93,12 @@ The installer establishes these links:
 | `~/.codex/AGENTS.md` | `rules/AGENTS.md` |
 | `~/.zprofile` | `local/shell/zprofile` |
 
-Codex uses TOML rather than `mcp.json`. The installer renders only the shared
-Railway/Cloudflare MCP sections into the active Codex configuration and preserves
-all other settings, servers, plugins, and comments. The complete application config
+Codex uses TOML rather than `mcp.json`. The installer renders the shared
+Railway/Cloudflare MCP sections and preferences declared in `config/codex.defaults.toml`
+into the active Codex configuration. It preserves other settings, servers, plugins,
+and comments using the pinned TOML editor, including quoted/dotted keys and multiline
+strings. Already-matching settings are not reserialized. Removing a declared preference relinquishes ownership without deleting
+its active value. The complete application config
 is kept local because Codex maintains host paths, preferences, and runtime values.
 Shared MCP configuration remains version controlled. Existing nonempty Cursor
 configuration must be merged into the shared JSON before installation; it is never
@@ -89,7 +121,8 @@ python3 ~/.agents/scripts/install.py --restore ~/.agents/local/install-backups/T
 ```
 
 Restore refuses to overwrite a destination whose link changed after installation.
-Review app configuration before restoring if it was edited while still symlinked.
+New backups also detect file edits through unchanged links. Older backups retain
+the original link-only guard; inspect and preserve newer app edits before restoring them.
 Edit `config/mcp.json` for shared endpoint changes, then rerun installation. New
 agent sessions normally load new skills and MCP connections; this does not retrofit
 tools into a running conversation.
@@ -136,9 +169,20 @@ profile replaces inherited Railway tokens. The Cloudflare wrapper/profile suppli
 its configured credentials to the pinned CLI. Avoid shell tracing, environment dumps,
 token-bearing command arguments, and printing full API variable values.
 
+[`config/profiles.json`](config/profiles.json) owns the locations for profile IDs
+`cloudflare.default` and `railway.webarts`. Hosting manifests select these IDs;
+CLI/MCP launchers and the inventory resolve the same catalog. Change a location there
+instead of editing multiple consumers. Explicit profile file paths remain supported
+for ad hoc manifests. Changing a catalog entry does not move or rotate its credential.
+
 The active Cloudflare token is named **Agent DNS — all domains** and grants
-**Zone DNS Edit and Zone Read for All zones**, as explicitly authorized by the user.
-API/CLI access was verified across all 12 current domains on October 14, 2026 (UTC).
+**Zone DNS Edit and Zone Read for All zones**, plus **User Details: Read**, as
+explicitly authorized by the user. The dashboard summary and live API access were
+verified on October 14, 2026 (UTC): the stored token is active, profile reads work,
+and the dashboard summary declares DNS Edit for all zones. The token remains in ignored
+`local/credentials/cloudflare.env`, mode 600. Editing its permissions preserves
+the existing token value; rolling a token is a separate operation. No new value
+needs to be copied after a permission edit.
 The default account is `c54cc4d7f6317b833f5cc02d7172f245`. Confirm the intended account
 and zone against live state for each operation; broad credential access is not
 authorization to modify unrelated domains. The profile deliberately omits
@@ -204,6 +248,18 @@ the provider documents Account Resources: Read. This is additional data access a
 must be authorized before expanding an existing token. DNS CLI/API access works
 without it. Do not confuse successful REST DNS access with authenticated hosted MCP.
 
+The user approved and saved User Details: Read for the active all-domains token.
+On October 14, 2026 (UTC), the configured header helper supplied the existing token
+to the hosted MCP server: initialization and tool discovery succeeded, and an
+`execute` call to GET `/zones` returned all 12 zones. Their deprecated `permissions`
+field is legacy membership data and does not establish API-token grants. The recorded
+DNS Edit scope comes from the token's dashboard summary. Read-only live checks now
+verify a real DNS record GET and explicitly report that writes were not tested.
+This verified the provider connection directly; existing agent conversations still
+need a new session to discover newly configured MCP tools. For direct HTTP checks,
+identify the client with `User-Agent: paul-agents-hosting/1`; Cloudflare rejected
+Python's default urllib user agent with error 1010 during verification.
+
 ## Deploying Railway plus Cloudflare
 
 The skill orchestrates project/environment/service creation, source branches,
@@ -246,6 +302,8 @@ resources before applying any whole-project IaC graph.
 
 ```sh
 python3 -m unittest discover -s ~/.agents/tests -v
+~/.agents/bin/agents-config validate
+~/.agents/bin/agents-config docs --check
 npm audit --prefix ~/.agents/tools --omit=dev
 ~/.agents/bin/cf --version
 python3 ~/.agents/scripts/install.py
@@ -264,6 +322,30 @@ Read `~/git/AGENTS.md` before working on the user’s repositories or local serv
 Preserve their existing ports, process ownership, private routing, and unrelated work.
 Configuration establishes capability; the current user request establishes mutation
 scope. Do not reset provider resources or grant broader access merely to simplify setup.
+
+When changing persistent agent configuration, update its inventory entry and runbook,
+record meaningful changes in `CHANGELOG.md`, and run `agents-config docs` to regenerate
+the readable inventory. Git records ordinary file edits; the changelog records why
+customizations or external grants changed. Secret values need an encrypted backup or
+a provider replacement procedure; cloning this repository restores references only.
+
+The inventory files have separate roles: `config/inventory.json` holds editable
+records; `config/inventory.schema.json` defines their allowed structure and types;
+`docs/INVENTORY.md` is generated for reading. Edit records and their authoritative
+sources, then run `agents-config docs`. CI checks the records and rejects stale docs.
+The schema does not store another copy of the records and does not scan free text
+for secrets; secret scanning and careful handling remain separate checks.
+
+Live checks default to Paul's manifest. For another registered project, select its
+target explicitly:
+
+```sh
+~/.agents/bin/agents-config check --live --manifest ~/.agents/config/hosting/PROJECT.json
+```
+
+The report names the selected manifest. Local checks still cover the shared installed
+setup; provider reads use that manifest's profiles and validate its account/project/zone
+identities. A successful check for Paul does not verify another workspace or account.
 
 ## Primary references
 

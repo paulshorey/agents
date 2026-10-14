@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from hosting import ROOT, Cloudflare, HostingError, load_manifest
+from hosting import ROOT, Cloudflare, HostingError, load_manifest, resolve_profile
 
 
 def credential_text(token, zone, pin_zone=False):
@@ -33,8 +33,8 @@ def main():
         checking = json.loads(json.dumps(manifest))
         checking['cloudflare']['profile'] = '/nonexistent-profile-for-validation'
         zone = Cloudflare(checking, {'CLOUDFLARE_API_TOKEN': token}).zone()
-        target = Path(manifest['cloudflare']['profile']).expanduser()
-        if ROOT / 'local' not in target.parents:
+        target = resolve_profile(manifest['cloudflare']['profile'])
+        if not target.resolve().is_relative_to((ROOT / 'local').resolve()):
             raise HostingError('Credential setup writes only inside ignored ~/.agents/local/')
         target.parent.mkdir(parents=True, exist_ok=True)
         target.parent.chmod(0o700)

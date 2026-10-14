@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "cloudflare.default": {
+      "provider": "cloudflare",
+      "path": "~/.agents/local/credentials/cloudflare.env"
+    },
+    "railway.webarts": {
+      "provider": "railway",
+      "path": "~/.config/railway/webarts.env"
+    }
+  }
+}

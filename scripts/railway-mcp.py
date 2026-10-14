@@ -8,7 +8,7 @@ from hosting import profile_environment, HostingError
 
 try:
     # A different profile is an explicit caller choice; never fall back to the generic token.
-    profile = sys.argv[1] if len(sys.argv) > 1 else str(Path.home() / '.config/railway/webarts.env')
+    profile = sys.argv[1] if len(sys.argv) > 1 else 'railway.webarts'
     env = dict(os.environ)
     env.pop('RAILWAY_TOKEN', None)
     env.pop('RAILWAY_API_TOKEN', None)

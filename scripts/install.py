@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install managed config links without losing existing application settings."""
 import argparse
+from collections.abc import MutableMapping
 import datetime as dt
 import json
 import os
@@ -11,8 +12,105 @@ import shutil
 import sys
 import tempfile
 import tomllib
+import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_KEYS = {'model', 'model_reasoning_effort', 'model_verbosity',
+                'model_reasoning_summary', 'web_search', 'service_tier'}
+
+
+def toml_editor():
+    """Load the deliberately pinned editor from ignored project-local packages."""
+    directory = str(ROOT / 'local/python-packages')
+    if directory not in sys.path:
+        sys.path.insert(0, directory)
+    try:
+        import tomlkit
+    except ImportError:
+        raise ValueError('Restore the pinned Python packages using the README installation command.') from None
+    pin = re.search(r'^tomlkit==([0-9.]+)', (ROOT / 'tools/python-requirements.txt').read_text(), re.MULTILINE)
+    if not pin or tomlkit.__version__ != pin[1]:
+        raise ValueError('Python editor version differs from its pin; restore packages using the README.')
+    return tomlkit
+
+
+def validate_mcp(servers):
+    if not isinstance(servers, dict):
+        raise ValueError('Shared MCP definitions must be a server mapping.')
+    for name, server in servers.items():
+        if not re.fullmatch(r'[a-z][a-z0-9_-]*', name) or not isinstance(server, dict):
+            raise ValueError('Invalid shared MCP server definition.')
+        if 'url' in server:
+            try:
+                url = urllib.parse.urlsplit(server['url']) if isinstance(server['url'], str) else None
+                port = url.port if url else None
+            except ValueError:
+                raise ValueError('Malformed shared MCP HTTPS endpoint; inspect it locally.') from None
+            valid = (set(server) == {'url'} and url and url.scheme == 'https' and url.hostname
+                     and url.username is None and url.password is None and not url.fragment
+                     and not any(re.search(r'token|secret|password|api.?key|authorization|^auth$|^key$|bearer', key, re.I)
+                                 for key in urllib.parse.parse_qs(url.query)))
+            if valid and name == 'cloudflare':
+                # This server receives our Cloudflare bearer token through the auth helper.
+                valid = url.hostname == 'mcp.cloudflare.com' and port in (None, 443) and url.path == '/mcp'
+            if not valid:
+                raise ValueError('Shared MCP HTTPS endpoints must be secret-free; Cloudflare auth requires its official MCP host.')
+        elif not (set(server) <= {'command', 'args'} and isinstance(server.get('command'), str)
+                  and server['command'] and isinstance(server.get('args', []), list)
+                  and all(isinstance(arg, str) for arg in server.get('args', []))):
+            raise ValueError('Shared MCP launchers require a command and string arguments; keep credentials local.')
+
+
+def validate_links(root, definitions, home):
+    targets = set()
+    fixed = {'codex': ('local/codex/config.toml', '~/.codex/config.toml'),
+             'shell': ('local/shell/zprofile', '~/.zprofile')}
+    if not isinstance(definitions, list):
+        raise ValueError('Managed links must be a list.')
+    for link in definitions:
+        if not isinstance(link, dict) or set(link) != {'source', 'target', 'kind'}:
+            raise ValueError('A managed link needs source, target, and kind.')
+        if not all(isinstance(value, str) and value for value in link.values()):
+            raise ValueError('Managed link fields must be nonempty strings.')
+        if link['kind'] not in ('codex', 'shell', 'json', 'text'):
+            raise ValueError('Unsupported managed link kind.')
+        source, raw = Path(link['source']), link['target']
+        if not source.parts or source.is_absolute() or '..' in source.parts or not (root / source).resolve().is_relative_to(root.resolve()):
+            raise ValueError('Managed link sources must stay inside the repository.')
+        if link['kind'] in ('json', 'text') and (source.parts[0] in ('local', '.git')
+                                               or 'node_modules' in source.parts or not (root / source).is_file()):
+            raise ValueError('Shared text/JSON links require a shared source file, not ignored runtime or authentication state.')
+        target = expand(raw, home)
+        if not target.is_absolute() or '..' in target.parts or not target.is_relative_to(home):
+            raise ValueError('Managed link targets must be absolute paths inside the selected home.')
+        if target in targets:
+            raise ValueError('Managed link targets must be unique.')
+        targets.add(target)
+        if link['kind'] in fixed and (link['source'], raw) != fixed[link['kind']]:
+            raise ValueError('Codex and shell rendering have fixed source/target slots; add other files as generic links.')
+
+
+def load_defaults(root):
+    path = root / 'config/codex.defaults.toml'
+    defaults = tomllib.loads(path.read_text()) if path.exists() else {}
+    if set(defaults) - DEFAULT_KEYS or any(not isinstance(v, str) or not v or '\n' in v for v in defaults.values()):
+        raise ValueError('Managed Codex defaults accept only documented non-secret preference keys with single-line string values.')
+    return defaults
+
+
+def render_defaults(text, defaults):
+    """Replace only owned root keys, preserving unrelated TOML and comments."""
+    current = tomllib.loads(text)
+    changed = {key: value for key, value in defaults.items() if current.get(key) != value}
+    if not changed:
+        return text
+    editor = toml_editor()
+    document = editor.parse(text)
+    for key, value in changed.items():
+        document[key] = value
+    result = editor.dumps(document)
+    tomllib.loads(result)
+    return result
 
 
 def expand(value, home):
@@ -20,28 +118,30 @@ def expand(value, home):
 
 
 def render_codex(text, servers, root=ROOT):
-    tomllib.loads(text)  # Reject invalid input rather than silently discarding it.
-    lines, skip = [], False
-    for line in text.splitlines(keepends=True):
-        match = re.match(r'^\s*\[([^\]]+)\]', line)
-        if match:
-            section = match[1]
-            skip = any(section == f'mcp_servers.{name}' or section.startswith(f'mcp_servers.{name}.') for name in servers)
-        if not skip:
-            lines.append(line)
-    output = ''.join(lines).rstrip() + '\n'
+    current = tomllib.loads(text)  # Reject invalid input before any write.
+    validate_mcp(servers)
+    actual = current.get('mcp_servers', {})
+    if not isinstance(actual, dict):
+        raise ValueError('Codex MCP configuration is not a table; inspect it locally.')
+    wanted = {}
     for name, server in servers.items():
-        if not re.fullmatch(r'[a-z][a-z0-9_-]*', name):
-            raise ValueError(f'Invalid managed server name: {name}')
-        output += f'\n[mcp_servers.{name}]\n'
-        for key in ('url', 'command', 'args'):
-            if key in server:
-                output += f'{key} = {json.dumps(server[key])}\n'
-        output += 'startup_timeout_sec = 30\ntool_timeout_sec = 120\n'
+        wanted[name] = {**server, 'startup_timeout_sec': 30, 'tool_timeout_sec': 120}
         if name == 'cloudflare':
-            output += 'bearer_token_env_var = "CLOUDFLARE_API_TOKEN"\n'
             helper = 'python3 ' + shlex.quote(str(root / 'scripts/mcp-headers.py'))
-            output += 'http_headers_helper = ' + json.dumps(helper) + '\n'
+            wanted[name].update(bearer_token_env_var='CLOUDFLARE_API_TOKEN', http_headers_helper=helper)
+    changed = {name: value for name, value in wanted.items() if actual.get(name) != value}
+    if not changed:
+        return text
+    editor = toml_editor()
+    document = editor.parse(text)
+    mcp = document.setdefault('mcp_servers', editor.table())
+    if not isinstance(mcp, MutableMapping):
+        raise ValueError('Codex MCP configuration is not a table; inspect it locally.')
+    for name, value in changed.items():
+        item = editor.inline_table() if isinstance(mcp, editor.items.InlineTable) else editor.table()
+        item.update(value)
+        mcp[name] = item
+    output = editor.dumps(document)
     tomllib.loads(output)
     return output
 
@@ -58,18 +158,15 @@ def atomic_write(path, data, mode=0o600):
 def install(root=ROOT, home=Path.home(), apply=False):
     definitions = json.loads((root / 'config/links.json').read_text())['links']
     servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
-    for server in servers.values():
-        valid_http = set(server) == {'url'} and server['url'].startswith('https://') if 'url' in server else False
-        valid_stdio = set(server) <= {'command', 'args'} and isinstance(server.get('command'), str) and isinstance(server.get('args', []), list)
-        if not (valid_http or valid_stdio):
-            raise ValueError('Shared MCP definitions accept HTTPS URLs or command/args only; keep credentials local.')
+    validate_links(root, definitions, home)
+    validate_mcp(servers)
     codex_target = home / '.codex/config.toml'
     current = codex_target.read_text() if codex_target.exists() else ''
-    desired = render_codex(current, servers, root)
+    desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
     codex_source = root / 'local/codex/config.toml'
     problems = []
     if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
-        problems.append('Codex managed MCP sections need rendering')
+        problems.append('Codex managed preferences or MCP sections need rendering')
     shell_target = home / '.zprofile'
     shell_current = shell_target.read_text() if shell_target.exists() else ''
     shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
@@ -132,6 +229,15 @@ def install(root=ROOT, home=Path.home(), apply=False):
             raise ValueError(f'Unexpected temporary path: {temporary}')
         temporary.symlink_to(source)
         temporary.replace(target)
+    # Keep installed bytes privately so restore can detect later application edits.
+    for index, record in enumerate(saved):
+        target = Path(record['target'])
+        if target.is_file():
+            installed_file = 'installed-' + str(index)
+            shutil.copy2(target, backup / installed_file)
+            (backup / installed_file).chmod(0o600)
+            record['installed_file'] = installed_file
+    atomic_write(backup / 'manifest.json', json.dumps(saved, indent=2) + '\n')
     return {'status': 'installed', 'backup': str(backup), 'links': len(definitions)}
 
 
@@ -141,6 +247,8 @@ def restore(backup):
         target = Path(record['target'])
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
             raise ValueError(f'Refusing to overwrite a config changed after installation: {target}')
+        if 'installed_file' in record and target.read_bytes() != (backup / record['installed_file']).read_bytes():
+            raise ValueError('Installed configuration has newer edits; preserve or reconcile them before restoring.')
     for record in records:
         target = Path(record['target'])
         target.unlink()
