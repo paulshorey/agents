@@ -137,8 +137,13 @@ its configured credentials to the pinned CLI. Avoid shell tracing, environment d
 token-bearing command arguments, and printing full API variable values.
 
 The active Cloudflare token is named **Agent DNS — all domains** and grants
-**Zone DNS Edit and Zone Read for All zones**, as explicitly authorized by the user.
-API/CLI access was verified across all 12 current domains on October 14, 2026 (UTC).
+**Zone DNS Edit and Zone Read for All zones**, plus **User Details: Read**, as
+explicitly authorized by the user. The dashboard summary and live API access were
+verified on October 14, 2026 (UTC): the stored token is active, profile reads work,
+and all 12 current zones report DNS Edit access. The token remains in ignored
+`local/credentials/cloudflare.env`, mode 600. Editing its permissions preserves
+the existing token value; rolling a token is a separate operation. No new value
+needs to be copied after a permission edit.
 The default account is `c54cc4d7f6317b833f5cc02d7172f245`. Confirm the intended account
 and zone against live state for each operation; broad credential access is not
 authorization to modify unrelated domains. The profile deliberately omits
@@ -203,6 +208,15 @@ tokens, **User Details: Read** supplies that identity permission; for account to
 the provider documents Account Resources: Read. This is additional data access and
 must be authorized before expanding an existing token. DNS CLI/API access works
 without it. Do not confuse successful REST DNS access with authenticated hosted MCP.
+
+The user approved and saved User Details: Read for the active all-domains token.
+On October 14, 2026 (UTC), the configured header helper supplied the existing token
+to the hosted MCP server: initialization and tool discovery succeeded, and an
+`execute` call to GET `/zones` returned all 12 zones with DNS Edit permission.
+This verified the provider connection directly; existing agent conversations still
+need a new session to discover newly configured MCP tools. For direct HTTP checks,
+identify the client with `User-Agent: paul-agents-hosting/1`; Cloudflare rejected
+Python's default urllib user agent with error 1010 during verification.
 
 ## Deploying Railway plus Cloudflare
 
