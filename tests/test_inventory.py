@@ -130,6 +130,20 @@ class InventoryTests(unittest.TestCase):
         self.assertTrue(all(not item['passed'] for item in result))
         self.assertNotIn('sentinel', json.dumps(result))
 
+    def test_non_table_plugin_settings_report_failure_and_continue(self):
+        path = self.home / '.codex/config.toml'
+        path.parent.mkdir(parents=True)
+        plugin_id = next(e for e in self.data['entries'] if e.get('plugins'))['plugins'][0]['id']
+        for text in ('plugins = "sentinel-private-text"\n',
+                     '[plugins]\n' + json.dumps(plugin_id) + ' = true\n'):
+            with self.subTest(text_format='root' if text.startswith('plugins =') else 'entry'):
+                path.write_text(text)
+                results = inventory.local_checks(self.data, self.root, self.home)
+                result = next(item for item in results if item['id'] == 'application.codex-plugins')
+                self.assertFalse(result['passed'])
+                self.assertIn('railway.cli', [item['id'] for item in results])
+                self.assertNotIn('sentinel-private-text', json.dumps(results))
+
     def test_saved_observation_is_owner_only_and_contains_only_status(self):
         result = {'passed': True, 'results': [{'id': 'cloudflare.api', 'passed': True}]}
         inventory.save_status(self.root, result)

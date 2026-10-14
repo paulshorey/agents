@@ -252,7 +252,7 @@ def local_checks(data, root=ROOT, home=None):
                 active = read_data(home / '.codex/config.toml').get('plugins', {})
                 passed = all(active.get(plugin['id'], {}).get('enabled') is plugin['enabled'] for plugin in entry['plugins'])
                 record(entry['id'], passed, 'registered toggles match' if passed else 'plugin toggles differ; review and update intended metadata')
-            except InventoryError:
+            except (InventoryError, AttributeError, TypeError):
                 record(entry['id'], False, 'application plugin settings unavailable; inspect locally')
     try:
         state = install.install(root=root, home=home)

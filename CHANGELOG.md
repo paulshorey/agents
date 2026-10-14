@@ -8,6 +8,8 @@ Verification dates describe historical observations, not current readiness.
 
 - Added a concise root `AGENTS.md` linking repository work to the inventory,
   global rules, and required maintenance commands.
+- Plugin checks now report malformed application settings as a failed result and
+  continue other checks; regression coverage includes root and per-plugin formats.
 - Added `config/inventory.json`, its schema, generated `docs/INVENTORY.md`, and
   `agents-config` lookup/validation/check commands. Registered credential profiles,
   environment variables, installed links, MCP integrations, tools, skills, runtime
