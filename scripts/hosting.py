@@ -368,7 +368,7 @@ def verify(manifest, names):
             if target.get('require_commit', False):
                 passed = passed and bool(expected) and actual == expected
             results.append({'environment': name, 'url': url, 'http_status': status, 'tls': tls_version, 'certificate': cert_status, 'expected_commit': expected, 'reported_commit': actual, 'passed': passed})
-        except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+        except (HostingError, OSError, ValueError, subprocess.TimeoutExpired) as error:
             results.append({'environment': name, 'url': url, 'passed': False, 'error': type(error).__name__})
     return {'verified': all(result['passed'] for result in results), 'results': results}
 

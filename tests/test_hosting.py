@@ -4,8 +4,9 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -19,6 +20,10 @@ def module(name):
 
 hosting = module('hosting')
 installer = module('install')
+# Make imports from scripts available to the credential setup helper.
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+credential_setup = module('set-cloudflare-token')
 
 
 class FakeCloudflare:
@@ -106,6 +111,32 @@ class HostingTests(unittest.TestCase):
         with patch.object(hosting, 'run_json', return_value=data):
             with self.assertRaises(hosting.HostingError):
                 hosting.railway_project(manifest, {})
+
+    def test_global_profile_does_not_pin_one_zone_by_default(self):
+        zone = {'id': 'zone', 'account_id': 'account'}
+        text = credential_setup.credential_text('dummy-token', zone)
+        self.assertNotIn('CLOUDFLARE_ZONE_ID', text)
+        self.assertIn('CLOUDFLARE_ZONE_ID=zone', credential_setup.credential_text('dummy-token', zone, pin_zone=True))
+
+    def test_redirected_health_check_does_not_skip_later_environments(self):
+        manifest = hosting.load_manifest(ROOT / 'config/hosting/paul.json')
+        sha = 'a' * 40
+        def response(url):
+            value = MagicMock()
+            value.__enter__.return_value = SimpleNamespace(status=200, url=url, read=lambda limit: json.dumps({'commit': sha}).encode())
+            return value
+        network = [response('https://unexpected.example/api/health'), response('https://paulshorey.com/api/health')]
+        connection, tls = MagicMock(), MagicMock()
+        tls.__enter__.return_value.version.return_value = 'TLSv1.3'
+        context = MagicMock()
+        context.wrap_socket.return_value = tls
+        domain = {'certificate': {'status': 'CERTIFICATE_STATUS_TYPE_VALID'}}
+        with patch.object(hosting, 'railway_env', return_value={}), patch.object(hosting, 'railway_project'), patch.object(hosting, 'domain_status', return_value=domain), patch.object(hosting.urllib.request, 'urlopen', side_effect=network), patch.object(hosting.socket, 'create_connection', return_value=connection), patch.object(hosting.ssl, 'create_default_context', return_value=context), patch.object(hosting.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout=sha + ' refs/heads/prod\n')):
+            result = hosting.verify(manifest, ['dev', 'production'])
+        self.assertFalse(result['verified'])
+        self.assertEqual(len(result['results']), 2)
+        self.assertEqual(result['results'][0]['error'], 'HostingError')
+        self.assertTrue(result['results'][1]['passed'])
 
     def plan_context(self, folder):
         manifest = {'schema_version': 1, 'railway': {'project_id': 'project'}, 'environments': {'dev': {}}, 'cloudflare': {}}

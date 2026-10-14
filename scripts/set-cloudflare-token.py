@@ -10,9 +10,17 @@ import tempfile
 from hosting import ROOT, Cloudflare, HostingError, load_manifest
 
 
+def credential_text(token, zone, pin_zone=False):
+    text = f'CLOUDFLARE_API_TOKEN={token}\nCLOUDFLARE_ACCOUNT_ID={zone["account_id"]}\n'
+    if pin_zone:
+        text += f'CLOUDFLARE_ZONE_ID={zone["id"]}\n'
+    return text
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--manifest', default=str(ROOT / 'config/hosting/paul.json'))
+    parser.add_argument('--pin-zone', action='store_true', help='Set a global zone default for a deliberately single-zone profile')
     args = parser.parse_args()
     try:
         manifest = load_manifest(args.manifest)
@@ -32,7 +40,7 @@ def main():
         target.parent.chmod(0o700)
         with tempfile.NamedTemporaryFile(mode='w', dir=target.parent, delete=False) as file:
             temp = Path(file.name)
-            file.write(f'CLOUDFLARE_API_TOKEN={token}\nCLOUDFLARE_ACCOUNT_ID={zone["account_id"]}\nCLOUDFLARE_ZONE_ID={zone["id"]}\n')
+            file.write(credential_text(token, zone, args.pin_zone))
         temp.chmod(0o600)
         temp.replace(target)
         print(json.dumps({'stored': str(target), 'zone': zone}, indent=2))

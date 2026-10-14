@@ -136,11 +136,16 @@ profile replaces inherited Railway tokens. The Cloudflare wrapper/profile suppli
 its configured credentials to the pinned CLI. Avoid shell tracing, environment dumps,
 token-bearing command arguments, and printing full API variable values.
 
-Cloudflare setup requires a token with **Zone DNS Edit/Write and Zone Read**, restricted
-to the intended zone. For Paul that zone is `paulshorey.com`; the signed-in account
-observed during setup has ID `c54cc4d7f6317b833f5cc02d7172f245`. Confirm account and zone
-against live state. Add another zone only when the intended scope calls for it.
-Create/store the token with user authorization; never paste its value into chat.
+The active Cloudflare token is named **Agent DNS — all domains** and grants
+**Zone DNS Edit and Zone Read for All zones**, as explicitly authorized by the user.
+API/CLI access was verified across all 12 current domains on October 14, 2026 (UTC).
+The default account is `c54cc4d7f6317b833f5cc02d7172f245`. Confirm the intended account
+and zone against live state for each operation; broad credential access is not
+authorization to modify unrelated domains. The profile deliberately omits
+`CLOUDFLARE_ZONE_ID` so future projects are not accidentally pinned to Paul’s zone.
+Use a manifest-specific zone ID/name, or `cf --zone`, to select the target.
+For a separate credential, choose the scope authorized for that task. Never paste
+token values into chat, documentation, or Git.
 
 ```sh
 mkdir -p ~/.agents/local/credentials
@@ -150,7 +155,9 @@ python3 ~/.agents/scripts/set-cloudflare-token.py
 
 The credential setup command prompts invisibly, validates access to the manifest’s
 zone, and saves only to ignored owner-only storage. It prints resource IDs, never the
-token. The token is not currently installed unless the doctor confirms access.
+token. It sets the account default and leaves the zone unbound; `--pin-zone` explicitly
+adds a global zone default for a deliberately single-zone profile. Run the doctor to
+verify current access rather than relying on this recorded setup state.
 
 For an ad hoc Railway operation, keep profile selection local:
 
@@ -188,6 +195,14 @@ app to inherit a shell variable. `scripts/mcp-headers.py` writes credentials onl
 Codex’s internal auth pipe: **never run it manually to display or log its output**.
 OAuth remains an alternative when no API token is supplied. Verify a real provider
 read in a new agent session before claiming the MCP connection works.
+
+The hosted Cloudflare MCP also requires an identity-read permission for API-token
+authentication. A DNS/Zone-only token returned HTTP 403 with
+`Token lacks required user:read or account:read scope` during verification. For user
+tokens, **User Details: Read** supplies that identity permission; for account tokens,
+the provider documents Account Resources: Read. This is additional data access and
+must be authorized before expanding an existing token. DNS CLI/API access works
+without it. Do not confuse successful REST DNS access with authenticated hosted MCP.
 
 ## Deploying Railway plus Cloudflare
 
