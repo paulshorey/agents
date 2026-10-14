@@ -10,6 +10,11 @@ SDK and Railway CLI in the project rather than relying on an unrelated global ve
 IaC needs Railway CLI 5.42.1 or newer; check current official requirements because the
 SDK remains capable of breaking changes.
 
+Prefer a pinned official native CLI release or the existing Homebrew installation.
+Paul uses SDK 3.15.0 and native CLI 5.62.1. Its npm CLI installer introduced vulnerable
+`tar` dependencies, and a dependency override broke the import. Keep other repositories'
+reviewed pins; do not add the npm CLI to app dependencies incidentally.
+
 Use the repository's package manager and `packageManager` version. The WebArts
 migration used SDK 3.11.0, CLI 5.62.1 for Notes/NLP, and the existing pinned CLI
 5.59.0 for Map; these are tested versions, not requirements to override future
@@ -33,6 +38,10 @@ whole-project files in one environment. Inspect and transfer ownership with the
 current CLI workflow before reorganizing repositories.
 
 ## Resource graph
+
+Paul exhibited false/null drift for explicit `sleepApplication: false` with CLI
+5.62.1 while the live default had sleeping disabled. Omitting that redundant default
+restored clean plans. Verify live settings and a fresh plan before applying this fix.
 
 The TypeScript DSL can describe persistent services, cron functions, Postgres, MySQL,
 Redis, MongoDB, buckets, volumes, domains, replicas, groups, and environment variables.

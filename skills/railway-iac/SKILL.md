@@ -22,6 +22,9 @@ and existing workflow files before choosing commands.
 4. For IaC changes, imports, or CI, read [authoring and CI](references/authoring-and-ci.md).
    Review the complete plan, apply the intended file, require a clean follow-up plan,
    and verify the resulting deployment and public readiness endpoint.
+5. For new projects with Cloudflare DNS, use `deploy-railway-with-cloudflare` and
+   its bootstrap reference. `~/.agents/README.md` documents the shared toolchain,
+   credential profiles, and managed configuration links.
 
 Read the current deployment branch, not just a local feature checkout. Check
 `git status --short` and preserve unrelated changes. A merged runbook or workflow

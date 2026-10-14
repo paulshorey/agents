@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "name": "Paul",
+  "repository": "paulshorey/paul",
+  "repository_path": "~/git/paul",
+  "railway": {
+    "profile": "~/.config/railway/webarts.env",
+    "workspace_id": "c64d0999-e00c-4c52-bbd4-2614210e3758",
+    "project_id": "0147ed48-9a17-4d6f-a17f-43e989df9adf",
+    "service_id": "7df101f7-1e0d-41eb-b47f-9b4ff394a463",
+    "service_name": "paul",
+    "port": 4500,
+    "iac_file": ".railway/railway.ts"
+  },
+  "cloudflare": {
+    "profile": "~/.agents/local/credentials/cloudflare.env",
+    "account_id": "c54cc4d7f6317b833f5cc02d7172f245",
+    "zone_name": "paulshorey.com"
+  },
+  "environments": {
+    "dev": {
+      "id": "79b60708-8a5e-41d1-9853-4336136ed0e7",
+      "branch": "main",
+      "domain": "dev.paulshorey.com",
+      "health_path": "/api/health",
+      "commit_field": "commit",
+      "require_commit": true
+    },
+    "production": {
+      "id": "9019f433-ea50-40eb-9239-c1e697353491",
+      "branch": "prod",
+      "domain": "paulshorey.com",
+      "health_path": "/api/health",
+      "commit_field": "commit",
+      "require_commit": true
+    }
+  }
+}
