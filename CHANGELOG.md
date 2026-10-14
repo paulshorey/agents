@@ -4,6 +4,24 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-14 — Codex/Cursor discovery and lifecycle plan
+
+- Researched native skill/instruction/configuration loading, command policies,
+  hooks, subagents, local project opening, and desktop-control scope. Saved a
+  source-linked harness map and prioritized acceptance plan in `docs/agent-harnesses.md`.
+- Added the portable `agent-customization` skill and a maintenance runbook for
+  diagnosing discovery, execution, account, and workflow gaps and contributing
+  persistent improvements through the owning sources.
+- Registered previously unlisted native policy/settings/context locations and
+  project-secret conventions as references. Extended the global shell-source notes
+  without reading its secret values or sourcing it for discovery.
+- Confirmed Codex global rules/shared skill discovery using captured prompt-input
+  metadata. Cursor effective User Rules, editor policy, and native MCP calls remain
+  explicit verification work in the plan.
+- No native permissions, active client configuration, provider grants, credential
+  values, processes, DNS, deployments, or tool pins were changed. The new shared
+  skill is available to local discovery; further setup changes remain proposed.
+
 ## 2026-10-14 — Implementation review and account consistency
 
 - Centralized credential locations in `config/profiles.json`. CLI/MCP launchers,

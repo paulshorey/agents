@@ -66,6 +66,26 @@ It does not send contact-form messages or modify infrastructure.
 | `AGENTS.md` | Repository entrypoint linking agents to the inventory and maintenance instructions |
 | `rules/AGENTS.md` | Global agent context, linked into Codex |
 
+## Codex and Cursor discovery
+
+Both local agents discover skills from `~/.agents/skills`. The remaining folders
+are our authored configuration repository, not a universal native agent config
+format. The root `AGENTS.md` applies to this checkout; global Codex instructions
+load through `~/.codex/AGENTS.md`. Cursor's MCP loads through `~/.cursor/mcp.json`.
+Those explicit links are declared in `config/links.json`.
+
+See the [native harness map and improvement plan](docs/agent-harnesses.md) for
+supported instruction/configuration paths, local observations, capability gaps,
+and proposed lifecycle improvements. Cursor User Rules, CLI settings, editor
+permissions/sandbox, hooks, and desktop tools have separate entrypoints. The map
+distinguishes configured files from capabilities verified in each client.
+
+Use [`agent-customization`](skills/agent-customization/SKILL.md) when adding or
+repairing persistent setup, and follow its
+[maintenance runbook](docs/runbooks/agent-customization.md). Keep actual native
+changes documented here and registered in the inventory. Proposed changes in the
+plan do not install new policies or establish authentication.
+
 Ignored `local/` contains owner-only credential files, rendered Codex/shell config,
 installation backups, saved plans, and execution journals. `tools/node_modules/`
 is restored from the lockfile. Application credential stores such as Codex OAuth,

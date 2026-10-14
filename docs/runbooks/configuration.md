@@ -19,6 +19,13 @@ is the metadata index; existing configuration files own actual settings.
 | Link destinations | `config/links.json` | Installer after checking destination ownership |
 | Inventory metadata | `config/inventory.json` | Regenerate `docs/INVENTORY.md` |
 
+For native discovery, execution policies, hooks, role formats, and differences
+between Cursor editor/CLI and Codex, consult the
+[harness map](../agent-harnesses.md). Use the
+[customization runbook](agent-customization.md) for new tooling or repeated setup
+failures. Cursor User Rules are maintained through its supported UI; the Codex
+global instruction link alone does not supply them to Cursor.
+
 The installer owns only keys present in `config/codex.defaults.toml` from its
 allowlist: model, reasoning effort, verbosity, reasoning summary, web search,
 and service tier. It preserves unrelated settings and comments. Removing a key

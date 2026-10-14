@@ -67,7 +67,8 @@
         "RAILWAY_API_TOKEN"
       ],
       "notes": [
-        "Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile."
+        "Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile.",
+        "This is also the global shell secret source. App-local .env files use their own loaders; see environment.project-secrets and the customization runbook. Authorized edits must preserve unrelated assignments and avoid printing values."
       ]
     },
     {
@@ -533,6 +534,109 @@
         "GitHub CLI uses its native credential store and configuration under ~/.config/gh. Do not copy credentials into this repository. Select the intended repository owner/host explicitly.",
         "Use gh api user --jq .login to confirm the CLI account without printing tokens. Agent GitHub connectors have their own selected connection; CLI authentication does not establish connector identity.",
         "Change sign-in through supported gh auth login/account selection or the connector settings within the current task authorization. Inventory does not inspect native credential values."
+      ]
+    },
+    {
+      "id": "context.harnesses",
+      "kind": "context",
+      "owner": "agents",
+      "description": "Codex/Cursor native discovery research, capability gaps, and proposed lifecycle improvements.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "references": [
+        {
+          "file": "docs/agent-harnesses.md"
+        },
+        {
+          "file": "docs/runbooks/agent-customization.md"
+        },
+        {
+          "file": "skills/agent-customization/SKILL.md"
+        }
+      ],
+      "notes": [
+        "The plan distinguishes documented conventions, dated local observations, and work not yet applied. The maintenance skill is portable; native hooks, roles, execution policies, and application-owned tools need client-specific adapters."
+      ]
+    },
+    {
+      "id": "application.codex-execution",
+      "kind": "configuration",
+      "owner": "application",
+      "description": "Native Codex execution rules and application-owned sandbox/approval policy.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "path": "~/.codex/rules/default.rules",
+      "notes": [
+        "The native rule file exists and is not copied into this public repository. It contains executable command-prefix policy, not Markdown instructions.",
+        "Current policy observations are dated in docs/agent-harnesses.md. Inventory checks do not parse or verify effective execution rules, project overrides, managed requirements, or hook trust. Preserve native state until a task requests a policy change."
+      ]
+    },
+    {
+      "id": "application.cursor-cli",
+      "kind": "configuration",
+      "owner": "application",
+      "description": "Cursor agent CLI preferences and command/file/MCP permission entries.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "path": "~/.cursor/cli-config.json",
+      "notes": [
+        "This file is native JSON and is not managed by the shared installer. Project permission overrides use .cursor/cli.json. It is distinct from editor permissions.json and sandbox.json.",
+        "The file exists, but no agent/cursor-agent executable was found on the inspected shell PATH. The cursor executable opens the editor. Check current installation and effective configuration before relying on CLI behavior."
+      ]
+    },
+    {
+      "id": "application.cursor-rules",
+      "kind": "context",
+      "owner": "application",
+      "description": "Cursor account/user rules and project instruction entrypoints.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "notes": [
+        "User Rules are maintained through Customize -> Rules. No shared global startup bridge is registered or verified yet; see the implementation plan.",
+        "Repository AGENTS.md and .cursor/rules/*.mdc are project conventions. Do not infer that ~/.agents/AGENTS.md or ~/.codex/AGENTS.md supplies global Cursor instructions. Preserve existing User/Team Rules and verify fresh-session context."
+      ]
+    },
+    {
+      "id": "application.cursor-settings",
+      "kind": "configuration",
+      "owner": "application",
+      "description": "Cursor editor settings and separate optional native sandbox/Auto-review files.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "path": "~/Library/Application Support/Cursor/User/settings.json",
+      "notes": [
+        "Keep the full native file and account state application-owned; export only deliberately managed preference keys.",
+        "Optional ~/.cursor/sandbox.json and ~/.cursor/permissions.json have different roles and schemas. Their absence does not determine effective UI/team policy. These surfaces are documented, not fully checked by agents-config."
+      ]
+    },
+    {
+      "id": "application.cursor-auth",
+      "kind": "runtime",
+      "owner": "application",
+      "description": "Cursor-managed account sign-in and per-client MCP authentication.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "notes": [
+        "Use supported Cursor account/MCP settings for sign-in and recovery. Native OAuth/credentials remain private and are not read by inventory checks.",
+        "The shared MCP JSON defines connections; a successful Codex/CLI connection does not establish authentication or available tools in Cursor. Verify each client against its intended account/resource."
+      ]
+    },
+    {
+      "id": "environment.project-secrets",
+      "kind": "environment",
+      "owner": "reference",
+      "description": "Application-local environment files and their runtime loaders.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "notes": [
+        "Each project owns its .env, .env.local, or other declared environment-file locations and loader precedence. Inspect applicable project documentation and code; no global .env discovery or automatic loading by both agents is assumed.",
+        "The existing railway.legacy-profile entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.",
+        "The user intends agents to make authorized environment/secret edits. Filesystem sandbox access, provider permission, and reload/redeploy behavior still need explicit capability checks in the selected harness."
+      ]
+    },
+    {
+      "id": "context.local-services",
+      "kind": "context",
+      "owner": "reference",
+      "description": "Existing local application/service ownership and lifecycle commands.",
+      "runbook": "docs/runbooks/agent-customization.md",
+      "path": "~/git/AGENTS.md",
+      "notes": [
+        "This external workspace document points to ~/git/local-dev/README.md and its service registry. It remains owned by those repositories; do not duplicate ports, routes, or process state here.",
+        "Use the owning manager and verify live PID/CWD/ownership/readiness before start/stop/kill. This registry entry is context, not a live service-health check."
       ]
     }
   ]
