@@ -1,8 +1,10 @@
 # Tools, skills, and inventory maintenance
 
-`agents-config` is a standard-library Python utility; Python 3.11 or newer is required,
-matching the existing TOML-based installer. `~/.agents/bin` is already on the managed
-login-shell PATH. Existing sessions can use the absolute utility path.
+`agents-config` uses Python 3.11 or newer. Metadata lookup, validation, and generation
+use the standard library. Configuration rendering uses the pinned TOML editor restored
+into ignored `local/python-packages` by the README's hash-verified pip command.
+`~/.agents/bin` is already on the managed login-shell PATH; existing sessions can use
+the absolute utility path.
 
 ```sh
 ~/.agents/bin/agents-config list cloudflare
@@ -20,11 +22,13 @@ credential profiles in memory to confirm required names exist; they report statu
 not values. They also check links, managed rendering, registered plugin toggles, and
 CLI availability. An existing credential file is not proof of authentication.
 
-`--live` adds fixed read-only probes for the Cloudflare token/API/MCP and the Railway
-project registered by `config/hosting/paul.json`. It never runs commands from inventory
+`--live` adds read-only probes for the Cloudflare token/API/MCP and the Railway
+project selected by `--manifest` (default: `config/hosting/paul.json`). The report
+names the manifest; MCP verifies its exact account and zone. It never runs commands from inventory
 metadata or applies infrastructure. Raw provider errors and responses are not output.
 Live checks are observations of current access, not authorization for writes. They
-do not prove future-zone coverage or SMS behavior. Native OAuth stores are not inspected.
+do not prove DNS Edit, all-zone grants, other mutation permissions, or SMS behavior.
+The output explicitly marks write permissions unverified. Native OAuth stores are not inspected.
 
 By default checks do not save files. `--save-status` explicitly writes only sanitized
 results and a timestamp to ignored `local/inventory/status.json`, mode 600. This is
@@ -48,6 +52,12 @@ The JSON Schema disallows additional entry fields such as a credential `value`.
 The built-in validator supports the explicit keywords used in the checked-in schema;
 unsupported schema extensions fail until the validator is updated.
 
+Validation also checks owned defaults, link definitions, profile structure, explicit
+MCP registrations, and references for every shared JSON/TOML/shell file under `config/`.
+Local checks flag new application plugins/MCP runtimes and compare the installed cf
+version with its pin. These checks cover declared/managed configuration, not a scan of
+every application or secret on the machine.
+
 The repository is public. Shared records must be safe to publish. If a customization
 needs private account details, keep those details in ignored local storage and register
 the location and maintenance procedure without publishing the contents.
@@ -55,6 +65,9 @@ the location and maintenance procedure without publishing the contents.
 ## Restore and update tools
 
 Restore the pinned cf CLI with `npm ci --prefix ~/.agents/tools --ignore-scripts`.
+Restore the TOML editor with the README's hash-verified pip command. Its wheel is
+pure Python and has no transitive dependencies; it is installed only under ignored
+`local/python-packages`, not into the global Python environment.
 Version changes are deliberate lockfile edits, followed by review and validation.
 The Railway native CLI is externally installed; application repositories keep their
 own pins. Do not switch existing Wrangler deployments to cf incidentally.

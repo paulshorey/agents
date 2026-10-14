@@ -7,7 +7,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from hosting import profile_environment, HostingError
 
 try:
-    env = profile_environment(str(Path(__file__).resolve().parents[1] / 'local/credentials/cloudflare.env'))
+    env = profile_environment('cloudflare.default')
     token = env.get('CLOUDFLARE_API_TOKEN')
     print(json.dumps({'Authorization': 'Bearer ' + token} if token else {}))
 except (OSError, HostingError):

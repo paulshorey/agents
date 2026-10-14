@@ -77,7 +77,7 @@ def schema_check(value, schema, definitions, path='$'):
 
 def repo_path(root, path):
     candidate = root / path
-    if Path(path).is_absolute() or '..' in Path(path).parts or not candidate.resolve().is_relative_to(root.resolve()):
+    if not Path(path).parts or Path(path).is_absolute() or '..' in Path(path).parts or not candidate.resolve().is_relative_to(root.resolve()):
         raise InventoryError('A shared reference must stay inside the repository.')
     if Path(path).parts[0] in ('local', '.git') or 'node_modules' in Path(path).parts:
         raise InventoryError('Shared references cannot read ignored state or credentials.')
@@ -101,6 +101,7 @@ def load_inventory(root=ROOT):
     schema = read_data(root / 'config/inventory.schema.json')
     schema_check(data, schema, schema['$defs'])
     entries = data['entries']
+    registered_files = set()
     ids = [entry['id'] for entry in entries]
     if len(ids) != len(set(ids)):
         raise InventoryError('Inventory IDs must be unique.')
@@ -110,6 +111,7 @@ def load_inventory(root=ROOT):
         if not repo_path(root, entry['runbook']).is_file():
             raise InventoryError(f'{entry["id"]}: missing update instructions')
         for reference in entry.get('references', []):
+            registered_files.add(reference['file'])
             if not repo_path(root, reference['file']).is_file():
                 raise InventoryError(f'{entry["id"]}: missing source reference')
             if 'pointer' in reference:
@@ -120,10 +122,36 @@ def load_inventory(root=ROOT):
             raise InventoryError(f'{entry["id"]}: declare a path or a reference, not both')
         if entry['kind'] == 'credential' and (not (entry.get('path') or entry.get('path_ref')) or not entry.get('variables')):
             raise InventoryError(f'{entry["id"]}: credential location or variable names missing')
+        if 'path_ref' in entry:
+            registered_files.add(entry['path_ref']['file'])
+        if entry.get('plugins') and len({p['id'] for p in entry['plugins']}) != len(entry['plugins']):
+            raise InventoryError('Registered plugin IDs must be unique.')
+    missing = [p for p in (root / 'config').rglob('*')
+               if p.is_file() and p.suffix in ('.json', '.toml', '.sh')
+               and str(p.relative_to(root)) not in registered_files]
+    if missing:
+        raise InventoryError('Unregistered shared configuration file; add its reference to the inventory.')
     links = read_data(root / 'config/links.json')['links']
     indexes = [entry['link_index'] for entry in entries if 'link_index' in entry]
     if sorted(indexes) != list(range(len(links))):
         raise InventoryError('Every managed link must have exactly one inventory entry.')
+    import install
+    from hosting import resolve_profile, HostingError
+    try:
+        install.validate_links(root, links, Path.home())
+        install.load_defaults(root)
+        servers = read_data(root / 'config/mcp.json')['mcpServers']
+        install.validate_mcp(servers)
+        for name in servers:
+            pointer = '/mcpServers/' + name.replace('~', '~0').replace('/', '~1')
+            if not any(ref.get('file') == 'config/mcp.json' and ref.get('pointer') == pointer
+                       for entry in entries for ref in entry.get('references', [])):
+                raise InventoryError('Unregistered shared MCP server; add its specific definition reference.')
+        profiles = read_data(root / 'config/profiles.json')['profiles']
+        for name in profiles:
+            resolve_profile(name, root)
+    except (OSError, ValueError, KeyError, TypeError, HostingError):
+        raise InventoryError('Managed defaults, links, MCP definitions, or profiles are invalid; inspect their source files.') from None
     return data
 
 
@@ -197,6 +225,8 @@ def documentation(data, root=ROOT):
             lines += ['', 'Registered plugin enablement (application-owned; use checks for current state):', '',
                       '| Plugin | Registered enabled |', '| --- | --- |']
             lines += [f'| {md(plugin["id"])} | {str(plugin["enabled"]).lower()} |' for plugin in entry['plugins']]
+        if entry.get('mcp_servers'):
+            lines += ['', 'Registered application MCP runtimes: ' + ', '.join('`' + md(name) + '`' for name in entry['mcp_servers']) + '.']
         for note in entry.get('notes', []):
             lines += ['', note]
         lines += ['', f'[Update and recovery instructions](../{entry["runbook"]}).']
@@ -250,27 +280,49 @@ def local_checks(data, root=ROOT, home=None):
         elif entry.get('plugins'):
             try:
                 active = read_data(home / '.codex/config.toml').get('plugins', {})
-                passed = all(active.get(plugin['id'], {}).get('enabled') is plugin['enabled'] for plugin in entry['plugins'])
+                passed = (set(active) == {plugin['id'] for plugin in entry['plugins']}
+                          and all(active.get(plugin['id'], {}).get('enabled') is plugin['enabled'] for plugin in entry['plugins']))
                 record(entry['id'], passed, 'registered toggles match' if passed else 'plugin toggles differ; review and update intended metadata')
             except (InventoryError, AttributeError, TypeError):
                 record(entry['id'], False, 'application plugin settings unavailable; inspect locally')
+        elif entry.get('mcp_servers'):
+            try:
+                active = read_data(home / '.codex/config.toml').get('mcp_servers', {})
+                shared = read_data(root / 'config/mcp.json')['mcpServers']
+                passed = isinstance(active, dict) and set(active) == set(shared) | set(entry['mcp_servers'])
+                record(entry['id'], passed, 'registered runtimes match' if passed else 'MCP runtimes differ; review registration')
+            except InventoryError:
+                record(entry['id'], False, 'application MCP configuration unavailable; inspect locally')
     try:
         state = install.install(root=root, home=home)
         record('configuration.rendering', state['status'] == 'current', state['status'])
     except (OSError, ValueError):
         record('configuration.rendering', False, 'configuration could not be checked; inspect locally')
-    record('cloudflare.cli', (root / 'tools/node_modules/.bin/cf').is_file(), 'pinned CLI executable availability')
+    try:
+        installed = read_data(root / 'tools/node_modules/cf/package.json')['version']
+        pinned = read_data(root / 'tools/package.json')['dependencies']['cf']
+        passed = (root / 'tools/node_modules/.bin/cf').is_file() and installed == pinned
+        record('cloudflare.cli', passed, 'pinned CLI version matches' if passed else 'restore CLI from the lockfile')
+    except (InventoryError, KeyError):
+        record('cloudflare.cli', False, 'restore CLI from the lockfile')
+    try:
+        install.toml_editor()
+        record('tools.python', True, 'pinned TOML editor available')
+    except (OSError, ValueError):
+        record('tools.python', False, 'restore pinned Python packages using the README')
     record('railway.cli', bool(shutil.which('railway')), 'native CLI availability on PATH')
     return results
 
 
-def mcp_read(token, account_id):
+def mcp_read(token, account_id, zone_name, endpoint='https://mcp.cloudflare.com/mcp'):
     """Fixed read-only protocol probe; raw provider errors/results never leave here."""
+    import install
+    install.validate_mcp({'cloudflare': {'url': endpoint}})
     headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
                'Accept': 'application/json, text/event-stream', 'User-Agent': 'paul-agents-hosting/1'}
     def rpc(method, params, id):
         body = json.dumps({'jsonrpc': '2.0', 'id': id, 'method': method, 'params': params}).encode()
-        request = urllib.request.Request('https://mcp.cloudflare.com/mcp', data=body, headers=headers, method='POST')
+        request = urllib.request.Request(endpoint, data=body, headers=headers, method='POST')
         with urllib.request.urlopen(request, timeout=30) as response:
             session = response.headers.get('Mcp-Session-Id')
             if session:
@@ -282,25 +334,34 @@ def mcp_read(token, account_id):
             raise InventoryError('Cloudflare MCP probe failed.')
         return message['result']
     rpc('initialize', {'protocolVersion': '2025-03-26', 'capabilities': {}, 'clientInfo': {'name': 'paul-agents-hosting', 'version': '1'}}, 1)
-    code = 'async () => { const r = await cloudflare.request({method:"GET",path:"/zones?per_page=50"}); return {success:r.success,count:r.result?.length}; }'
+    path = '/zones?' + urllib.parse.urlencode({'account.id': account_id, 'name': zone_name, 'per_page': 50})
+    code = ('async () => { const r = await cloudflare.request({method:"GET",path:' + json.dumps(path)
+            + '}); return {success:r.success,matched:r.result?.length===1&&r.result[0].name==='
+            + json.dumps(zone_name) + '&&r.result[0].account.id===' + json.dumps(account_id) + '}; }')
     result = rpc('tools/call', {'name': 'execute', 'arguments': {'code': code, 'account_id': account_id}}, 2)
     content = next(item['text'] for item in result.get('content', []) if item.get('type') == 'text')
     data = json.loads(content)
-    return data.get('success') is True and isinstance(data.get('count'), int) and data['count'] > 0
+    return data.get('success') is True and data.get('matched') is True
 
 
-def live_checks(root=ROOT):
+def live_checks(root=ROOT, manifest_path=None):
     from hosting import Cloudflare, load_manifest, profile_environment, railway_env, railway_project
-    manifest = load_manifest(root / 'config/hosting/paul.json')
+    manifest = load_manifest(manifest_path or root / 'config/hosting/paul.json')
+    endpoint = read_data(root / 'config/mcp.json')['mcpServers']['cloudflare']['url']
     results = []
     for id, probe in [
         ('cloudflare.api', lambda: cloudflare_access(manifest, Cloudflare, profile_environment)),
-        ('cloudflare.mcp', lambda: mcp_read(profile_environment(manifest['cloudflare']['profile'], {}).get('CLOUDFLARE_API_TOKEN', ''), manifest['cloudflare']['account_id'])),
+        ('cloudflare.mcp', lambda: mcp_read(profile_environment(manifest['cloudflare']['profile'], {}).get('CLOUDFLARE_API_TOKEN', ''), manifest['cloudflare']['account_id'], manifest['cloudflare']['zone_name'], endpoint)),
         ('railway.project', lambda: bool(railway_project(manifest, railway_env(manifest))))
     ]:
         try:
             passed = bool(probe())
-            results.append({'id': id, 'passed': passed, 'detail': 'registered provider read succeeded' if passed else 'provider read did not confirm access'})
+            item = {'id': id, 'passed': passed, 'detail': 'registered provider read succeeded' if passed else 'provider read did not confirm access'}
+            if id == 'cloudflare.api':
+                item['dns_edit_verified'] = False
+                item['detail'] = ('token, identity, zone, and DNS record reads succeeded; DNS Edit is declared, not tested'
+                                  if passed else item['detail'])
+            results.append(item)
         except Exception as error:
             # Never print exception messages or provider bodies, even on CLI failures.
             results.append({'id': id, 'passed': False, 'detail': 'provider read failed', 'error_type': type(error).__name__})
@@ -310,18 +371,13 @@ def live_checks(root=ROOT):
 def cloudflare_access(manifest, client_type, profile_loader):
     env = profile_loader(manifest['cloudflare']['profile'], {})
     client = client_type(manifest, env)
-    client.zone()
+    zone = client.zone()
     verified = client.request('GET', '/user/tokens/verify')['result'].get('status') == 'active'
     client.request('GET', '/user')
-    seen, editable = 0, True
-    for page in range(1, 21):
-        query = urllib.parse.urlencode({'account.id': manifest['cloudflare']['account_id'], 'per_page': 50, 'page': page})
-        zones = client.request('GET', '/zones?' + query)['result']
-        seen += len(zones)
-        editable = editable and all('#dns_records:edit' in zone.get('permissions', []) for zone in zones)
-        if len(zones) < 50:
-            return verified and seen > 0 and editable
-    raise InventoryError('Zone pagination exceeded the bounded read limit.')
+    # Zone.permissions is deprecated legacy membership data, not token grants.
+    # A real DNS GET proves read access only; writes require task authorization.
+    client.request('GET', '/zones/' + zone['id'] + '/dns_records?per_page=1')
+    return verified
 
 
 def save_status(root, result):
@@ -347,6 +403,7 @@ def main(argv=None):
     docs.add_argument('--check', action='store_true', help='Fail if generated documentation is stale; do not write')
     check = sub.add_parser('check', help='Read-only local checks; optional registered provider reads')
     check.add_argument('--live', action='store_true')
+    check.add_argument('--manifest', type=Path, help='Explicit hosting manifest for live checks; default: config/hosting/paul.json')
     check.add_argument('--save-status', action='store_true', help='Save sanitized results in ignored local/inventory/status.json')
     args = parser.parse_args(argv)
     root = args.root.resolve()
@@ -374,11 +431,17 @@ def main(argv=None):
                 path.write_text(text)
                 print('Generated docs/INVENTORY.md.')
         else:
+            if args.manifest and not args.live:
+                raise InventoryError('--manifest selects a live target; use it with --live.')
             results = local_checks(data, root)
             if args.live:
-                results.extend(live_checks(root))
+                manifest_path = (args.manifest or root / 'config/hosting/paul.json').expanduser().resolve()
+                results.extend(live_checks(root, manifest_path))
             result = {'checked_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'live': args.live,
                       'passed': all(item['passed'] for item in results), 'results': results}
+            if args.live:
+                result['manifest'] = str(manifest_path)
+                result['write_permissions_verified'] = False
             if args.save_status:
                 save_status(root, result)
             print(json.dumps(result, indent=2))

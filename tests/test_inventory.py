@@ -48,7 +48,7 @@ class InventoryTests(unittest.TestCase):
         self.assertIn('unexpected field', output.getvalue())
 
     def test_ignored_or_outside_references_cannot_be_read(self):
-        for path in ('local/credentials/private.json', '../private.json', '/tmp/private.json'):
+        for path in ('.', 'local/credentials/private.json', '../private.json', '/tmp/private.json'):
             data = copy.deepcopy(self.data)
             data['entries'][0]['path_ref']['file'] = path
             self.write_inventory(data)
@@ -77,13 +77,82 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaises(inventory.InventoryError):
             inventory.schema_check(True, {'type': 'integer'}, {})
 
-    def test_reference_uses_changed_manifest_location_without_duplicate_edit(self):
-        manifest_path = self.root / 'config/hosting/paul.json'
-        manifest = json.loads(manifest_path.read_text())
-        manifest['cloudflare']['profile'] = '~/.agents/local/credentials/replacement.env'
-        manifest_path.write_text(json.dumps(manifest))
+    def test_reference_and_runtime_share_changed_profile_location(self):
+        from hosting import resolve_profile
+        path = self.root / 'config/profiles.json'
+        profiles = json.loads(path.read_text())
+        profiles['profiles']['cloudflare.default']['path'] = '~/.agents/local/credentials/replacement.env'
+        path.write_text(json.dumps(profiles))
         entry = inventory.load_inventory(self.root)['entries'][0]
-        self.assertEqual(inventory.displayed_entry(entry, self.root)['resolved_path'], manifest['cloudflare']['profile'])
+        self.assertEqual(inventory.displayed_entry(entry, self.root)['resolved_path'], profiles['profiles']['cloudflare.default']['path'])
+        self.assertEqual(inventory.location(entry, self.root), resolve_profile('cloudflare.default', self.root))
+
+    def test_validation_rejects_unsupported_defaults_and_unregistered_config_or_server(self):
+        path = self.root / 'config/codex.defaults.toml'
+        original = path.read_text()
+        path.write_text('unsupported_setting="sentinel-private-text"\n')
+        with self.assertRaises(inventory.InventoryError):
+            inventory.load_inventory(self.root)
+        path.write_text(original)
+        extra = self.root / 'config/new-settings.json'
+        extra.write_text('{}')
+        with self.assertRaises(inventory.InventoryError):
+            inventory.load_inventory(self.root)
+        extra.unlink()
+        path = self.root / 'config/mcp.json'
+        servers = json.loads(path.read_text())
+        servers['mcpServers']['unregistered'] = {'url': 'https://example.test/mcp'}
+        path.write_text(json.dumps(servers))
+        with self.assertRaises(inventory.InventoryError):
+            inventory.load_inventory(self.root)
+
+    def test_new_application_plugins_and_runtimes_are_reported(self):
+        path = self.home / '.codex/config.toml'
+        path.parent.mkdir(parents=True)
+        text = '\n'.join('[plugins.' + json.dumps(p['id']) + ']\nenabled = ' + str(p['enabled']).lower()
+                         for entry in self.data['entries'] for p in entry.get('plugins', []))
+        text += '\n[plugins.unregistered]\nenabled = true\n[mcp_servers.unregistered]\ncommand = "private-path-not-to-echo"\n'
+        path.write_text(text)
+        results = inventory.local_checks(self.data, self.root, self.home)
+        for id in ('application.codex-plugins', 'application.codex-mcp'):
+            self.assertFalse(next(r for r in results if r['id'] == id)['passed'])
+        self.assertNotIn('private-path-not-to-echo', json.dumps(results))
+
+    def test_profile_catalog_rejects_secret_fields(self):
+        path = self.root / 'config/profiles.json'
+        profiles = json.loads(path.read_text())
+        profiles['profiles']['cloudflare.default']['value'] = 'sentinel-private-text'
+        path.write_text(json.dumps(profiles))
+        with self.assertRaises(inventory.InventoryError) as error:
+            inventory.load_inventory(self.root)
+        self.assertNotIn('sentinel-private-text', str(error.exception))
+
+    def test_profile_environment_uses_catalog_without_stale_path(self):
+        import hosting
+        path = self.root / 'config/profiles.json'
+        profiles = json.loads(path.read_text())
+        for label in ('first', 'replacement'):
+            private = self.root / ('local/credentials/' + label + '.env')
+            private.parent.mkdir(parents=True, exist_ok=True)
+            private.write_text('CLOUDFLARE_API_TOKEN=dummy-' + label + '\n')
+            private.chmod(0o600)
+            profiles['profiles']['cloudflare.default']['path'] = str(private)
+            path.write_text(json.dumps(profiles))
+            with patch.object(hosting, 'ROOT', self.root):
+                self.assertEqual(hosting.profile_environment('cloudflare.default', {})['CLOUDFLARE_API_TOKEN'], 'dummy-' + label)
+
+    def test_live_check_uses_explicit_manifest(self):
+        manifest = json.loads((self.root / 'config/hosting/paul.json').read_text())
+        with patch('hosting.load_manifest', return_value=manifest) as loading, patch('hosting.Cloudflare'), patch.object(inventory, 'cloudflare_access', return_value=True), patch.object(inventory, 'mcp_read', return_value=True), patch('hosting.railway_env', return_value={}), patch('hosting.railway_project', return_value={'id': 'selected'}):
+            results = inventory.live_checks(self.root, Path('/explicit/project.json'))
+        loading.assert_called_once_with(Path('/explicit/project.json'))
+        self.assertTrue(all(item['passed'] for item in results))
+
+    def test_live_mcp_probe_refuses_unapproved_token_destination_before_network(self):
+        with patch.object(inventory.urllib.request, 'urlopen') as network:
+            with self.assertRaises(ValueError):
+                inventory.mcp_read('dummy-private-token', 'account', 'example.com', 'https://other.example/mcp')
+        network.assert_not_called()
 
     def test_documentation_is_deterministic_and_never_reads_secret_profiles(self):
         first = inventory.documentation(self.data, self.root)
@@ -152,23 +221,88 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
         self.assertEqual(json.loads(path.read_text()), result)
 
-    def test_cloudflare_dns_permissions_must_be_present(self):
+    def test_cloudflare_read_check_does_not_require_legacy_membership_permissions(self):
         class Client:
             def __init__(self, *args):
                 pass
             def zone(self):
-                return {}
+                return {'id': 'zone'}
             def request(self, method, path):
                 self.assert_read = method == 'GET'
                 if path == '/user/tokens/verify':
                     return {'result': {'status': 'active'}}
                 if path == '/user':
                     return {'result': {}}
-                return {'result': [{'permissions': []}]}
-        self.assertFalse(inventory.cloudflare_access({'cloudflare': {'profile': 'unused', 'account_id': 'account'}}, Client, lambda *args: {}))
+                if path == '/zones/zone/dns_records?per_page=1':
+                    return {'result': []}
+                raise AssertionError('Unexpected provider request')
+        self.assertTrue(inventory.cloudflare_access({'cloudflare': {'profile': 'unused', 'account_id': 'account'}}, Client, lambda *args: {}))
+
+    def test_legacy_dns_edit_membership_does_not_bypass_denied_dns_read(self):
+        class Client:
+            def __init__(self, *args):
+                pass
+            def zone(self):
+                return {'id': 'zone', 'permissions': ['#dns_records:edit']}
+            def request(self, method, path):
+                if 'dns_records' in path:
+                    raise inventory.InventoryError('DNS read denied')
+                return {'result': {'status': 'active'}}
+        with self.assertRaises(inventory.InventoryError):
+            inventory.cloudflare_access({'cloudflare': {'profile': 'unused'}}, Client, lambda *args: {})
 
 
 class ManagedDefaultsTests(unittest.TestCase):
+    def test_restore_refuses_newer_application_edits_before_changing_any_link(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = Path(folder) / 'agents', Path(folder) / 'home'
+            (root / 'config').mkdir(parents=True)
+            (home / '.codex').mkdir(parents=True)
+            (root / 'config/mcp.json').write_text('{"mcpServers":{}}')
+            (root / 'config/links.json').write_text(json.dumps({'links': [
+                {'source': 'local/codex/config.toml', 'target': '~/.codex/config.toml', 'kind': 'codex'},
+                {'source': 'local/shell/zprofile', 'target': '~/.zprofile', 'kind': 'shell'}]}))
+            target = home / '.codex/config.toml'
+            target.write_text('model="original"\n')
+            installed = install.install(root, home, apply=True)
+            target.write_text('model="new-user-edit"\n')
+            with self.assertRaises(ValueError):
+                install.restore(Path(installed['backup']))
+            self.assertTrue(target.is_symlink())
+            self.assertTrue((home / '.zprofile').is_symlink())
+            self.assertIn('new-user-edit', target.read_text())
+
+    def test_mcp_rendering_handles_quoted_dotted_inline_and_multiline_toml(self):
+        cases = [
+            'note = """keep\n[mcp_servers.cloudflare]\nkeep too\n"""\n',
+            '[mcp_servers."cloudflare"]\nurl="https://mcp.cloudflare.com/mcp"\n',
+            'mcp_servers.cloudflare.url="https://mcp.cloudflare.com/mcp"\n',
+            'mcp_servers={cloudflare={url="https://mcp.cloudflare.com/mcp"},existing={command="keep"}}\n'
+        ]
+        for text in cases:
+            with self.subTest(toml_format=cases.index(text)):
+                original = install.tomllib.loads(text)
+                rendered = install.render_codex(text, {'cloudflare': {'url': 'https://mcp.cloudflare.com/mcp'}})
+                parsed = install.tomllib.loads(rendered)
+                self.assertEqual(parsed.get('note'), original.get('note'))
+                self.assertEqual(parsed['mcp_servers'].get('existing'), original.get('mcp_servers', {}).get('existing'))
+                self.assertEqual(install.render_codex(rendered, {'cloudflare': {'url': 'https://mcp.cloudflare.com/mcp'}}), rendered)
+
+    def test_managed_defaults_preserve_inline_comments(self):
+        rendered = install.render_defaults('model="old" # keep comment\n', {'model': 'new'})
+        self.assertIn('# keep comment', rendered)
+
+    def test_link_sources_and_token_destinations_are_guarded(self):
+        for server in ({'url': 'https://other.example/mcp'}, {'url': 'https://user:sentinel@mcp.cloudflare.com/mcp'}, {'url': 'https://mcp.cloudflare.com/mcp?token=sentinel'}):
+            with self.assertRaises(ValueError):
+                install.validate_mcp({'cloudflare': server})
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = Path(folder) / 'agents', Path(folder) / 'home'
+            root.mkdir()
+            home.mkdir()
+            with self.assertRaises(ValueError):
+                install.validate_links(root, [{'source': '../outside', 'target': '~/.config/example', 'kind': 'text'}], home)
+
     def test_installer_applies_defaults_and_restores_original_config(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = Path(folder) / 'agents', Path(folder) / 'home'

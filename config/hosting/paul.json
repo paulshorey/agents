@@ -4,7 +4,7 @@
   "repository": "paulshorey/paul",
   "repository_path": "~/git/paul",
   "railway": {
-    "profile": "~/.config/railway/webarts.env",
+    "profile": "railway.webarts",
     "workspace_id": "c64d0999-e00c-4c52-bbd4-2614210e3758",
     "project_id": "0147ed48-9a17-4d6f-a17f-43e989df9adf",
     "service_id": "7df101f7-1e0d-41eb-b47f-9b4ff394a463",
@@ -13,7 +13,7 @@
     "iac_file": ".railway/railway.ts"
   },
   "cloudflare": {
-    "profile": "~/.agents/local/credentials/cloudflare.env",
+    "profile": "cloudflare.default",
     "account_id": "c54cc4d7f6317b833f5cc02d7172f245",
     "zone_name": "paulshorey.com"
   },

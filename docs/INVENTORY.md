@@ -27,13 +27,16 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [hosting.paul](#hosting-paul) | integration | agents | config/hosting/paul.json, config/hosting/example.json | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [environment.path](#environment-path) | environment | agents | config/env.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [skills.catalog](#skills-catalog) | skills | agents | config/skill-sources.json | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
-| [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
-| [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml, tools/python-requirements.txt | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
+| [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md, docs/reviews/2026-10-14.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-auth](#application-codex-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-mcp](#application-codex-mcp) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-plugins](#application-codex-plugins) | integration | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [local.backups](#local-backups) | runtime | application | local/ | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.inventory](#configuration-inventory) | configuration | agents | config/inventory.json, config/inventory.schema.json | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
+| [configuration.profiles](#configuration-profiles) | configuration | agents | config/profiles.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [tools.python](#tools-python) | tool | agents | local/python-packages | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
+| [application.github-auth](#application-github-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -56,6 +59,8 @@ Provider label: Agent DNS — all domains. Scope was user-authorized and verifie
 The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.
 
 The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.
+
+Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection.
 
 [Update and recovery instructions](../docs/runbooks/cloudflare-token.md).
 
@@ -341,7 +346,9 @@ Application-managed MCP runtimes alongside the two shared provider definitions.
 
 Owner: **application**.
 
-The current application config also registers node_repl and computer-use. Their executable paths and lifecycle are application-managed; the installer preserves these sections.
+Registered application MCP runtimes: `node_repl`, `computer-use`.
+
+Registered application-owned runtimes: node_repl and computer-use. Their executable paths and lifecycle remain application-managed; checks flag unregistered runtimes without displaying their configuration.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
@@ -368,7 +375,7 @@ Registered plugin enablement (application-owned; use checks for current state):
 | computer-history@openai-bundled | true |
 | postman@postman | true |
 
-Enablement snapshot registered on 2026-10-14. It is not an installer input; check compares registered plugin toggles with local state without displaying application config.
+Enablement snapshot registered on 2026-10-14. It is not an installer input; checks flag added, removed, or changed plugin toggles without displaying application config.
 
 Plugin caches, OAuth grants, hooks, and runtime state remain application-owned. Inventory documents the customization and update location, not credential contents.
 
@@ -403,6 +410,48 @@ Edit registered metadata in config/inventory.json; existing manifests own settin
 The schema forbids secret-value fields. Local verification results remain ignored observations; meaningful changes belong in CHANGELOG.md and Git/PR history.
 
 [Update and recovery instructions](../docs/runbooks/utilities.md).
+
+<a id="configuration-profiles"></a>
+
+## configuration.profiles
+
+Single source of credential profile IDs and file locations for wrappers, hosting, and inventory.
+
+Owner: **agents**.
+
+Profile IDs such as cloudflare.default and railway.webarts resolve through this catalog. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
+
+<a id="tools-python"></a>
+
+## tools.python
+
+Pinned, hash-verified TOML editor for preserving application configuration.
+
+Owner: **agents**.
+
+Location: `local/python-packages`.
+
+Restore with the README pip command into ignored local/python-packages. No global Python packages are changed. Inventory metadata lookup and generation remain standard-library operations; configuration rendering uses the pinned editor.
+
+[Update and recovery instructions](../docs/runbooks/utilities.md).
+
+<a id="application-github-auth"></a>
+
+## application.github-auth
+
+GitHub CLI authentication and separate agent-connector account state.
+
+Owner: **application**.
+
+GitHub CLI uses its native credential store and configuration under ~/.config/gh. Do not copy credentials into this repository. Select the intended repository owner/host explicitly.
+
+Use gh api user --jq .login to confirm the CLI account without printing tokens. Agent GitHub connectors have their own selected connection; CLI authentication does not establish connector identity.
+
+Change sign-in through supported gh auth login/account selection or the connector settings within the current task authorization. Inventory does not inspect native credential values.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
 
 ## Skills
 

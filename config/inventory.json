@@ -1,4 +1,5 @@
 {
+  "$schema": "./inventory.schema.json",
   "schema_version": 1,
   "entries": [
     {
@@ -8,8 +9,8 @@
       "description": "All-domains DNS token used by the pinned CLI, hosting helper, and hosted MCP.",
       "runbook": "docs/runbooks/cloudflare-token.md",
       "path_ref": {
-        "file": "config/hosting/paul.json",
-        "pointer": "/cloudflare/profile"
+        "file": "config/profiles.json",
+        "pointer": "/profiles/cloudflare.default/path"
       },
       "variables": [
         "CLOUDFLARE_API_TOKEN"
@@ -27,7 +28,8 @@
       "notes": [
         "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
-        "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone."
+        "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
+        "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
       ]
     },
     {
@@ -37,8 +39,8 @@
       "description": "Explicit Railway workspace profile for WebArts and Paul.",
       "runbook": "docs/runbooks/railway.md",
       "path_ref": {
-        "file": "config/hosting/paul.json",
-        "pointer": "/railway/profile"
+        "file": "config/profiles.json",
+        "pointer": "/profiles/railway.webarts/path"
       },
       "variables": [
         "RAILWAY_API_TOKEN"
@@ -344,6 +346,9 @@
         },
         {
           "file": ".github/workflows/validate.yml"
+        },
+        {
+          "file": "tools/python-requirements.txt"
         }
       ],
       "notes": [
@@ -368,6 +373,9 @@
         },
         {
           "file": "CHANGELOG.md"
+        },
+        {
+          "file": "docs/reviews/2026-10-14.md"
         }
       ],
       "notes": [
@@ -393,7 +401,11 @@
       "description": "Application-managed MCP runtimes alongside the two shared provider definitions.",
       "runbook": "docs/runbooks/configuration.md",
       "notes": [
-        "The current application config also registers node_repl and computer-use. Their executable paths and lifecycle are application-managed; the installer preserves these sections."
+        "Registered application-owned runtimes: node_repl and computer-use. Their executable paths and lifecycle remain application-managed; checks flag unregistered runtimes without displaying their configuration."
+      ],
+      "mcp_servers": [
+        "node_repl",
+        "computer-use"
       ]
     },
     {
@@ -445,7 +457,7 @@
         }
       ],
       "notes": [
-        "Enablement snapshot registered on 2026-10-14. It is not an installer input; check compares registered plugin toggles with local state without displaying application config.",
+        "Enablement snapshot registered on 2026-10-14. It is not an installer input; checks flag added, removed, or changed plugin toggles without displaying application config.",
         "Plugin caches, OAuth grants, hooks, and runtime state remain application-owned. Inventory documents the customization and update location, not credential contents."
       ]
     },
@@ -478,6 +490,49 @@
       "notes": [
         "Edit registered metadata in config/inventory.json; existing manifests own settings and locations. Run agents-config docs to regenerate the Markdown view.",
         "The schema forbids secret-value fields. Local verification results remain ignored observations; meaningful changes belong in CHANGELOG.md and Git/PR history."
+      ]
+    },
+    {
+      "id": "configuration.profiles",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Single source of credential profile IDs and file locations for wrappers, hosting, and inventory.",
+      "runbook": "docs/runbooks/configuration.md",
+      "references": [
+        {
+          "file": "config/profiles.json"
+        }
+      ],
+      "notes": [
+        "Profile IDs such as cloudflare.default and railway.webarts resolve through this catalog. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog."
+      ]
+    },
+    {
+      "id": "tools.python",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "Pinned, hash-verified TOML editor for preserving application configuration.",
+      "runbook": "docs/runbooks/utilities.md",
+      "path": "local/python-packages",
+      "references": [
+        {
+          "file": "tools/python-requirements.txt"
+        }
+      ],
+      "notes": [
+        "Restore with the README pip command into ignored local/python-packages. No global Python packages are changed. Inventory metadata lookup and generation remain standard-library operations; configuration rendering uses the pinned editor."
+      ]
+    },
+    {
+      "id": "application.github-auth",
+      "kind": "runtime",
+      "owner": "application",
+      "description": "GitHub CLI authentication and separate agent-connector account state.",
+      "runbook": "docs/runbooks/configuration.md",
+      "notes": [
+        "GitHub CLI uses its native credential store and configuration under ~/.config/gh. Do not copy credentials into this repository. Select the intended repository owner/host explicitly.",
+        "Use gh api user --jq .login to confirm the CLI account without printing tokens. Agent GitHub connectors have their own selected connection; CLI authentication does not establish connector identity.",
+        "Change sign-in through supported gh auth login/account selection or the connector settings within the current task authorization. Inventory does not inspect native credential values."
       ]
     }
   ]

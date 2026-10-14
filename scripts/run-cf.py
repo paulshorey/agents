@@ -7,7 +7,7 @@ from hosting import profile_environment, HostingError
 
 root = Path(__file__).resolve().parents[1]
 try:
-    env = profile_environment(str(root / 'local/credentials/cloudflare.env'))
+    env = profile_environment('cloudflare.default')
     command = root / 'tools/node_modules/.bin/cf'
     os.execve(command, [str(command), *sys.argv[1:]], env)
 except (OSError, HostingError) as error:

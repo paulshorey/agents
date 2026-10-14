@@ -1,7 +1,7 @@
 # Cloudflare token: locate, update, and recover
 
 Start with `agents-config show cloudflare.dns-token`. The profile location comes
-from `config/hosting/paul.json`; it currently resolves to
+from profile `cloudflare.default` in `config/profiles.json`; it currently resolves to
 `~/.agents/local/credentials/cloudflare.env`. This ignored file supplies
 `CLOUDFLARE_API_TOKEN` to the pinned CLI, hosting API, and Codex MCP header helper.
 It also stores the non-secret `CLOUDFLARE_ACCOUNT_ID` selector. New projects select
@@ -37,9 +37,12 @@ python3 ~/.agents/scripts/set-cloudflare-token.py
 The existing setup script prompts invisibly, validates the configured project zone,
 and atomically writes the profile with mode 600 in a mode-700 directory. Its initial
 validation does not establish all-zone access or MCP authentication. The live check
-separately checks token status, user identity, the selected account's zones and DNS
-permissions, hosted MCP access, and the registered Railway project. Read individual
+separately checks token status, user identity, the selected account/zone, a DNS record
+read, hosted MCP access, and the registered Railway project. Read individual
 results: an unrelated Railway failure does not invalidate a successful Cloudflare check.
+The read-only result does not prove DNS Edit or all-zone grants. Confirm those in
+the token summary before an authorized write. Cloudflare's deprecated zone
+`permissions` field describes legacy membership, not API-token grants.
 
 When the provider supports replacement without immediate revocation, verify the
 replacement before revoking the old credential. Some rotations invalidate the old
@@ -53,6 +56,9 @@ existing MCP client has cached authentication. CLI wrappers reread the profile.
   its findings, and use `--apply` to back up and render the updated settings.
 - Change a project's account/zone/profile reference in its hosting manifest, after
   checking live provider identities. Run the hosting doctor before applying DNS.
+- Change a shared profile's file location in `config/profiles.json`; wrappers and
+  manifests using its ID resolve that same location. Move/restore the private file
+  separately with owner-only permissions, then verify all affected consumers.
 - Cursor has separate OAuth state; its URL-only configuration does not reuse the
   Codex header helper. Connect through Cursor's supported sign-in when needed.
 

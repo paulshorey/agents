@@ -28,10 +28,41 @@ class HostingError(Exception):
     pass
 
 
+def credential_profiles(root=None):
+    root = ROOT if root is None else root
+    try:
+        profiles = json.loads((root / 'config/profiles.json').read_text())['profiles']
+        if not isinstance(profiles, dict):
+            raise ValueError()
+        for name, entry in profiles.items():
+            if (not re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', name)
+                    or not isinstance(entry, dict) or set(entry) != {'provider', 'path'}
+                    or entry['provider'] != name.split('.')[0]
+                    or not isinstance(entry['path'], str)
+                    or not (entry['path'].startswith('~/') or Path(entry['path']).is_absolute())):
+                raise ValueError()
+    except (ValueError, KeyError, TypeError):
+        raise HostingError('Credential profile catalog is malformed; inspect it locally') from None
+    return profiles
+
+
+def resolve_profile(profile, root=None):
+    """Resolve registered profile IDs; explicit file paths remain supported."""
+    profile = str(profile)
+    if re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', profile):
+        profiles = credential_profiles(root)
+        if profile not in profiles:
+            if profile.endswith('.env'):
+                return Path(profile).expanduser()
+            raise HostingError('Unknown credential profile ID; register it in config/profiles.json')
+        return Path(profiles[profile]['path']).expanduser()
+    return Path(profile).expanduser()
+
+
 def profile_environment(path, base=None):
     """Parse trusted owner-only dotenv data; never execute a shell profile."""
     env = dict(os.environ if base is None else base)
-    file = Path(path).expanduser()
+    file = resolve_profile(path)
     if not file.exists():
         return env
     info = file.stat()

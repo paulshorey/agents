@@ -1,7 +1,8 @@
 # Railway profiles and hosting configuration
 
 Use `agents-config show railway.webarts-token` to locate the selected workspace
-profile. Its source of truth is the Railway profile reference in the Paul manifest.
+profile. Its location comes from `railway.webarts` in `config/profiles.json`; the
+Paul manifest and native MCP launcher both select that profile ID.
 The current file is `~/.config/railway/webarts.env`, outside this repository and
 owner-only mode 600. Its secret variable is `RAILWAY_API_TOKEN`.
 
@@ -22,6 +23,8 @@ and validates workspace, environments, and source branches. A failing account
 identity endpoint alone does not establish that a workspace token is invalid.
 Restart an existing Railway MCP session after a credential change; a fresh launcher
 clears inherited Railway tokens and loads the explicit profile.
+For another workspace, register its profile ID and select it explicitly; do not
+repoint the WebArts ID to switch an unrelated task's account.
 
 Record the replacement date, profile reference, affected consumers, and outcome in
 `CHANGELOG.md`. To recover, retrieve the value from your encrypted backup or issue

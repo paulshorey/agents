@@ -4,6 +4,27 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-14 — Implementation review and account consistency
+
+- Centralized credential locations in `config/profiles.json`. CLI/MCP launchers,
+  hosting helpers, token setup, and inventory now resolve the same profile IDs;
+  no credential files or values were moved or rotated.
+- Replaced line-based TOML rewriting with hash-pinned TOML Kit, restored only in
+  ignored local Python packages. Valid quoted/dotted/inline tables and multiline
+  strings are preserved; already-matching application config is not rewritten.
+- Static validation now detects unsupported defaults, unregistered shared config or
+  MCP definitions, invalid link sources/targets, and malformed profile metadata.
+  Local checks flag added/removed plugins or application MCP runtimes and tool drift.
+- Removed the deprecated zone-membership field as DNS Edit evidence. Live checks
+  verify real DNS reads and explicitly mark write permissions untested; recorded
+  permission scope comes from the dashboard grant.
+- Live checks accept an explicit manifest and bind Cloudflare MCP verification to
+  its account and zone. Added native GitHub authentication context and editor schema
+  association without exposing native credential stores.
+- New install backups retain private installed-state snapshots; restore refuses to
+  overwrite subsequent file edits. Historical backups retain their original guard.
+- Review evidence and scope limits are recorded in `docs/reviews/2026-10-14.md`.
+
 ## 2026-10-14 — Configuration inventory
 
 - Added a concise root `AGENTS.md` linking repository work to the inventory,
@@ -28,8 +49,10 @@ Verification dates describe historical observations, not current readiness.
 - `cloudflare.dns-token`: the user approved and saved User Details Read on
   **Agent DNS — all domains**, preserving DNS Edit and Zone Read for all zones.
   The original token value remained in the same ignored owner-only profile.
-- Verification: token active, user read succeeded, all 12 current zones reported
-  DNS Edit, and the official hosted MCP initialized and executed a zone read.
+- Verification: token active, user read succeeded, all 12 current zones were readable,
+  the dashboard declared DNS Edit for all zones, and the official hosted MCP
+  initialized and executed a zone read. Legacy zone membership fields are not
+  evidence of API-token grants.
 - Permission edits and secret rotation are different operations. No DNS changes
   were used to test access. Documentation was originally published in PR #4;
   the inventory PR includes that update for one review.

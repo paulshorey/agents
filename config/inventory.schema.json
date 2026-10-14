@@ -18,6 +18,10 @@
       "items": {
         "$ref": "#/$defs/entry"
       }
+    },
+    "$schema": {
+      "type": "string",
+      "const": "./inventory.schema.json"
     }
   },
   "$defs": {
@@ -150,6 +154,14 @@
                 "type": "boolean"
               }
             }
+          },
+          "uniqueItems": true
+        },
+        "mcp_servers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
           },
           "uniqueItems": true
         }
