@@ -62,6 +62,7 @@ It does not send contact-form messages or modify infrastructure.
 | `config/skill-sources.json`, `licenses/` | Upstream revisions, local adaptations, provider licenses |
 | `tools/package.json`, `tools/package-lock.json` | Exact Cloudflare CLI dependency versions |
 | `scripts/`, `bin/`, `tests/` | Installation, credential loading, DNS reconciliation, and verification |
+| `AGENTS.md` | Repository entrypoint linking agents to the inventory and maintenance instructions |
 | `rules/AGENTS.md` | Global agent context, linked into Codex |
 
 Ignored `local/` contains owner-only credential files, rendered Codex/shell config,

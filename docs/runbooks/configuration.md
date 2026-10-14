@@ -12,6 +12,7 @@ is the metadata index; existing configuration files own actual settings.
 | Six managed Codex preferences | `config/codex.defaults.toml` | Installer; restart client or start a new session |
 | Other Codex settings, profiles, plugin toggles, application MCP runtimes | Codex settings or the active `~/.codex/config.toml` | Follow application reload behavior; preserve managed sections |
 | Global agent instructions | `rules/AGENTS.md` | Symlink already installed; new agent session |
+| Repository agent entrypoint | `AGENTS.md` | Links repository work to the inventory and global rules |
 | Agent utility PATH hook | `config/env.sh`; installer owns its `.zprofile` source hook | New login shell or explicitly source env.sh |
 | Other shell settings | Your active `.zprofile`, currently backed by ignored `local/shell/zprofile` | New login shell |
 | Link destinations | `config/links.json` | Installer after checking destination ownership |

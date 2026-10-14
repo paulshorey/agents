@@ -6,6 +6,8 @@ Verification dates describe historical observations, not current readiness.
 
 ## 2026-10-14 — Configuration inventory
 
+- Added a concise root `AGENTS.md` linking repository work to the inventory,
+  global rules, and required maintenance commands.
 - Added `config/inventory.json`, its schema, generated `docs/INVENTORY.md`, and
   `agents-config` lookup/validation/check commands. Registered credential profiles,
   environment variables, installed links, MCP integrations, tools, skills, runtime

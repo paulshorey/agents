@@ -28,7 +28,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [environment.path](#environment-path) | environment | agents | config/env.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [skills.catalog](#skills-catalog) | skills | agents | config/skill-sources.json | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
-| [context.global](#context-global) | context | agents | rules/AGENTS.md, README.md, CHANGELOG.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-auth](#application-codex-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-mcp](#application-codex-mcp) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-plugins](#application-codex-plugins) | integration | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
@@ -314,6 +314,8 @@ Version-controlled global agent context and maintenance rules.
 Owner: **agents**.
 
 Persistent customization tasks must update inventory references, runbooks, and meaningful change history in the same PR.
+
+AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
