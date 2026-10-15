@@ -329,10 +329,17 @@
       "references": [
         {
           "file": "config/skill-sources.json"
+        },
+        {
+          "file": "skills/git-management/SKILL.md"
+        },
+        {
+          "file": "skills/deploy-railway-with-cloudflare/SKILL.md"
         }
       ],
       "notes": [
-        "docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history."
+        "docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history.",
+        "Full main-to-prod promotion policy is owned by git-management; deploy-railway-with-cloudflare owns production migration and release validation. PR management and Railway IaC route to these sources."
       ]
     },
     {

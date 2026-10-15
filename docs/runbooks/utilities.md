@@ -76,6 +76,14 @@ Skills live under `skills/`. Preserve provider licenses and local adaptations wh
 updating imports; update their pinned provenance, regenerate inventory docs, and validate
 the skill. New skills and MCP definitions normally need a new agent session.
 
+Production-promotion policy is owned by [git-management](../../skills/git-management/SKILL.md):
+where `main` is development and `prod` is production, promote the full `main` branch
+with a `main`-to-`prod` PR, including required database migrations and validation.
+[deploy-railway-with-cloudflare](../../skills/deploy-railway-with-cloudflare/SKILL.md)
+owns the production-target, migration sequencing and deployment verification details;
+PR management and Railway IaC route to those instructions. Maintain these owning
+sources together, preserving project-specific configuration and existing authorization.
+
 CI checks schema/references, generated-document freshness, unit tests, and tool pins
 without local credential access or provider authentication. To restore on another
 machine, clone the repository, restore tools, inspect/install links, supply the registered

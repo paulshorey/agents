@@ -26,7 +26,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [railway.cli](#railway-cli) | tool | external | Application-managed | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [hosting.paul](#hosting-paul) | integration | agents | config/hosting/paul.json, config/hosting/example.json | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [environment.path](#environment-path) | environment | agents | config/env.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
-| [skills.catalog](#skills-catalog) | skills | agents | config/skill-sources.json | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
+| [skills.catalog](#skills-catalog) | skills | agents | config/skill-sources.json, skills/git-management/SKILL.md, skills/deploy-railway-with-cloudflare/SKILL.md | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml, tools/python-requirements.txt | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md, docs/reviews/2026-10-14.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-auth](#application-codex-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
@@ -305,6 +305,8 @@ All local skill entrypoints, imported skill provenance, and adaptations.
 Owner: **agents**.
 
 docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history.
+
+Full main-to-prod promotion policy is owned by git-management; deploy-railway-with-cloudflare owns production migration and release validation. PR management and Railway IaC route to these sources.
 
 [Update and recovery instructions](../docs/runbooks/utilities.md).
 

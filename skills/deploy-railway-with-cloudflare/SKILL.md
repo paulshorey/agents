@@ -11,6 +11,16 @@ command discovery and `use-railway` for provider reference material.
 
 ## Complete the authorized deployment
 
+For a production promotion, use [Git management's full `main` to `prod` merge](../git-management/SKILL.md).
+Verify the production database from effective configuration, including environment
+loading precedence, and inspect pending migrations and repository prerequisites.
+Apply required forward-only migrations with the project's migration workflow;
+sequence migration and deployment for compatibility. Verify the migration ledger,
+schema/contracts and retained data, then the deployed commit and app/database health.
+Preserve intentional dev/prod secrets, domains and feature flags. Existing database
+migrations can be skipped once verified as applied. Never reset or seed production
+as part of promotion, and never print credentials.
+
 1. Inspect repository instructions, remote, branches, current changes, and deployment
    runbook. Establish the requested project/workspace, environment-to-branch mapping,
    domains, port, and secret requirements. Preserve unrelated work.

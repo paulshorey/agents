@@ -13,11 +13,13 @@ description: Help manage opened PRs. When you notice a PR or feature branch need
 
 **Address feedback.** Evaluate unaddressed reviews and comments against current code. Fix valid concerns, validate, commit, push, and reply with the outcome. Resolve verified fixes. Explain and resolve false positives or justified findings outside scope; leave genuine blockers and undecided questions open. Avoid duplicate comments.
 
-**Resolve conflicts.** If conflicts block merging, merge the latest fetched `main` into the PR's feature branch, resolve conflicts, validate, commit, and push. Document decisions you cannot safely make; do not leave an unfinished merge blocking other work.
+**Resolve feature-PR conflicts.** If conflicts block a feature PR, merge the latest fetched `main` into its feature branch, resolve conflicts, validate, commit, and push. Document decisions you cannot safely make; do not leave an unfinished merge blocking other work.
 
 **Resolve PR comments.** PRs are automatically reviewed by Cursor bot. Cursor will suggest fixes in another branch and PR. Review that suggestion PR. If you agree with the fix, go ahead merge it. If you disagree with the fix, close that PR. Either way, reply to the review comment with your assessment and action. Be careful - some reviews will be false positives or out of scope, so do not assume just because Cursor bot made a comment and opened a suggestion fix PR that it's worth merging. If there is no suggestion PR but only a comment, then think about what it says and how it should be addressed. Go ahead and make the fix or improvement if necessary, or not if unnecessary. Either way, reply to the comment and resolve it.
 
 **Repair checks.** Inspect failed build/check logs and fix understood causes. If blocked, comment with evidence and the developer's next step.
+
+**Promote production.** Follow [Git management's full-release workflow](../git-management/SKILL.md): promotion PRs merge `main` into `prod`, including required database migrations and release validation. Ordinary feature PRs land in `main` first.
 
 **Merge and update locally.** Merge when the current changes are reviewed, required checks and approvals are satisfied, and no conflicts or substantive blockers remain. Recheck the head before merging, respect branch protections, and verify the PR actually merged. Then update the primary checkout, not just a temporary review worktree:
 

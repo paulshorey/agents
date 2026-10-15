@@ -4,6 +4,19 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-15 — Full main-to-prod promotions
+
+- Production promotion now uses a PR with head `main` and base `prod`, including
+  all work already merged into development; feature work and conflict fixes land
+  in `main` first unless a narrower release is explicitly requested.
+- Git and deployment skills include necessary production database migrations,
+  verified target/configuration precedence, compatible rollout sequencing, schema
+  and data checks, and exact deployed-commit/application/database validation.
+- PR management and Railway IaC route to the owning promotion instructions.
+  Intentional environment secrets, domains and feature flags remain distinct.
+- Registered the policy ownership in the inventory and maintenance runbook.
+  No application branches, databases, deployments, credentials or tool pins changed.
+
 ## 2026-10-14 — Codex/Cursor discovery and lifecycle plan
 
 - Researched native skill/instruction/configuration loading, command policies,
