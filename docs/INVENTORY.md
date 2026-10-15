@@ -37,6 +37,14 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.profiles](#configuration-profiles) | configuration | agents | config/profiles.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [tools.python](#tools-python) | tool | agents | local/python-packages | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [application.github-auth](#application-github-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [context.harnesses](#context-harnesses) | context | agents | docs/agent-harnesses.md, docs/runbooks/agent-customization.md, skills/agent-customization/SKILL.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.codex-execution](#application-codex-execution) | configuration | application | ~/.codex/rules/default.rules | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.cursor-cli](#application-cursor-cli) | configuration | application | ~/.cursor/cli-config.json | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.cursor-rules](#application-cursor-rules) | context | application | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.cursor-settings](#application-cursor-settings) | configuration | application | ~/Library/Application Support/Cursor/User/settings.json | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.cursor-auth](#application-cursor-auth) | runtime | application | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [environment.project-secrets](#environment-project-secrets) | environment | reference | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [context.local-services](#context-local-services) | context | reference | ~/git/AGENTS.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -97,6 +105,8 @@ Location: `~/.secrets.sh`.
 Variable names: `RAILWAY_API_TOKEN`.
 
 Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile.
+
+This is also the global shell secret source. App-local .env files use their own loaders; see environment.project-secrets and the customization runbook. Authorized edits must preserve unrelated assignments and avoid printing values.
 
 [Update and recovery instructions](../docs/runbooks/railway.md).
 
@@ -453,12 +463,133 @@ Change sign-in through supported gh auth login/account selection or the connecto
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
+<a id="context-harnesses"></a>
+
+## context.harnesses
+
+Codex/Cursor native discovery research, capability gaps, and proposed lifecycle improvements.
+
+Owner: **agents**.
+
+The plan distinguishes documented conventions, dated local observations, and work not yet applied. The maintenance skill is portable; native hooks, roles, execution policies, and application-owned tools need client-specific adapters.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="application-codex-execution"></a>
+
+## application.codex-execution
+
+Native Codex execution rules and application-owned sandbox/approval policy.
+
+Owner: **application**.
+
+Location: `~/.codex/rules/default.rules`.
+
+The native rule file exists and is not copied into this public repository. It contains executable command-prefix policy, not Markdown instructions.
+
+Current policy observations are dated in docs/agent-harnesses.md. Inventory checks do not parse or verify effective execution rules, project overrides, managed requirements, or hook trust. Preserve native state until a task requests a policy change.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="application-cursor-cli"></a>
+
+## application.cursor-cli
+
+Cursor agent CLI preferences and command/file/MCP permission entries.
+
+Owner: **application**.
+
+Location: `~/.cursor/cli-config.json`.
+
+This file is native JSON and is not managed by the shared installer. Project permission overrides use .cursor/cli.json. It is distinct from editor permissions.json and sandbox.json.
+
+The file exists, but no agent/cursor-agent executable was found on the inspected shell PATH. The cursor executable opens the editor. Check current installation and effective configuration before relying on CLI behavior.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="application-cursor-rules"></a>
+
+## application.cursor-rules
+
+Cursor account/user rules and project instruction entrypoints.
+
+Owner: **application**.
+
+User Rules are maintained through Customize -> Rules. No shared global startup bridge is registered or verified yet; see the implementation plan.
+
+Repository AGENTS.md and .cursor/rules/*.mdc are project conventions. Do not infer that ~/.agents/AGENTS.md or ~/.codex/AGENTS.md supplies global Cursor instructions. Preserve existing User/Team Rules and verify fresh-session context.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="application-cursor-settings"></a>
+
+## application.cursor-settings
+
+Cursor editor settings and separate optional native sandbox/Auto-review files.
+
+Owner: **application**.
+
+Location: `~/Library/Application Support/Cursor/User/settings.json`.
+
+Keep the full native file and account state application-owned; export only deliberately managed preference keys.
+
+Optional ~/.cursor/sandbox.json and ~/.cursor/permissions.json have different roles and schemas. Their absence does not determine effective UI/team policy. These surfaces are documented, not fully checked by agents-config.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="application-cursor-auth"></a>
+
+## application.cursor-auth
+
+Cursor-managed account sign-in and per-client MCP authentication.
+
+Owner: **application**.
+
+Use supported Cursor account/MCP settings for sign-in and recovery. Native OAuth/credentials remain private and are not read by inventory checks.
+
+The shared MCP JSON defines connections; a successful Codex/CLI connection does not establish authentication or available tools in Cursor. Verify each client against its intended account/resource.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="environment-project-secrets"></a>
+
+## environment.project-secrets
+
+Application-local environment files and their runtime loaders.
+
+Owner: **reference**.
+
+Each project owns its .env, .env.local, or other declared environment-file locations and loader precedence. Inspect applicable project documentation and code; no global .env discovery or automatic loading by both agents is assumed.
+
+The existing railway.legacy-profile entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.
+
+The user intends agents to make authorized environment/secret edits. Filesystem sandbox access, provider permission, and reload/redeploy behavior still need explicit capability checks in the selected harness.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
+<a id="context-local-services"></a>
+
+## context.local-services
+
+Existing local application/service ownership and lifecycle commands.
+
+Owner: **reference**.
+
+Location: `~/git/AGENTS.md`.
+
+This external workspace document points to ~/git/local-dev/README.md and its service registry. It remains owned by those repositories; do not duplicate ports, routes, or process state here.
+
+Use the owning manager and verify live PID/CWD/ownership/readiness before start/stop/kill. This registry entry is context, not a live service-health check.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+
 ## Skills
 
 Derived from local skill entrypoints and `config/skill-sources.json`.
 
 | Skill | Entrypoint | Source | Revision |
 | --- | --- | --- | --- |
+| agent-customization | [skills/agent-customization/SKILL.md](../skills/agent-customization/SKILL.md) | local | Git history |
 | automation-memory | [skills/automation-memory/SKILL.md](../skills/automation-memory/SKILL.md) | local | Git history |
 | cf-cli | [skills/cf-cli/SKILL.md](../skills/cf-cli/SKILL.md) | https://github.com/cloudflare/skills | 53395984c3ea1925d00fce03b266112302f050e6 |
 | Local adaptations | Managed pinned CLI setup and anonymous discovery guidance in SKILL.md | | |
