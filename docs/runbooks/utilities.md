@@ -34,7 +34,12 @@ By default checks do not save files. `--save-status` explicitly writes only sani
 results and a timestamp to ignored `local/inventory/status.json`, mode 600. This is
 a machine-specific observation; do not treat an old result as current readiness.
 
-## Register a persistent customization
+## Maintain configuration records
+
+The inventory records configuration locations, ownership, credentials, consumers,
+and update/recovery procedures. Update it when that metadata changes. Skills are
+maintained and discovered directly in `skills/`; adding or editing a skill does
+not require an inventory entry or changes to inventory references.
 
 1. Give it a stable inventory ID, kind, owner, purpose, and update runbook.
 2. Reference an existing manifest/file for settings and locations. `path_ref` uses
@@ -46,8 +51,7 @@ a machine-specific observation; do not treat an old result as current readiness.
 5. Regenerate documentation, run validation/checks, and include metadata in the PR.
 
 Every managed link must have exactly one inventory entry. The helper catalog derives
-`bin/` and `scripts/`; the skill catalog derives `skills/*/SKILL.md`. Imported revisions
-and adaptations come from `config/skill-sources.json`, not a second set of pins.
+`bin/` and `scripts/`.
 The JSON Schema disallows additional entry fields such as a credential `value`.
 The built-in validator supports the explicit keywords used in the checked-in schema;
 unsupported schema extensions fail until the validator is updated.
@@ -72,9 +76,11 @@ Version changes are deliberate lockfile edits, followed by review and validation
 The Railway native CLI is externally installed; application repositories keep their
 own pins. Do not switch existing Wrangler deployments to cf incidentally.
 
-Skills live under `skills/`. Preserve provider licenses and local adaptations when
-updating imports; update their pinned provenance, regenerate inventory docs, and validate
-the skill. New skills and MCP definitions normally need a new agent session.
+Skills live under `skills/`. Imported provider material retains revisions,
+adaptation notes, and license links in [`licenses/README.md`](../../licenses/README.md)
+for future updates. Preserve provider licenses and local adaptations when updating
+imports; update their provenance notes and validate the changed skill. New skills
+and MCP definitions normally need a new agent session.
 
 Production-promotion policy is owned by [git-management](../../skills/git-management/SKILL.md):
 where `main` is development and `prod` is production, promote the full `main` branch

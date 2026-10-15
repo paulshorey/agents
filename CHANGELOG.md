@@ -4,6 +4,21 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-15 — Configuration inventory and maintenance improvements
+
+- Removed the skill catalog, individual skill references, generated skill table,
+  and skill count from the configuration inventory. Skills remain discoverable
+  directly from `skills/` without registration.
+- Replaced `config/skill-sources.json` with `licenses/README.md`, preserving only
+  the two imported provider revisions, local adaptations, and license links needed
+  for deliberate upstream updates. Inventory commands no longer read skill metadata.
+- Narrowed repository/global instructions and the maintenance skill/runbooks:
+  update inventory records when configuration maintenance metadata changes;
+  ordinary skill edits do not require inventory changes.
+- Added regression coverage that validates and regenerates configuration docs
+  independently of skills and import provenance. Preserved application settings,
+  provider credentials, licenses, and tool pins.
+
 ## 2026-10-15 — Full main-to-prod promotions
 
 - Production promotion now uses a PR with head `main` and base `prod`, including
@@ -14,7 +29,7 @@ Verification dates describe historical observations, not current readiness.
   and data checks, and exact deployed-commit/application/database validation.
 - PR management and Railway IaC route to the owning promotion instructions.
   Intentional environment secrets, domains and feature flags remain distinct.
-- Registered the policy ownership in the inventory and maintenance runbook.
+- Documented the policy ownership in the owning skills and maintenance runbook.
   No application branches, databases, deployments, credentials or tool pins changed.
 
 ## 2026-10-14 — Codex/Cursor discovery and lifecycle plan

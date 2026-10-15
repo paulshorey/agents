@@ -26,7 +26,8 @@ than native auth files, raw prompt dumps, or full environment/config output.
 
 - Put portable workflows in `skills/`. Keep the entrypoint short; use references
   for conditional detail. Check existing skills before adding another. Imported
-  skills retain source revisions/licenses in `config/skill-sources.json`.
+  skills retain source revisions and adaptation notes in `licenses/README.md`,
+  alongside their preserved licenses. Skills need no inventory registration.
 - Use repository `AGENTS.md` for project context and `rules/AGENTS.md` for the
   managed Codex global instructions. Cursor User Rules are application/account
   settings; creating a similarly named home file does not prove it loads.
@@ -62,10 +63,12 @@ anything. Do not create a competing supervisor to solve a configuration problem.
 
 ## Contribute and prove the change
 
-Use the Git management workflow on a feature branch based on current main. Register
-persistent changes in `config/inventory.json`, update the relevant runbook, and
+Use the Git management workflow, respecting the user's branch choice. Update
+`config/inventory.json` when configuration locations, ownership, credentials,
+consumers, or update/recovery procedures change; update the relevant runbook and
 record meaningful changes in `CHANGELOG.md`. Reference actual manifests rather
-than copying their settings into notes.
+than copying their settings into notes. Ordinary skill edits are maintained in
+`skills/` without inventory changes.
 
 ```sh
 ~/.agents/bin/agents-config validate

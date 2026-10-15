@@ -85,8 +85,10 @@ later file edits even when the symlink still matches. Older backups predate this
 content guard; inspect and preserve newer local edits before restoring those.
 Backup restoration does not recover a
 revoked provider token. Keep encrypted secret backups separately or use provider
-replacement procedures. Record persistent customization changes in the inventory,
-appropriate runbook, and changelog in the same PR.
+replacement procedures. Update inventory records when configuration locations,
+ownership, credentials, consumers, or update/recovery procedures change; update
+the appropriate runbook and meaningful changelog entries in the same PR. Ordinary
+skill edits are maintained directly in `skills/` without inventory registration.
 
 References: [Codex configuration layers](https://learn.chatgpt.com/docs/config-file/config-basic),
 [credential storage](https://learn.chatgpt.com/docs/auth).

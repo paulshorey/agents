@@ -173,20 +173,10 @@ def displayed_entry(entry, root=ROOT):
     return result
 
 
-def catalogs(root=ROOT):
-    """Catalog shared files only; never traverse application auth state."""
-    imports = {item['skill']: item for item in read_data(root / 'config/skill-sources.json')}
-    skills = []
-    for path in sorted((root / 'skills').glob('*/SKILL.md')):
-        name = path.parent.name
-        source = imports.get(name)
-        skills.append({'name': name, 'path': str(path.relative_to(root)),
-                       'source': source['repository'] if source else 'local',
-                       'revision': source['commit'] if source else 'Git history',
-                       'adaptations': source.get('local_changes', []) if source else []})
-    helpers = [str(path.relative_to(root)) for folder in ('bin', 'scripts')
-               for path in sorted((root / folder).glob('*')) if path.is_file() and path.suffix != '.pyc']
-    return {'skills': skills, 'helpers': helpers}
+def utility_files(root=ROOT):
+    """List shared helpers without traversing application auth state."""
+    return [str(path.relative_to(root)) for folder in ('bin', 'scripts')
+            for path in sorted((root / folder).glob('*')) if path.is_file() and path.suffix != '.pyc']
 
 
 def md(value):
@@ -230,15 +220,8 @@ def documentation(data, root=ROOT):
         for note in entry.get('notes', []):
             lines += ['', note]
         lines += ['', f'[Update and recovery instructions](../{entry["runbook"]}).']
-    derived = catalogs(root)
-    lines += ['', '## Skills', '', 'Derived from local skill entrypoints and `config/skill-sources.json`.', '',
-              '| Skill | Entrypoint | Source | Revision |', '| --- | --- | --- | --- |']
-    for skill in derived['skills']:
-        lines.append(f'| {md(skill["name"])} | [{md(skill["path"])}](../{skill["path"]}) | {md(skill["source"])} | {md(skill["revision"])} |')
-        if skill['adaptations']:
-            lines.append(f'| Local adaptations | {md("; ".join(skill["adaptations"]))} | | |')
     lines += ['', '## Utility files', '', 'Derived from `bin/` and `scripts/`. See the utility runbook before executing a helper.', '']
-    lines += [f'- [{path}](../{path})' for path in derived['helpers']]
+    lines += [f'- [{path}](../{path})' for path in utility_files(root)]
     return '\n'.join(lines) + '\n'
 
 
@@ -418,7 +401,7 @@ def main(argv=None):
                 raise InventoryError('Unknown inventory ID; use agents-config list.')
             print(json.dumps(displayed_entry(entry, root), indent=2))
         elif args.command == 'validate':
-            print(json.dumps({'valid': True, 'entries': len(data['entries']), 'skills': len(catalogs(root)['skills'])}))
+            print(json.dumps({'valid': True, 'entries': len(data['entries'])}))
         elif args.command == 'docs':
             text = documentation(data, root)
             path = root / 'docs/INVENTORY.md'

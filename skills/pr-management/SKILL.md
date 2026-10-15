@@ -29,7 +29,7 @@ description: Help manage opened PRs. When you notice a PR or feature branch need
 
 **Verify the final local branch and synchronization state.** Briefly report material changes and any deferred synchronization, including its blocker and next step.
 
-# When not to do mainenance
+# When not to do maintenance
 
 If your primary task is not about maintaining or reviewing PRs and branches, then this maintenance is secondary to your main task. Do only if convenient and easy. Skip maintenance if it will disrupt your active task or if you can not easily checkout the feature branch in the filesystem or in a worktree.
 

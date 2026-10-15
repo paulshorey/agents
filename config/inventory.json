@@ -321,28 +321,6 @@
       ]
     },
     {
-      "id": "skills.catalog",
-      "kind": "skills",
-      "owner": "agents",
-      "description": "All local skill entrypoints, imported skill provenance, and adaptations.",
-      "runbook": "docs/runbooks/utilities.md",
-      "references": [
-        {
-          "file": "config/skill-sources.json"
-        },
-        {
-          "file": "skills/git-management/SKILL.md"
-        },
-        {
-          "file": "skills/deploy-railway-with-cloudflare/SKILL.md"
-        }
-      ],
-      "notes": [
-        "docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history.",
-        "Full main-to-prod promotion policy is owned by git-management; deploy-railway-with-cloudflare owns production migration and release validation. PR management and Railway IaC route to these sources."
-      ]
-    },
-    {
       "id": "utilities.catalog",
       "kind": "tool",
       "owner": "agents",
@@ -387,7 +365,7 @@
         }
       ],
       "notes": [
-        "Persistent customization tasks must update inventory references, runbooks, and meaningful change history in the same PR.",
+        "Update inventory records when configuration locations, ownership, credentials, consumers, or update/recovery procedures change. Skill contents are maintained directly in skills/ without inventory registration.",
         "AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex."
       ]
     },
@@ -555,9 +533,6 @@
         },
         {
           "file": "docs/runbooks/agent-customization.md"
-        },
-        {
-          "file": "skills/agent-customization/SKILL.md"
         }
       ],
       "notes": [
