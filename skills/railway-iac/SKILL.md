@@ -31,6 +31,10 @@ Read the current deployment branch, not just a local feature checkout. Check
 may not yet exist in the local checkout; inspect the remote branch or use an
 isolated worktree rather than overwriting user work.
 
+For authorized production promotions, follow [Git management](../git-management/SKILL.md)
+for the full `main` to `prod` merge and the [deployment workflow](../deploy-railway-with-cloudflare/SKILL.md)
+for production database migrations and release validation alongside IaC verification.
+
 ## Local access on this machine
 
 The standard API token name is `RAILWAY_API_TOKEN`:

@@ -26,7 +26,6 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [railway.cli](#railway-cli) | tool | external | Application-managed | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [hosting.paul](#hosting-paul) | integration | agents | config/hosting/paul.json, config/hosting/example.json | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [environment.path](#environment-path) | environment | agents | config/env.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
-| [skills.catalog](#skills-catalog) | skills | agents | config/skill-sources.json | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml, tools/python-requirements.txt | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md, docs/reviews/2026-10-14.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-auth](#application-codex-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
@@ -37,7 +36,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.profiles](#configuration-profiles) | configuration | agents | config/profiles.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [tools.python](#tools-python) | tool | agents | local/python-packages | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [application.github-auth](#application-github-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
-| [context.harnesses](#context-harnesses) | context | agents | docs/agent-harnesses.md, docs/runbooks/agent-customization.md, skills/agent-customization/SKILL.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [context.harnesses](#context-harnesses) | context | agents | docs/agent-harnesses.md, docs/runbooks/agent-customization.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.codex-execution](#application-codex-execution) | configuration | application | ~/.codex/rules/default.rules | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.cursor-cli](#application-cursor-cli) | configuration | application | ~/.cursor/cli-config.json | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.cursor-rules](#application-cursor-rules) | context | application | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
@@ -296,18 +295,6 @@ The shell hook adds ~/.agents/bin. Existing terminals can source config/env.sh; 
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
-<a id="skills-catalog"></a>
-
-## skills.catalog
-
-All local skill entrypoints, imported skill provenance, and adaptations.
-
-Owner: **agents**.
-
-docs/INVENTORY.md derives every skills/*/SKILL.md entrypoint. Imported provider revisions and local adaptations come from config/skill-sources.json; local skills use Git history.
-
-[Update and recovery instructions](../docs/runbooks/utilities.md).
-
 <a id="utilities-catalog"></a>
 
 ## utilities.catalog
@@ -328,7 +315,7 @@ Version-controlled global agent context and maintenance rules.
 
 Owner: **agents**.
 
-Persistent customization tasks must update inventory references, runbooks, and meaningful change history in the same PR.
+Update inventory records when configuration locations, ownership, credentials, consumers, or update/recovery procedures change. Skill contents are maintained directly in skills/ without inventory registration.
 
 AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex.
 
@@ -582,28 +569,6 @@ This external workspace document points to ~/git/local-dev/README.md and its ser
 Use the owning manager and verify live PID/CWD/ownership/readiness before start/stop/kill. This registry entry is context, not a live service-health check.
 
 [Update and recovery instructions](../docs/runbooks/agent-customization.md).
-
-## Skills
-
-Derived from local skill entrypoints and `config/skill-sources.json`.
-
-| Skill | Entrypoint | Source | Revision |
-| --- | --- | --- | --- |
-| agent-customization | [skills/agent-customization/SKILL.md](../skills/agent-customization/SKILL.md) | local | Git history |
-| automation-memory | [skills/automation-memory/SKILL.md](../skills/automation-memory/SKILL.md) | local | Git history |
-| cf-cli | [skills/cf-cli/SKILL.md](../skills/cf-cli/SKILL.md) | https://github.com/cloudflare/skills | 53395984c3ea1925d00fce03b266112302f050e6 |
-| Local adaptations | Managed pinned CLI setup and anonymous discovery guidance in SKILL.md | | |
-| codex-cloud-environments | [skills/codex-cloud-environments/SKILL.md](../skills/codex-cloud-environments/SKILL.md) | local | Git history |
-| databento-tbbo | [skills/databento-tbbo/SKILL.md](../skills/databento-tbbo/SKILL.md) | local | Git history |
-| deploy-railway-with-cloudflare | [skills/deploy-railway-with-cloudflare/SKILL.md](../skills/deploy-railway-with-cloudflare/SKILL.md) | local | Git history |
-| engineering-research | [skills/engineering-research/SKILL.md](../skills/engineering-research/SKILL.md) | local | Git history |
-| git-management | [skills/git-management/SKILL.md](../skills/git-management/SKILL.md) | local | Git history |
-| own-the-product | [skills/own-the-product/SKILL.md](../skills/own-the-product/SKILL.md) | local | Git history |
-| pr-management | [skills/pr-management/SKILL.md](../skills/pr-management/SKILL.md) | local | Git history |
-| railway-iac | [skills/railway-iac/SKILL.md](../skills/railway-iac/SKILL.md) | local | Git history |
-| use-railway | [skills/use-railway/SKILL.md](../skills/use-railway/SKILL.md) | https://github.com/railwayapp/railway-skills | 526e95524e964ed326689cbac4464d97a58ab81c |
-| Local adaptations | Curated local entrypoint; official references and scripts preserved | | |
-| wavebox-browser | [skills/wavebox-browser/SKILL.md](../skills/wavebox-browser/SKILL.md) | local | Git history |
 
 ## Utility files
 

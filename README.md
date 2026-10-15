@@ -12,6 +12,8 @@ For a credential, setting, or customization, start with the
 consumers, variable names, and update/recovery instructions without secret values.
 The source index is [`config/inventory.json`](config/inventory.json); existing
 manifests remain authoritative for their settings and installed paths.
+Skills are maintained and discovered directly in `skills/`; they need no inventory
+entry. Imported provider material keeps its update provenance with its licenses.
 
 ```sh
 ~/.agents/bin/agents-config list cloudflare
@@ -60,7 +62,7 @@ It does not send contact-form messages or modify infrastructure.
 | `config/profiles.json` | Credential profile IDs and file locations shared by launchers and hosting |
 | `docs/INVENTORY.md`, `docs/runbooks/`, `CHANGELOG.md` | Generated inventory, update/recovery instructions, and meaningful change history |
 | `config/hosting/*.json` | Non-secret project IDs, branches, domains, and profile references |
-| `config/skill-sources.json`, `licenses/` | Upstream revisions, local adaptations, provider licenses |
+| `licenses/` | Provider licenses and imported-source update notes in `licenses/README.md` |
 | `tools/package.json`, `tools/package-lock.json`, `tools/python-requirements.txt` | Pinned Cloudflare CLI and hash-verified TOML editor |
 | `scripts/`, `bin/`, `tests/` | Installation, credential loading, DNS reconciliation, and verification |
 | `AGENTS.md` | Repository entrypoint linking agents to the inventory and maintenance instructions |
@@ -83,7 +85,8 @@ distinguishes configured files from capabilities verified in each client.
 Use [`agent-customization`](skills/agent-customization/SKILL.md) when adding or
 repairing persistent setup, and follow its
 [maintenance runbook](docs/runbooks/agent-customization.md). Keep actual native
-changes documented here and registered in the inventory. Proposed changes in the
+changes documented here and update their inventory records when maintenance metadata
+changes. Skill edits need no inventory registration. Proposed changes in the
 plan do not install new policies or establish authentication.
 
 Ignored `local/` contains owner-only credential files, rendered Codex/shell config,
@@ -164,10 +167,11 @@ the npm Railway CLI installer to application dependencies or change working pins
 incidentally.
 
 Official skills `cf-cli` and `use-railway` are imported at commits recorded in
-`config/skill-sources.json`. `use-railway` has a narrower local entrypoint and preserves
-the official reference material. Update provider skills/tools deliberately, review
-local adaptations, validate behavior, and commit the change. Do not run automatic
-latest-version setup commands from a normal deployment task.
+[`licenses/README.md`](licenses/README.md). `use-railway` has a narrower local
+entrypoint and preserves the official reference material. Update provider
+skills/tools deliberately, review local adaptations, validate behavior, and commit
+the change. Do not run automatic latest-version setup commands from a normal
+deployment task.
 
 ### Environment variables and profiles
 
@@ -343,11 +347,13 @@ Preserve their existing ports, process ownership, private routing, and unrelated
 Configuration establishes capability; the current user request establishes mutation
 scope. Do not reset provider resources or grant broader access merely to simplify setup.
 
-When changing persistent agent configuration, update its inventory entry and runbook,
-record meaningful changes in `CHANGELOG.md`, and run `agents-config docs` to regenerate
-the readable inventory. Git records ordinary file edits; the changelog records why
-customizations or external grants changed. Secret values need an encrypted backup or
-a provider replacement procedure; cloning this repository restores references only.
+When configuration locations, ownership, credentials, consumers, or update/recovery
+procedures change, update their inventory records and runbook, record meaningful
+changes in `CHANGELOG.md`, and run `agents-config docs` to regenerate the readable
+inventory. Maintain skill contents directly in `skills/`. Git records ordinary
+file edits; the changelog records why customizations or external grants changed.
+Secret values need an encrypted backup or a provider replacement procedure;
+cloning this repository restores references only.
 
 The inventory files have separate roles: `config/inventory.json` holds editable
 records; `config/inventory.schema.json` defines their allowed structure and types;

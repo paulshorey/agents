@@ -8,8 +8,10 @@ tooling. Before changes, read [README.md](README.md), the
 - Preserve application-owned settings. Use `scripts/install.py` for configuration links.
 - Keep secret values, OAuth state, backups, and rendered settings in ignored local
   storage. Never commit or print secrets, fragments, or hashes.
-- Register persistent changes in `config/inventory.json`, update the relevant runbook,
-  and record meaningful changes in `CHANGELOG.md`. Reference existing manifests.
+- Update `config/inventory.json` when configuration locations, ownership, credentials,
+  consumers, or update/recovery procedures change. Update the relevant runbook and
+  record meaningful changes in `CHANGELOG.md`. Reference existing manifests.
+  Maintain skills directly in `skills/`; skill edits need no inventory registration.
 - Before committing, run `bin/agents-config validate`, `bin/agents-config docs`,
   `bin/agents-config docs --check`, and `git diff --check`.
 - Verify actual provider access and resulting state. Configuration grants capability;

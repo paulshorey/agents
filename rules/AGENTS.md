@@ -31,8 +31,10 @@ does not grant permission to mutate unrelated projects or DNS records.
 
 For persistent agent customizations, use `config/inventory.json` and
 `docs/INVENTORY.md` to find ownership, credential locations, consumers, and update
-instructions. Update the inventory and relevant runbook in the same task; record
-meaningful configuration/grant/credential-reference changes in `CHANGELOG.md`.
+instructions. Update inventory records and the relevant runbook when configuration
+locations, ownership, credentials, consumers, or update/recovery procedures change;
+record meaningful configuration/grant/credential-reference changes in `CHANGELOG.md`.
+Maintain skills directly in `skills/`; skill edits need no inventory registration.
 Reference existing manifests instead of duplicating settings. Never record secret
 values, fragments, or hashes. Run `agents-config validate` and regenerate inventory
 docs before committing. Local checks do not establish authentication; use explicit

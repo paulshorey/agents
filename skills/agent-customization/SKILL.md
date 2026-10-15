@@ -24,8 +24,11 @@ Codex/Cursor differences matter; refresh official sources for changed behavior.
 4. Preserve unrelated application settings through `scripts/install.py`. For new
    managed files, establish ownership and test merge/restore before installing.
    Use existing provider profile/hosting manifests and local service managers.
-5. Update inventory references, the relevant runbook, and meaningful changelog
-   entries in the same task. Never record secret values, fragments, or hashes.
+5. Update inventory records when configuration locations, ownership, credentials,
+   consumers, or update/recovery procedures change; update the relevant runbook
+   and meaningful changelog entries. Skills live directly in `skills/` without
+   inventory registration; imported provenance belongs in `licenses/README.md`.
+   Never record secret values, fragments, or hashes.
 6. Validate and regenerate inventory docs; test changed mechanics and fresh-client
    behavior. Verify exact account/resource access separately from local setup.
    Publish through the Git management workflow and identify remaining gaps.

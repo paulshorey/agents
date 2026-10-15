@@ -6,8 +6,9 @@ description: Operate Railway projects, services, environments, deployments, vari
 # Use Railway
 
 This installation vendors Railway's official reference material at the revision in
-`~/.agents/config/skill-sources.json`. The entrypoint is curated for this machine;
-provider updates are intentional Git changes, not automatic session-start installs.
+[`licenses/README.md`](../../licenses/README.md). The entrypoint is curated for this
+machine; provider updates are intentional Git changes, not automatic session-start
+installs.
 
 Read `~/.agents/README.md` for installed tools and access. For this user's targets,
 read `railway-iac` and its local connections reference before selecting credentials.

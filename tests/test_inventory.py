@@ -34,7 +34,18 @@ class InventoryTests(unittest.TestCase):
         self.assertFalse((self.root / 'local').exists())
         self.assertGreater(len(self.data['entries']), 20)
         self.assertIn('cloudflare.dns-token', inventory.documentation(self.data, self.root))
-        self.assertGreater(len(inventory.catalogs(self.root)['skills']), 10)
+        self.assertIn('scripts/inventory.py', inventory.utility_files(self.root))
+
+    def test_configuration_inventory_is_independent_of_skills_and_import_provenance(self):
+        expected = inventory.documentation(self.data, self.root)
+        shutil.rmtree(self.root / 'skills')
+        shutil.rmtree(self.root / 'licenses')
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(inventory.main(['--root', str(self.root), 'validate']), 0)
+            self.assertEqual(inventory.main(['--root', str(self.root), 'docs']), 0)
+            self.assertEqual(inventory.main(['--root', str(self.root), 'docs', '--check']), 0)
+        self.assertEqual((self.root / 'docs/INVENTORY.md').read_text(), expected)
 
     def test_secret_value_field_is_rejected_without_echoing_value(self):
         data = copy.deepcopy(self.data)
