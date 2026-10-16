@@ -103,7 +103,9 @@ A successful send returns `acceptedParts` and message `sid`/`status` metadata.
 Each request can still use multiple billable SMS segments. Up to four requests of
 1,400 UTF-16 units each are sent sequentially, at least ten seconds apart, with
 page labels for multipart input. Overflow and whitespace-only input fail before
-network access; emoji boundaries are preserved. Prefer short notifications.
+network access. Grapheme boundaries, including joined emoji and combining marks,
+are preserved; a single cluster longer than 1,400 UTF-16 units is rejected with
+`grapheme_too_long` before sending. Prefer short notifications.
 
 Acceptance and final delivery differ, as documented in Twilio's
 [Messages resource](https://www.twilio.com/docs/messaging/api/message-resource).
