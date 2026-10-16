@@ -4,6 +4,24 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-16 — Shared SMS command and skill
+
+- Added `bin/agents-sms`, a dependency-free Node adaptation of Paul's existing
+  Twilio transport, plus the `send-sms` skill for manually requested texts and
+  authorized task notifications from any local project.
+- Registered `twilio.sms` in the profile catalog and credential/consumer inventory.
+  Initial credentials and fixed numbers are copied from `~/git/paul/.env.local`
+  to ignored owner-only storage; the source uses an account Auth Token. No secret
+  values or phone numbers are tracked, and existing grants are reused.
+- Added local configuration/dry-run checks, sanitized message-status reads,
+  no-overwrite profile import, and SMS usage/rotation/recovery documentation.
+  Transport retains bounded Unicode-safe chunking, timeouts, and no retries.
+- A single user-approved setup-test SMS was accepted and subsequently reported
+  delivered by Twilio with no error code on 2026-10-16.
+- No application settings, permission rules, account grants, MCP connections,
+  services, or recurring automations changed. Remote agents need separately
+  authorized local runtime and credential provisioning.
+
 ## 2026-10-15 — Configuration inventory and maintenance improvements
 
 - Removed the skill catalog, individual skill references, generated skill table,

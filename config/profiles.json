@@ -7,6 +7,10 @@
     "railway.webarts": {
       "provider": "railway",
       "path": "~/.config/railway/webarts.env"
+    },
+    "twilio.sms": {
+      "provider": "twilio",
+      "path": "~/.agents/local/credentials/twilio-sms.env"
     }
   }
 }
