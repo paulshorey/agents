@@ -5,8 +5,8 @@ description: "When you discover a serious problem or blocker corrupting the data
 
 # Send the developer an SMS
 
-For situations described above, send the alert without waiting for a separate
-request. Briefly identify the project, the problem or blocked work, and the action
+Send the alert without waiting for a separate request. Briefly identify the
+project, the problem or blocked work, and the action
 needed from the developer. Include a relevant PR or task link when available.
 
 Run this command from any working directory, replacing the example with the alert:
