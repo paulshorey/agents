@@ -1,48 +1,31 @@
 ---
 name: send-sms
-description: Send an SMS to Paul's configured phone through the shared local Twilio command. Use for a requested text message or an explicitly authorized SMS notification when work completes or needs attention.
+description: "When you discover a serious problem or blocker corrupting the data or logic, or when some tasks are behind because they're waiting on the testing or review of the human developer, or for any other important and urgent reason, send an SMS message to the the developer."
 ---
 
-# Send Paul an SMS
+# Send the developer an SMS
 
-Run `~/.agents/bin/agents-sms` from any working directory on this Mac. The helper
-loads the registered owner-only profile itself; never read, echo, source, or pass
-credentials or phone numbers in commands. Node >=22.18.0 and outbound HTTPS to
-Twilio are required. No Paul application, web server, npm install, or MCP is needed.
+For situations described above, send the alert without waiting for a separate
+request. Briefly identify the project, the problem or blocked work, and the action
+needed from the developer. Include a relevant PR or task link when available.
 
-The user's request to send a text or notify them by SMS authorizes that message;
-carry it out without asking again. For future notifications, send at the requested
-milestone with concise context about the project and outcome. Invoking this skill
-alone without a message or purpose calls for a focused clarification. Access to
-the command does not authorize unsolicited texts or messages to other people.
-
-Pass text using a quoted heredoc so shell syntax in the message stays literal:
+Run this command from any working directory, replacing the example with the alert:
 
 ```sh
 ~/.agents/bin/agents-sms <<'SMS'
-Paul deployment finished. Production health checks passed.
+Map: ingestion is blocked pending your review of PR #123. Please review before we resume the import.
 SMS
 ```
 
-For a file, use `~/.agents/bin/agents-sms --file /absolute/path/message.txt`.
-`--dry-run` with either input validates locally without sending; `--check` checks
-credential configuration only. Use a different heredoc delimiter if the message
-contains a line equal to `SMS`.
+The quoted heredoc keeps shell syntax literal; choose another delimiter if the
+message contains a line equal to `SMS`. Alternatively, use
+`~/.agents/bin/agents-sms --file /absolute/path/message.txt`.
 
-Keep messages concise. The helper supports at most four labeled API requests of
-1,400 UTF-16 units each, preserves emoji, and rejects overflow without truncation.
-Twilio may bill multiple carrier segments per request. Avoid credentials or private
-logs in the text. The recipient and sender come exclusively from the profile.
+The script loads the stored credentials and developer's phone number automatically.
+Keep the message concise and omit secrets. Avoid repeating an alert unless the
+situation materially changes or another notification is needed.
 
-Read the JSON result. `ok: true` on a send means Twilio accepted every part. Report
-acceptance accurately; carrier delivery is asynchronous. Check a returned SID with
-`~/.agents/bin/agents-sms --status SM...` when delivery confirmation is needed.
-
-On failure, stop and report `code` and `acceptedParts`. A timeout, malformed
-response, or partial failure can leave messages already accepted. Do not retry the
-whole message automatically; inspect known message SIDs or ask before resending
-when the outcome is uncertain. Never display raw provider responses.
-
-For credential setup, rotation, or runtime trouble, consult the
-[SMS runbook](../../docs/runbooks/sms.md). Sandboxed or remote agents still need
-their own authorized filesystem/network access and credential provisioning.
+JSON `ok: true` means Twilio accepted the message. On failure, report `code` and
+`acceptedParts`; do not automatically retry an uncertain or partial send, which
+could duplicate the message. For setup or errors, see the
+[SMS runbook](../../docs/runbooks/sms.md).
