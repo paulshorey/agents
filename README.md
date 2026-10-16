@@ -340,6 +340,7 @@ resources before applying any whole-project IaC graph.
 
 ```sh
 python3 -m unittest discover -s ~/.agents/tests -v
+node --test ~/.agents/tests/*.test.mjs
 ~/.agents/bin/agents-config validate
 ~/.agents/bin/agents-config docs --check
 npm audit --prefix ~/.agents/tools --omit=dev

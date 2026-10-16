@@ -16,6 +16,7 @@ Verification dates describe historical observations, not current readiness.
 - Added local configuration/dry-run checks, sanitized message-status reads,
   no-overwrite profile import, and SMS usage/rotation/recovery documentation.
   Transport retains bounded Unicode-safe chunking, timeouts, and no retries.
+- Added SMS regression tests to the existing Node 24 CI validation workflow.
 - A single user-approved setup-test SMS was accepted and subsequently reported
   delivered by Twilio with no error code on 2026-10-16.
 - No application settings, permission rules, account grants, MCP connections,
