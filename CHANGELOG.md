@@ -4,6 +4,15 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-16 — Last 30 Days research skill
+
+- Imported `last30days` 3.28.0 from a pinned upstream commit into `skills/`,
+  preserving its exported scripts, references, native metadata, and licenses.
+- Recorded the upstream revision and update procedure in `licenses/README.md`.
+  Shared skill discovery requires no configuration inventory registration.
+- Installation adds the research workflow only; provider access, setup wizard,
+  browser cookies, optional CLIs, and hosted publishing were not configured.
+
 ## 2026-10-15 — Configuration inventory and maintenance improvements
 
 - Removed the skill catalog, individual skill references, generated skill table,
