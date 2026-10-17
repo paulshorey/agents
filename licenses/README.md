@@ -35,6 +35,7 @@ commit. Local adaptations are also tracked in Git history.
 - Local adaptations: standalone setup replaces the unavailable upstream plugin
   command with project-owned installation and authentication instructions; normal
   lookups route to available web tools without requiring an absent companion skill.
+  Authentication guidance covers active legacy logins and environment-key precedence.
 - Root license preserved at [`skills/parallel-deep-research/LICENSE`](../skills/parallel-deep-research/LICENSE).
 - Runtime: commands verified with `parallel-cli 0.9.3`; facts owns its pinned project-local CLI. Other projects reuse their own managed installation or deliberately provision an isolated environment. Existing authentication can be reused; no new account grant was made by this import.
 - Updates: deliberately review a new upstream commit, replace the skill, preserve the license, and update this record. CLI installations are owned by their project, not this import.

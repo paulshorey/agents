@@ -130,10 +130,27 @@ instructions are in [Parallel Web Tools](https://github.com/parallel-web/paralle
 
 Reuse an existing `PARALLEL_API_KEY` supplied through the project's authorized
 secret loader, or an existing CLI login. Inspect `parallel-cli auth --json`'s
-`authenticated` boolean without displaying credential values. When authentication
-setup is authorized and needed, run `parallel-cli login --json` (`--no-browser` for
-a headless session) and let the user complete device authorization. Recheck the
-boolean afterward. A configured key or local help command alone does not prove
+`authenticated`, `method`, `selected_org_id`, and `stored_overridden_by_env`
+fields without displaying credential values. When authentication setup is
+authorized, follow the [pinned official setup guidance](https://github.com/parallel-web/parallel-agent-skills/blob/92694a248ce444fb74d9bc120a9b93e69316b9f8/skills/parallel-cli-setup/SKILL.md#step-2-authenticate):
+run `parallel-cli login --json` if `authenticated` is false or the active stored
+login selects `legacy`, even when `authenticated` is true. Add `--no-browser` for
+a headless session and let the user complete device authorization. Recheck the
+authentication fields afterward; if setup remains incomplete, report the blocker
+instead of repeating login.
+
+A migrated legacy key can still work for standard research while lacking the
+control tokens needed by Account API operations. If `method` is `environment`,
+`PARALLEL_API_KEY` takes precedence over stored login, including after device
+authorization. A stored `legacy` organization is then inactive; do not diagnose
+that as the cause of an environment key's failure or change the authorized key
+source silently. A configured key or local help command alone does not prove
 live API access. This import does not supply `/parallel:parallel-cli-setup`.
 
-For authentication or API errors, inspect the returned message. A `403` can indicate permissions, account policy or billing; it does not prove low balance. Check `parallel-cli auth --json` and its `authenticated` boolean when relevant without exposing credentials. Only a billing-specific error warrants a balance check, and adding funds needs explicit confirmation. Reuse saved task IDs; do not automatically retry an ambiguous creation.
+For authentication or API errors, inspect the returned message and the active
+credential source above. A `403` can indicate permissions, account policy or
+billing; it does not prove low balance. For a missing Account API token on an
+active legacy login, use the authorized device-login path rather than accepting
+`authenticated: true` as proof of account access. Only a billing-specific error
+warrants a balance check, and adding funds needs explicit confirmation. Reuse
+saved task IDs; do not automatically retry an ambiguous creation.
