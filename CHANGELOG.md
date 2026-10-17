@@ -4,6 +4,17 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-16 — Last 30 Days research skill
+
+- Imported `last30days` 3.28.0 from a pinned upstream commit into `skills/`,
+  preserving its exported scripts, references, native metadata, and licenses.
+- Recorded the upstream revision and update procedure in `licenses/README.md`.
+  Shared skill discovery requires no configuration inventory registration.
+- Added local review corrections for hosted constraint enforcement, numeric UTC
+  watchlist scheduling, failed-run finalization and budget validation.
+- Installation adds the research workflow only; provider access, setup wizard,
+  browser cookies, optional CLIs, and hosted publishing were not configured.
+
 ## 2026-10-16 — Shared SMS command and skill
 
 - Added `bin/agents-sms`, a dependency-free Node adaptation of Paul's existing
