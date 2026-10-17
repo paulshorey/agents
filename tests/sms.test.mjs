@@ -56,6 +56,23 @@ test('chunks preserve Unicode and all text; reject empty and overflow', () => {
   assert.throws(() => chunkSms('\ud800'), hasCode('invalid_unicode'));
 });
 
+test('page boundaries preserve grapheme clusters and reject clusters larger than one request', async () => {
+  const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' });
+  for (const grapheme of ['👨‍👩‍👧‍👦', '🇺🇸', 'e\u0301']) {
+    const message = 'x'.repeat(1399) + grapheme + 'end';
+    const chunks = chunkSms(message).map((c) => c.replace(/\n\[Page: \d+ of \d+\]$/, ''));
+    assert.equal(chunks.join(''), message);
+    assert.ok(chunks.every((c) => c.length <= 1400));
+    assert.deepEqual(chunks.flatMap((c) => [...segmenter.segment(c)].map((s) => s.segment)),
+      [...segmenter.segment(message)].map((s) => s.segment));
+  }
+  let requests = 0;
+  await assert.rejects(sendSms('e' + '\u0301'.repeat(1400), config, {
+    fetch: async () => { requests++; },
+  }), hasCode('grapheme_too_long'));
+  assert.equal(requests, 0);
+});
+
 test('owner-only literal profile; rejects broad modes and symlinks', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agents-sms-'));
   const path = join(dir, 'sms.env');

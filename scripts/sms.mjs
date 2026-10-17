@@ -63,7 +63,8 @@ export function chunkSms(message) {
   if (message.length > 5600) throw new SmsError('message_too_long');
   const chunks = [];
   let chunk = '';
-  for (const character of message) {
+  for (const { segment: character } of new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(message)) {
+    if (character.length > 1400) throw new SmsError('grapheme_too_long');
     if (chunk.length + character.length > 1400) {
       chunks.push(chunk);
       chunk = '';
