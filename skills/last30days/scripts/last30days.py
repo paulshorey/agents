@@ -3206,6 +3206,27 @@ def _looks_like_entity_topic(topic: str) -> bool:
     return not any(w.lower() in common for w in words)
 
 
+def hosted_unsupported_options(args: argparse.Namespace, config: dict) -> list[str]:
+    """API v1 accepts topic/depth/register, not local retrieval constraints."""
+    defaults = vars(build_parser().parse_args([]))
+    supported = {
+        "topic", "quick", "deep", "register", "emit", "json_profile",
+        "save_dir", "save_suffix", "no_browser_cookies", "debug",
+    }
+    unsupported = [
+        "--" + key.replace("_", "-")
+        for key, value in vars(args).items()
+        if key not in supported and value != defaults.get(key)
+        and not (key == "lookback_days" and value == 30)
+    ]
+    if args.emit == "html":
+        unsupported.append("--emit=html")
+    for key in ("LAST30DAYS_DEFAULT_SEARCH", "EXCLUDE_SOURCES"):
+        if config.get(key):
+            unsupported.append(key)
+    return sorted(unsupported)
+
+
 def main() -> int:
     parser = build_parser()
     # Use parse_known_args so setup sub-flags (--device-auth, --github,
@@ -3664,6 +3685,14 @@ def _main(
         and not args.deep_research
         and (args.perplexity_search_type is None or not config.get("PERPLEXITY_API_KEY"))
     ):
+        unsupported = hosted_unsupported_options(args, config)
+        if unsupported:
+            sys.stderr.write(
+                "[last30days] Hosted API cannot honor: " + ", ".join(unsupported)
+                + ". Unset LAST30DAYS_API_KEY or LAST30DAYS_API_BASE to run locally. "
+                "No hosted search was started.\n"
+            )
+            return 2
         if args.perplexity_search_type is not None:
             sys.stderr.write(
                 "hosted backend does not apply --perplexity-search-type and no direct "
