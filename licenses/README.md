@@ -31,7 +31,10 @@ commit. Local adaptations are also tracked in Git history.
 
 - Local skill: [`skills/parallel-deep-research`](../skills/parallel-deep-research/).
 - Upstream: [parallel-web/parallel-agent-skills at `92694a248ce444fb74d9bc120a9b93e69316b9f8`](https://github.com/parallel-web/parallel-agent-skills/tree/92694a248ce444fb74d9bc120a9b93e69316b9f8/skills/parallel-deep-research).
-- Imported path: `skills/parallel-deep-research`; no local instruction changes.
+- Imported path: `skills/parallel-deep-research`.
+- Local adaptations: standalone setup replaces the unavailable upstream plugin
+  command with project-owned installation and authentication instructions; normal
+  lookups route to available web tools without requiring an absent companion skill.
 - Root license preserved at [`skills/parallel-deep-research/LICENSE`](../skills/parallel-deep-research/LICENSE).
-- Runtime: `parallel-cli >= 0.3.0`; facts project installs a pinned project-local CLI. Existing `PARALLEL_API_KEY` authentication is reused; no new account grant.
+- Runtime: commands verified with `parallel-cli 0.9.3`; facts owns its pinned project-local CLI. Other projects reuse their own managed installation or deliberately provision an isolated environment. Existing authentication can be reused; no new account grant was made by this import.
 - Updates: deliberately review a new upstream commit, replace the skill, preserve the license, and update this record. CLI installations are owned by their project, not this import.
