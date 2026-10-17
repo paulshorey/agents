@@ -26,3 +26,12 @@ are needed only when updating those imports. Skills are discovered directly from
 When updating an import, compare it with the recorded upstream revision, preserve
 the license and deliberate local adaptations, then update these notes in the same
 commit. Local adaptations are also tracked in Git history.
+
+## Parallel deep research
+
+- Local skill: [`skills/parallel-deep-research`](../skills/parallel-deep-research/).
+- Upstream: [parallel-web/parallel-agent-skills at `92694a248ce444fb74d9bc120a9b93e69316b9f8`](https://github.com/parallel-web/parallel-agent-skills/tree/92694a248ce444fb74d9bc120a9b93e69316b9f8/skills/parallel-deep-research).
+- Imported path: `skills/parallel-deep-research`; no local instruction changes.
+- Root license preserved at [`skills/parallel-deep-research/LICENSE`](../skills/parallel-deep-research/LICENSE).
+- Runtime: `parallel-cli >= 0.3.0`; facts project installs a pinned project-local CLI. Existing `PARALLEL_API_KEY` authentication is reused; no new account grant.
+- Updates: deliberately review a new upstream commit, replace the skill, preserve the license, and update this record. CLI installations are owned by their project, not this import.

@@ -130,3 +130,8 @@ Verification dates describe historical observations, not current readiness.
 - Registered all-domains DNS/zone access instead of a single-zone token. Preserved
   the existing WebArts Railway workspace profile and working deployment tool pins.
 - Delivered through [PR #3](https://github.com/paulshorey/agents/pull/3).
+
+## 2026-10-16 — Parallel asynchronous research skill
+
+- Imported the official `parallel-deep-research` skill at a pinned upstream revision, preserving its license and update provenance.
+- Shared skill discovery adds no inventory entry or application configuration. The facts project owns its local Parallel CLI; no credentials, account grants, or browser sessions changed.
