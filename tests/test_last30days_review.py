@@ -108,10 +108,14 @@ class ScheduleTests(unittest.TestCase):
                 patch.object(store, "get_setting", return_value="5"), \
                 patch.object(store, "get_daily_cost", return_value=0), \
                 patch.object(store, "get_daily_unknown_cost_runs", return_value=0), \
-                patch.object(watchlist, "schedule_due", side_effect=lambda t: schedule_due(t, now)), \
+                patch.object(watchlist, "datetime") as clock, \
+                patch.object(watchlist, "schedule_due", wraps=schedule_due) as due, \
                 patch.object(watchlist, "_run_topic", return_value={"status": "completed"}) as run, \
                 contextlib.redirect_stdout(io.StringIO()):
+            clock.now.return_value = now
             watchlist.cmd_run_all(None)
+            clock.now.assert_called_once_with(timezone.utc)
+            self.assertTrue(all(call.args[1] == now for call in due.call_args_list))
         run.assert_called_once_with(topics[1])
 
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import math
 import os
@@ -158,9 +159,11 @@ def cmd_run_all(args):
 
     budget_limit = float(store.get_setting("daily_budget", "5.00"))
     results = []
+    # All topics use the poll's entry time even if earlier research takes minutes.
+    poll_time = datetime.now(timezone.utc)
     for topic in topics:
         try:
-            due = schedule_due(topic)
+            due = schedule_due(topic, poll_time)
         except ValueError as exc:
             results.append({"topic": topic["name"], "status": "skipped", "reason": str(exc)})
             continue
