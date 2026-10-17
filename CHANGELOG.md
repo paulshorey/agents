@@ -10,8 +10,29 @@ Verification dates describe historical observations, not current readiness.
   preserving its exported scripts, references, native metadata, and licenses.
 - Recorded the upstream revision and update procedure in `licenses/README.md`.
   Shared skill discovery requires no configuration inventory registration.
+- Added local review corrections for hosted constraint enforcement, numeric UTC
+  watchlist scheduling, failed-run finalization and budget validation.
 - Installation adds the research workflow only; provider access, setup wizard,
   browser cookies, optional CLIs, and hosted publishing were not configured.
+
+## 2026-10-16 — Shared SMS command and skill
+
+- Added `bin/agents-sms`, a dependency-free Node adaptation of Paul's existing
+  Twilio transport, plus the `send-sms` skill for manually requested texts and
+  authorized task notifications from any local project.
+- Registered `twilio.sms` in the profile catalog and credential/consumer inventory.
+  Initial credentials and fixed numbers are copied from `~/git/paul/.env.local`
+  to ignored owner-only storage; the source uses an account Auth Token. No secret
+  values or phone numbers are tracked, and existing grants are reused.
+- Added local configuration/dry-run checks, sanitized message-status reads,
+  no-overwrite profile import, and SMS usage/rotation/recovery documentation.
+  Transport retains bounded Unicode-safe chunking, timeouts, and no retries.
+- Added SMS regression tests to the existing Node 24 CI validation workflow.
+- A single user-approved setup-test SMS was accepted and subsequently reported
+  delivered by Twilio with no error code on 2026-10-16.
+- No application settings, permission rules, account grants, MCP connections,
+  services, or recurring automations changed. Remote agents need separately
+  authorized local runtime and credential provisioning.
 
 ## 2026-10-15 — Configuration inventory and maintenance improvements
 

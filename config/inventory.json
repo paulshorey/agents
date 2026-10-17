@@ -620,6 +620,58 @@
         "This external workspace document points to ~/git/local-dev/README.md and its service registry. It remains owned by those repositories; do not duplicate ports, routes, or process state here.",
         "Use the owning manager and verify live PID/CWD/ownership/readiness before start/stop/kill. This registry entry is context, not a live service-health check."
       ]
+    },
+    {
+      "id": "twilio.sms-credentials",
+      "kind": "credential",
+      "owner": "agents",
+      "description": "Private Twilio authentication and fixed sender/recipient for SMS to Paul.",
+      "runbook": "docs/runbooks/sms.md",
+      "path_ref": {
+        "file": "config/profiles.json",
+        "pointer": "/profiles/twilio.sms/path"
+      },
+      "variables": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_FROM_NUMBER",
+        "TWILIO_TO_NUMBER"
+      ],
+      "consumers": [
+        "twilio.sms-cli"
+      ],
+      "notes": [
+        "Required authentication is either TWILIO_AUTH_TOKEN or the complete TWILIO_API_KEY_SID/TWILIO_API_KEY_SECRET pair. agents-sms --check validates the active pair; generic inventory checks only the always-required names.",
+        "Initially copied only Twilio assignments from ~/git/paul/.env.local; existing authentication uses an account Auth Token. Source and copy are independently maintained. No values, phone numbers, or secret fragments belong in Git.",
+        "Ignored local profile must be owned by the current user, mode 600, in a mode-700 owner-owned directory. Stored numbers are private and not command arguments.",
+        "Existing provider grants were reused without rotation or scope expansion. Local checks are not provider authentication or delivery verification."
+      ]
+    },
+    {
+      "id": "twilio.sms-cli",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "Dependency-free Node command for authorized SMS notifications to Paul's stored recipient.",
+      "runbook": "docs/runbooks/sms.md",
+      "path": "bin/agents-sms",
+      "references": [
+        {
+          "file": "bin/agents-sms"
+        },
+        {
+          "file": "scripts/send-sms.mjs"
+        },
+        {
+          "file": "scripts/sms.mjs"
+        },
+        {
+          "file": "scripts/import-sms-profile.mjs"
+        }
+      ],
+      "notes": [
+        "Adapted from ~/git/paul/src/lib/sms.ts; maintained independently here. Requires Node >=22.18.0, local filesystem access, and outbound HTTPS to api.twilio.com.",
+        "Reads stdin or a file; --check and --dry-run are local only, --status reads one message. Sends at most four labeled requests, without automatic retries; successful submission is not final delivery.",
+        "No provider endpoint, MCP server, background automation, or native permission override is installed. Remote agents require separate authorized provisioning."
+      ]
     }
   ]
 }

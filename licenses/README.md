@@ -32,8 +32,14 @@ are needed only when updating those imports. Skills are discovered directly from
   under `assets/`. The upstream root MIT license is included as
   [`skills/last30days/LICENSE`](../skills/last30days/LICENSE); the vendored
   bird-search client retains its own license.
-- Local adaptations: none. No setup wizard, browser-cookie access, provider
-  credential changes, extra CLI installation, or hosted publishing was performed.
+- Local adaptations: hosted API v1 rejects unsupported retrieval/output constraints
+  before submitting; watchlist polling honors numeric UTC cron schedules and avoids
+  repeating a scheduled minute, validates finite nonnegative budgets, and marks
+  schema/storage processing errors failed. Imported trailing whitespace is removed.
+  Offline regression coverage lives in `tests/test_last30days_review.py`; operation
+  details are in the skill's [local adaptations](../skills/last30days/references/local-adaptations.md).
+  No setup wizard, browser-cookie access, provider credential changes, extra CLI
+  installation, or hosted publishing was performed.
 - Runtime: Python 3.12 or newer. Use the skill's runtime preflight and source
   health/setup instructions before research; a successful local CLI check does
   not establish authentication or live access to every source.
