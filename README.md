@@ -95,6 +95,20 @@ is restored from the lockfile. Application credential stores such as Codex OAuth
 Railway login, and Cloudflare login remain in the application’s normal locations.
 Do not copy their contents into this repository or symlink an authentication database.
 
+## SMS notifications to Paul
+
+Use the `send-sms` skill from any local Codex project, for example
+`$send-sms Text me when this task is finished, including the PR URL.`
+Agents with terminal access can call `~/.agents/bin/agents-sms` directly and supply
+text through stdin or `--file`. The command loads the fixed sender/recipient and
+Twilio credential from the owner-only ignored profile registered as `twilio.sms`
+in `config/profiles.json`; no Paul web server or npm install is needed.
+
+See the [SMS runbook](docs/runbooks/sms.md) for usage, credential setup/rotation,
+checks, delivery status, and remote-agent limitations. `--check` and `--dry-run`
+validate locally without sending. Send only user-requested messages or authorized
+notifications; an uncertain send must not be automatically retried.
+
 ## Install and maintain configuration links
 
 ```sh
@@ -326,6 +340,7 @@ resources before applying any whole-project IaC graph.
 
 ```sh
 python3 -m unittest discover -s ~/.agents/tests -v
+node --test ~/.agents/tests/*.test.mjs
 ~/.agents/bin/agents-config validate
 ~/.agents/bin/agents-config docs --check
 npm audit --prefix ~/.agents/tools --omit=dev

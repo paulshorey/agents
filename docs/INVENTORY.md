@@ -44,6 +44,8 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [application.cursor-auth](#application-cursor-auth) | runtime | application | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [environment.project-secrets](#environment-project-secrets) | environment | reference | Application-managed | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [context.local-services](#context-local-services) | context | reference | ~/git/AGENTS.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [twilio.sms-credentials](#twilio-sms-credentials) | credential | agents | ~/.agents/local/credentials/twilio-sms.env | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
+| [twilio.sms-cli](#twilio-sms-cli) | tool | agents | bin/agents-sms | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -570,18 +572,64 @@ Use the owning manager and verify live PID/CWD/ownership/readiness before start/
 
 [Update and recovery instructions](../docs/runbooks/agent-customization.md).
 
+<a id="twilio-sms-credentials"></a>
+
+## twilio.sms-credentials
+
+Private Twilio authentication and fixed sender/recipient for SMS to Paul.
+
+Owner: **agents**.
+
+Location: `~/.agents/local/credentials/twilio-sms.env`.
+
+Variable names: `TWILIO_ACCOUNT_SID`, `TWILIO_FROM_NUMBER`, `TWILIO_TO_NUMBER`.
+
+Consumers: `twilio.sms-cli`.
+
+Required authentication is either TWILIO_AUTH_TOKEN or the complete TWILIO_API_KEY_SID/TWILIO_API_KEY_SECRET pair. agents-sms --check validates the active pair; generic inventory checks only the always-required names.
+
+Initially copied only Twilio assignments from ~/git/paul/.env.local; existing authentication uses an account Auth Token. Source and copy are independently maintained. No values, phone numbers, or secret fragments belong in Git.
+
+Ignored local profile must be owned by the current user, mode 600, in a mode-700 owner-owned directory. Stored numbers are private and not command arguments.
+
+Existing provider grants were reused without rotation or scope expansion. Local checks are not provider authentication or delivery verification.
+
+[Update and recovery instructions](../docs/runbooks/sms.md).
+
+<a id="twilio-sms-cli"></a>
+
+## twilio.sms-cli
+
+Dependency-free Node command for authorized SMS notifications to Paul's stored recipient.
+
+Owner: **agents**.
+
+Location: `bin/agents-sms`.
+
+Adapted from ~/git/paul/src/lib/sms.ts; maintained independently here. Requires Node >=22.18.0, local filesystem access, and outbound HTTPS to api.twilio.com.
+
+Reads stdin or a file; --check and --dry-run are local only, --status reads one message. Sends at most four labeled requests, without automatic retries; successful submission is not final delivery.
+
+No provider endpoint, MCP server, background automation, or native permission override is installed. Remote agents require separate authorized provisioning.
+
+[Update and recovery instructions](../docs/runbooks/sms.md).
+
 ## Utility files
 
 Derived from `bin/` and `scripts/`. See the utility runbook before executing a helper.
 
 - [bin/agents-config](../bin/agents-config)
 - [bin/agents-hosting](../bin/agents-hosting)
+- [bin/agents-sms](../bin/agents-sms)
 - [bin/cf](../bin/cf)
 - [bin/railway-mcp](../bin/railway-mcp)
 - [scripts/hosting.py](../scripts/hosting.py)
+- [scripts/import-sms-profile.mjs](../scripts/import-sms-profile.mjs)
 - [scripts/install.py](../scripts/install.py)
 - [scripts/inventory.py](../scripts/inventory.py)
 - [scripts/mcp-headers.py](../scripts/mcp-headers.py)
 - [scripts/railway-mcp.py](../scripts/railway-mcp.py)
 - [scripts/run-cf.py](../scripts/run-cf.py)
+- [scripts/send-sms.mjs](../scripts/send-sms.mjs)
 - [scripts/set-cloudflare-token.py](../scripts/set-cloudflare-token.py)
+- [scripts/sms.mjs](../scripts/sms.mjs)
