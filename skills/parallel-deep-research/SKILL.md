@@ -1,9 +1,9 @@
 ---
 name: parallel-deep-research
-description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than parallel-web-search. For normal research/lookup requests, use parallel-web-search instead. Supports follow-ups with a known prior Task interaction ID."
+description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than a web search. For normal research/lookup requests, use available web-search tools instead. Supports follow-ups with a known prior Task interaction ID."
 user-invocable: true
 argument-hint: <topic>
-compatibility: Requires parallel-cli >= 0.3.0 and internet access.
+compatibility: Requires parallel-cli >= 0.9.3 and internet access.
 allowed-tools: Bash(parallel-cli:*)
 metadata:
   author: parallel
@@ -13,11 +13,11 @@ metadata:
 
 Research topic: $ARGUMENTS
 
-> Requires `parallel-cli` ≥ 0.3.0 for text output and context chaining. If a documented command or option is missing, check `parallel-cli --version` and that command's `--help`, then follow the installation-specific upgrade guidance in Setup. API, authentication and input errors are not evidence of an older CLI.
+> These commands were verified with `parallel-cli` 0.9.3. If a documented command or option is missing, check `parallel-cli --version` and that command's `--help`, then follow the installation-specific upgrade guidance in Setup. API, authentication and input errors are not evidence of an older CLI.
 
 ## When to use (vs parallel-web-search)
 
-ONLY use this skill when the user explicitly requests deep/exhaustive research. It can take several minutes and costs more than a quick search, depending on the processor and task. For normal "research X" requests, quick lookups, or fact-checking, use **parallel-web-search** instead.
+ONLY use this skill when the user explicitly requests deep/exhaustive research. It can take several minutes and costs more than a quick search, depending on the processor and task. For normal "research X" requests, quick lookups, or fact-checking, use the harness's available web-search tools. This standalone import does not include the upstream Parallel plugin or its companion skills.
 
 ## Step 1: Start the research
 
@@ -101,12 +101,56 @@ Avoid loading the whole report into context. Read only the relevant sections whe
 
 ## Setup
 
-If `parallel-cli` is not found, install and authenticate:
+First run `command -v parallel-cli` and `parallel-cli --version` in the agent's
+terminal. Reuse the current project's documented installation and lockfile; a CLI
+in another project's virtual environment is not a shared installation. An existing
+project-local executable can be called by its absolute path or by prepending its
+`bin` directory to PATH for the current shell.
 
-```bash
-/parallel:parallel-cli-setup
+For a project without a managed installation, the following is a project-local
+setup using the official `parallel-web-tools[cli]` package. Run it only when CLI
+setup is within the current task's scope, from that project's root. Ensure
+`.parallel-cli-venv/` is ignored by Git before creating it, and do not overwrite an
+existing environment:
+
+```sh
+python3 -m venv .parallel-cli-venv
+.parallel-cli-venv/bin/python -m pip install 'parallel-web-tools[cli]==0.9.3'
+export PATH="$PWD/.parallel-cli-venv/bin:$PATH"
+command -v parallel-cli
+parallel-cli --version
+parallel-cli research run --help
 ```
 
-If a documented option or command is missing, identify the install method and upgrade through that method: standalone `parallel-cli update`; pipx `pipx upgrade parallel-web-tools`; uv `uv tool upgrade parallel-web-tools`; Homebrew `brew upgrade parallel-web/tap/parallel-cli`; npm `npm update -g parallel-web-cli`. Recheck version and help in the agent's terminal before retrying.
+Keep the package version in the owning project's dependency manifest/lockfile when
+adopting it there. Do not install or upgrade globally as an incidental fallback.
+For existing installations, follow the owning project's update procedure; choose
+and verify a new version deliberately. Official installation and authentication
+instructions are in [Parallel Web Tools](https://github.com/parallel-web/parallel-web-tools).
 
-For authentication or API errors, inspect the returned message. A `403` can indicate permissions, account policy or billing; it does not prove low balance. Check `parallel-cli auth --json` and its `authenticated` boolean when relevant without exposing credentials. Only a billing-specific error warrants a balance check, and adding funds needs explicit confirmation. Reuse saved task IDs; do not automatically retry an ambiguous creation.
+Reuse an existing `PARALLEL_API_KEY` supplied through the project's authorized
+secret loader, or an existing CLI login. Inspect `parallel-cli auth --json`'s
+`authenticated`, `method`, `selected_org_id`, and `stored_overridden_by_env`
+fields without displaying credential values. When authentication setup is
+authorized, follow the [pinned official setup guidance](https://github.com/parallel-web/parallel-agent-skills/blob/92694a248ce444fb74d9bc120a9b93e69316b9f8/skills/parallel-cli-setup/SKILL.md#step-2-authenticate):
+run `parallel-cli login --json` if `authenticated` is false or the active stored
+login selects `legacy`, even when `authenticated` is true. Add `--no-browser` for
+a headless session and let the user complete device authorization. Recheck the
+authentication fields afterward; if setup remains incomplete, report the blocker
+instead of repeating login.
+
+A migrated legacy key can still work for standard research while lacking the
+control tokens needed by Account API operations. If `method` is `environment`,
+`PARALLEL_API_KEY` takes precedence over stored login, including after device
+authorization. A stored `legacy` organization is then inactive; do not diagnose
+that as the cause of an environment key's failure or change the authorized key
+source silently. A configured key or local help command alone does not prove
+live API access. This import does not supply `/parallel:parallel-cli-setup`.
+
+For authentication or API errors, inspect the returned message and the active
+credential source above. A `403` can indicate permissions, account policy or
+billing; it does not prove low balance. For a missing Account API token on an
+active legacy login, use the authorized device-login path rather than accepting
+`authenticated: true` as proof of account access. Only a billing-specific error
+warrants a balance check, and adding funds needs explicit confirmation. Reuse
+saved task IDs; do not automatically retry an ambiguous creation.
