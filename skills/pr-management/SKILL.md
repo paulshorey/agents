@@ -9,6 +9,8 @@ description: Help manage opened PRs. When you notice a PR or feature branch need
 
 **Synchronize.** Verify the repository, branches, PR state, and local work; fetch current remote state. If the local branch is behind its upstream, pull with `--ff-only`. Inspect divergence rather than resetting or force-pushing.
 
+**Request Codex review immediately.** Immediately after creating any PR, including drafts, post a standalone comment whose entire body is `@codex review` before doing any other work. With GitHub CLI, run `gh pr comment <PR_URL> --body '@codex review'`. Confirm the comment was posted; if posting fails, report the review request as incomplete.
+
 **Review.** If no review covers the current changes, review them. Fix obvious issues and improvements you are confident about; validate, commit, and push. If a fix needs product/design input or cannot be implemented conveniently, comment with findings and recommendations.
 
 **Address feedback.** Evaluate unaddressed reviews and comments against current code. Fix valid concerns, validate, commit, push, and reply with the outcome. Resolve verified fixes. Explain and resolve false positives or justified findings outside scope; leave genuine blockers and undecided questions open. Avoid duplicate comments.
