@@ -4,6 +4,14 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-17 — Immediate Codex review requests
+
+- Updated the Git and PR management skills to request Codex review immediately
+  after creating every PR, including drafts, with a standalone `@codex review`
+  comment and verification that it was posted.
+- A failed comment leaves the review request incomplete. This policy does not
+  install configuration, grant provider access, or satisfy independent review.
+
 ## 2026-10-16 — Last 30 Days research skill
 
 - Imported `last30days` 3.28.0 from a pinned upstream commit into `skills/`,
