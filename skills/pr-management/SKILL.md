@@ -36,3 +36,8 @@ description: Help manage opened PRs. When you notice a PR or feature branch need
 If your primary task is not about maintaining or reviewing PRs and branches, then this maintenance is secondary to your main task. Do only if convenient and easy. Skip maintenance if it will disrupt your active task or if you can not easily checkout the feature branch in the filesystem or in a worktree.
 
 Always preserve local edits, unpushed commits, and checkouts used by other agents or running processes. Defer unsafe changes. If the current workspace is not clean, do not abandon changes, but advise the user about the current status of local vs remote. Recommend what to do.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/pr-management` with any improvements you can think of for next time or suggest possible improvements.

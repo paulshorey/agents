@@ -22,3 +22,8 @@ description: When starting, continuing, or finishing changes in a Git repository
 **Write PR descriptions as durable handoffs** to future engineers and AI agents. Lead with the problem and resulting behavior. Include relevant scope, product/design decisions and rationale, architecture and technical choices, constraints and tradeoffs, integration details, validation commands and results, and remaining work or risks. Explain context that the changed code cannot convey. Scale detail to complexity, preserve useful earlier decisions, and remove stale statements rather than narrating commits or repeating the diff.
 
 **Preserve local work and busy checkouts.** Never discard changes or force-push merely to switch tasks. If publishing or switching is blocked, report the specific blocker and next step. End with the branch, PR link, validation outcome, and any remaining unpublished work.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/git-management` with any improvements you can think of for next time or suggest possible improvements.

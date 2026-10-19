@@ -95,6 +95,7 @@ When agents must push branches or create pull requests after setup:
    configures Git to ask `gh` for credentials; it does not write the PAT into a
    repository remote URL. Confirm that the remote uses HTTPS when relying on
    this flow.
+
 5. Verify only non-secret facts: `gh api user --jq .login`, repository access,
    and a dry read such as `gh repo view OWNER/REPO`. Never run `gh auth token`,
    echo the variable, enable shell tracing, or place the token in a command-line
@@ -108,3 +109,8 @@ Use the environment's test function after every material change. Inspect the com
 After setup passes, connect an interactive terminal when available and verify the repository marker, shared skill discovery, tool versions, and the project's bounded health/build/test command. Reset the cache when repository changes make cached tool or dependency state incompatible. Record the final setup/maintenance scripts and required variable names in repository documentation so a human can reproduce the environment.
 
 Do not treat a successful dependency install as proof the workspace is ready. The final check must exercise the project's real critical path: for example a build and health endpoint, a local database migration plus tests, or an Android Kotlin compile.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/codex-cloud-environments` with any improvements you can think of for next time or suggest possible improvements.

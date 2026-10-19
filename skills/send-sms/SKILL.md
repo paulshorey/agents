@@ -29,3 +29,8 @@ JSON `ok: true` means Twilio accepted the message. On failure, report `code` and
 `acceptedParts`; do not automatically retry an uncertain or partial send, which
 could duplicate the message. For setup or errors, see the
 [SMS runbook](../../docs/runbooks/sms.md).
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/send-sms` with any improvements you can think of for next time or suggest possible improvements.

@@ -36,3 +36,8 @@ Codex/Cursor differences matter; refresh official sources for changed behavior.
 Choose changes within the current request. A capability goal or documented token
 location does not authorize unrelated infrastructure or account mutations. When a
 task asks for a plan, keep proposed policy/connection changes clearly unapplied.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/agent-customization` with any improvements you can think of for next time or suggest possible improvements.

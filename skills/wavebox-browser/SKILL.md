@@ -9,12 +9,12 @@ Use the Computer tool to open the Wavebox app and navigate its sidebar.
 
 ## Visual organization and session isolation
 
-| Concept | Meaning | Navigation consequence |
-| --- | --- | --- |
-| Profile | An outer browser profile with its own Wavebox setup, including spaces, groups, apps, and settings. | Use the requested profile when specified. An email-named group or space is not a browser profile. |
-| Space | A cookie and site-storage partition within a profile. Apps/tabs in the same space share the applicable site's session state; different spaces isolate it. Normal domain/origin boundaries still apply to cookies and localStorage. | The selected app/tab's assigned space determines its session context. A website can still provide its own multi-account switcher within that context. |
-| Group | Visual organization in the sidebar, also called the Webdock. A group has a default space, but its apps/tabs can use different spaces. Visual nesting, folders, and sections do not establish cookie isolation. | Resolve a named group through visual membership; verify the selected app/tab's space separately. |
-| App / tab | A named, persistent Webdock app may contain a website and additional tabs. The user may call the app itself a “tab.” | A sidebar label such as `Railway` can correspond to an extension tab titled `livx` or `WebArts`. |
+| Concept   | Meaning                                                                                                                                                                                                                            | Navigation consequence                                                                                                                                |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Profile   | An outer browser profile with its own Wavebox setup, including spaces, groups, apps, and settings.                                                                                                                                 | Use the requested profile when specified. An email-named group or space is not a browser profile.                                                     |
+| Space     | A cookie and site-storage partition within a profile. Apps/tabs in the same space share the applicable site's session state; different spaces isolate it. Normal domain/origin boundaries still apply to cookies and localStorage. | The selected app/tab's assigned space determines its session context. A website can still provide its own multi-account switcher within that context. |
+| Group     | Visual organization in the sidebar, also called the Webdock. A group has a default space, but its apps/tabs can use different spaces. Visual nesting, folders, and sections do not establish cookie isolation.                     | Resolve a named group through visual membership; verify the selected app/tab's space separately.                                                      |
+| App / tab | A named, persistent Webdock app may contain a website and additional tabs. The user may call the app itself a “tab.”                                                                                                               | A sidebar label such as `Railway` can correspond to an extension tab titled `livx` or `WebArts`.                                                      |
 
 Do not model this as a strict Profile → Space → Group → Tab hierarchy. Within a profile, visual placement and space assignment are separate relationships. Even the exact same URL can represent different signed-in sessions.
 
@@ -32,3 +32,8 @@ The user's naming convention is that a group shares its name with its default sp
 ## New tabs
 
 For a requested new tab in a particular group/space, use Wavebox's contextual UI and verify its resulting space and placement. Do not assume generic browser `new()` / `createBrowserTab()` calls select the requested Wavebox group or space.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/wavebox-browser` with any improvements you can think of for next time or suggest possible improvements.

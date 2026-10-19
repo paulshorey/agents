@@ -65,3 +65,8 @@ The helper refuses ambiguous route records, stale plans, and mismatched workspac
 zone, project, environment, source branch, or domain port. It preserves other TXT,
 MX, and subdomain records. Use native provider operations for unsupported record
 types/project shapes, following the same identity and read-back checks.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/deploy-railway-with-cloudflare` with any improvements you can think of for next time or suggest possible improvements.

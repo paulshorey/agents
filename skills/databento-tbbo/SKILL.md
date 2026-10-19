@@ -29,3 +29,8 @@ Build trade OHLCV from observed `price` and `size` for one instrument at a time.
 Validate schema/format, file checksums, symbol mapping, timestamp precision, trade/quote bounds appropriate to the instrument, flags indicating bad receive time or uncertain book, record counts, gaps, and coverage. Report excluded or unknown records. Keep raw files and provenance so candles and metrics can be reproduced. In this trading repository, check `docs/project/data.md` and the current importer before modifying it; the existing CSV minute-bar path may not support JSONL, negative-price spreads, or tick-level metrics.
 
 For DBN conversion, the official [encoding documentation](https://databento.com/docs/api-reference-historical/basics/encodings) describes `DBNStore.to_csv(pretty_ts=True, pretty_px=True, map_symbols=True)`. Confirm the resulting columns instead of assuming the JSON object shape survives conversion.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/databento-tbbo` with any improvements you can think of for next time or suggest possible improvements.

@@ -29,3 +29,8 @@ and raw logs out of memory. Leave the next run enough context to continue.
 
 For maintenance outside a scheduled run, retain the previous run's ID and
 observation time; label the maintenance separately.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/automation-memory` with any improvements you can think of for next time or suggest possible improvements.

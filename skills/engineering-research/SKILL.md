@@ -59,3 +59,8 @@ python3 "$SKILL_DIR/scripts/search.py" /absolute/path/to/searches.json
 5. Apply the decision to the implementation when implementation is requested. Verify behavior against the actual dependency versions and runtime. Stop research when the evidence supports the decision; continue only for unresolved questions that could materially change it.
 
 Scale the response to the task: a brief recommendation with sources for a small choice; a comparison of options, tradeoffs, and unresolved questions for a substantial design. Save bulky raw results in the project's scratch area when useful. Keep normal progress updates while requests run.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/engineering-research` with any improvements you can think of for next time or suggest possible improvements.

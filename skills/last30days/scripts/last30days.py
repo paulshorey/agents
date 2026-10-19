@@ -3206,6 +3206,7 @@ def _looks_like_entity_topic(topic: str) -> bool:
     return not any(w.lower() in common for w in words)
 
 
+<<<<<<< Updated upstream
 def hosted_unsupported_options(args: argparse.Namespace, config: dict) -> list[str]:
     """API v1 accepts topic/depth/register, not local retrieval constraints."""
     defaults = vars(build_parser().parse_args([]))
@@ -3227,6 +3228,8 @@ def hosted_unsupported_options(args: argparse.Namespace, config: dict) -> list[s
     return sorted(unsupported)
 
 
+=======
+>>>>>>> Stashed changes
 def main() -> int:
     parser = build_parser()
     # Use parse_known_args so setup sub-flags (--device-auth, --github,
@@ -3685,6 +3688,7 @@ def _main(
         and not args.deep_research
         and (args.perplexity_search_type is None or not config.get("PERPLEXITY_API_KEY"))
     ):
+<<<<<<< Updated upstream
         unsupported = hosted_unsupported_options(args, config)
         if unsupported:
             sys.stderr.write(
@@ -3693,6 +3697,8 @@ def _main(
                 "No hosted search was started.\n"
             )
             return 2
+=======
+>>>>>>> Stashed changes
         if args.perplexity_search_type is not None:
             sys.stderr.write(
                 "hosted backend does not apply --perplexity-search-type and no direct "

@@ -15,3 +15,8 @@ Example 2: If you're having a hard time finding a component or script or struggl
 Always when working, think about how to make the current process easier next time. If easy, make the improvement now. If complex or risky, explain the problem.
 
 Don't worry about scope creep. It's ok to make improvements unrelated to the current task. This is a small informal organization without strict task management. When you're working on a task, it's ok to make an unrelated change to improve the product.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/own-the-product` with any improvements you can think of for next time or suggest possible improvements.

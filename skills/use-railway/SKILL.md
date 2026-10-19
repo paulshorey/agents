@@ -35,3 +35,8 @@ pinned tools incidentally. Never send secrets through command arguments or tool 
 After changes, read back the same resource. Track the exact deployment until SUCCESS;
 a successful upload or CLI exit is not deployment completion. Verify application health
 and any authorized functional behavior separately from infrastructure readiness.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/use-railway` with any improvements you can think of for next time or suggest possible improvements.

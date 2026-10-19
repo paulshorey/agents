@@ -1,9 +1,16 @@
 ---
 name: parallel-deep-research
+<<<<<<< Updated upstream
 description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than a web search. For normal research/lookup requests, use available web-search tools instead. Supports follow-ups with a known prior Task interaction ID."
 user-invocable: true
 argument-hint: <topic>
 compatibility: Requires parallel-cli >= 0.9.3 and internet access.
+=======
+description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than parallel-web-search. For normal research/lookup requests, use parallel-web-search instead. Supports follow-ups with a known prior Task interaction ID."
+user-invocable: true
+argument-hint: <topic>
+compatibility: Requires parallel-cli >= 0.3.0 and internet access.
+>>>>>>> Stashed changes
 allowed-tools: Bash(parallel-cli:*)
 metadata:
   author: parallel
@@ -13,11 +20,19 @@ metadata:
 
 Research topic: $ARGUMENTS
 
+<<<<<<< Updated upstream
 > These commands were verified with `parallel-cli` 0.9.3. If a documented command or option is missing, check `parallel-cli --version` and that command's `--help`, then follow the installation-specific upgrade guidance in Setup. API, authentication and input errors are not evidence of an older CLI.
 
 ## When to use (vs parallel-web-search)
 
 ONLY use this skill when the user explicitly requests deep/exhaustive research. It can take several minutes and costs more than a quick search, depending on the processor and task. For normal "research X" requests, quick lookups, or fact-checking, use the harness's available web-search tools. This standalone import does not include the upstream Parallel plugin or its companion skills.
+=======
+> Requires `parallel-cli` ≥ 0.3.0 for text output and context chaining. If a documented command or option is missing, check `parallel-cli --version` and that command's `--help`, then follow the installation-specific upgrade guidance in Setup. API, authentication and input errors are not evidence of an older CLI.
+
+## When to use (vs parallel-web-search)
+
+ONLY use this skill when the user explicitly requests deep/exhaustive research. It can take several minutes and costs more than a quick search, depending on the processor and task. For normal "research X" requests, quick lookups, or fact-checking, use **parallel-web-search** instead.
+>>>>>>> Stashed changes
 
 ## Step 1: Start the research
 
@@ -101,6 +116,7 @@ Avoid loading the whole report into context. Read only the relevant sections whe
 
 ## Setup
 
+<<<<<<< Updated upstream
 First run `command -v parallel-cli` and `parallel-cli --version` in the agent's
 terminal. Reuse the current project's documented installation and lockfile; a CLI
 in another project's virtual environment is not a shared installation. An existing
@@ -154,3 +170,19 @@ active legacy login, use the authorized device-login path rather than accepting
 `authenticated: true` as proof of account access. Only a billing-specific error
 warrants a balance check, and adding funds needs explicit confirmation. Reuse
 saved task IDs; do not automatically retry an ambiguous creation.
+=======
+If `parallel-cli` is not found, install and authenticate:
+
+```bash
+/parallel:parallel-cli-setup
+```
+
+If a documented option or command is missing, identify the install method and upgrade through that method: standalone `parallel-cli update`; pipx `pipx upgrade parallel-web-tools`; uv `uv tool upgrade parallel-web-tools`; Homebrew `brew upgrade parallel-web/tap/parallel-cli`; npm `npm update -g parallel-web-cli`. Recheck version and help in the agent's terminal before retrying.
+
+For authentication or API errors, inspect the returned message. A `403` can indicate permissions, account policy or billing; it does not prove low balance. Check `parallel-cli auth --json` and its `authenticated` boolean when relevant without exposing credentials. Only a billing-specific error warrants a balance check, and adding funds needs explicit confirmation. Reuse saved task IDs; do not automatically retry an ambiguous creation.
+
+---
+
+**Self-reflection and improvement:**
+Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/parallel-deep-research` with any improvements you can think of for next time or suggest possible improvements.
+>>>>>>> Stashed changes
