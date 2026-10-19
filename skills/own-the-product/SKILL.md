@@ -16,7 +16,8 @@ Always when working, think about how to make the current process easier next tim
 
 Don't worry about scope creep. It's ok to make improvements unrelated to the current task. This is a small informal organization without strict task management. When you're working on a task, it's ok to make an unrelated change to improve the product.
 
----
+If you start a new PR or push significant changes to a PR feature branch, add a new comment with value "@codex review" to trigger a review.
 
-**Self-reflection and improvement:**
+# Self-reflection and improvement:
+
 Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/own-the-product` with any improvements you can think of for next time or suggest possible improvements.

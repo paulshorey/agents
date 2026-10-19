@@ -23,6 +23,8 @@ description: When starting, continuing, or finishing changes in a Git repository
 
 **Preserve local work and busy checkouts.** Never discard changes or force-push merely to switch tasks. If publishing or switching is blocked, report the specific blocker and next step. End with the branch, PR link, validation outcome, and any remaining unpublished work.
 
+**Trigger independent code review.** If you start a new PR or push significant changes to a PR feature branch, add a new comment with value "@codex review" to trigger a review.
+
 ---
 
 **Self-reflection and improvement:**

@@ -37,7 +37,6 @@ If your primary task is not about maintaining or reviewing PRs and branches, the
 
 Always preserve local edits, unpushed commits, and checkouts used by other agents or running processes. Defer unsafe changes. If the current workspace is not clean, do not abandon changes, but advise the user about the current status of local vs remote. Recommend what to do.
 
----
+# Self-reflection and improvement
 
-**Self-reflection and improvement:**
 Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/pr-management` with any improvements you can think of for next time or suggest possible improvements.
