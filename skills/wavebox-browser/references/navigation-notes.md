@@ -32,7 +32,7 @@ The popup's **Open in Space...** is distinct from selecting an existing app in a
 
 The owner uses “app,” “tab,” and “shortcut” for persistent Webdock website entries. A page inside an app is a separate tab. During this session, the `x@artspaces.net` visual group contained both `Apple Developer` and `Stripe`; their assigned spaces differed. These observations do not establish current assignments or signed-in accounts. Recheck before account-dependent work, and preserve existing assignments.
 
-Selecting native accessibility `sortable` rows sometimes reordered apps instead of activating them. Use **Global Search**, type the app name into **Search Wavebox and the Web**, and select the matching **Apps → `<name> Weblink`** result. Inspect the resulting toolbar space and website identity. Do not repeatedly click or drag a sortable row when activation fails. An Open Tabs search result did not reliably activate the page in this session; the Apps/Weblink result did.
+Selecting native accessibility `sortable` rows sometimes reordered apps instead of activating them. Use **Global Search**, type the app name into **Search Wavebox and the Web**, and select the matching **Apps → `<name> Weblink`** result only if it is unique or provides enough group/space context. Duplicate identical results require contextual sidebar/settings inspection; do not choose by order. Inspect the resulting toolbar space and website identity. Do not repeatedly click or drag a sortable row when activation fails. An Open Tabs search result did not reliably activate the page in this session; the Apps/Weblink result did.
 
 ## Global Search and layouts
 
