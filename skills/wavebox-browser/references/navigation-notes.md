@@ -28,6 +28,12 @@ The `Running the … Space` toolbar button opened a popup with the current space
 
 The popup's **Open in Space...** is distinct from selecting an existing app in a group. Do not use it merely to find an already configured Railway app.
 
+## Existing persistent apps — October 22, 2026
+
+The owner uses “app,” “tab,” and “shortcut” for persistent Webdock website entries. A page inside an app is a separate tab. During this session, the `x@artspaces.net` visual group contained both `Apple Developer` and `Stripe`; their assigned spaces differed. These observations do not establish current assignments or signed-in accounts. Recheck before account-dependent work, and preserve existing assignments.
+
+Selecting native accessibility `sortable` rows sometimes reordered apps instead of activating them. Use **Global Search**, type the app name into **Search Wavebox and the Web**, and select the matching **Apps → `<name> Weblink`** result. Inspect the resulting toolbar space and website identity. Do not repeatedly click or drag a sortable row when activation fails. An Open Tabs search result did not reliably activate the page in this session; the Apps/Weblink result did.
+
 ## Global Search and layouts
 
 **Global Search** opened **Search Wavebox and the Web**. Typing `Railway` returned an open-tab result with its space and two identical `Railway Weblink` app results. `setValue` changed the text without triggering results; clicking the field, selecting its text, and using `typeText` worked. Avoid Enter on an ambiguous result or web suggestion.
