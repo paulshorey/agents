@@ -4,13 +4,9 @@
 from __future__ import annotations
 
 import argparse
-<<<<<<< Updated upstream
 from datetime import datetime, timezone
 import json
 import math
-=======
-import json
->>>>>>> Stashed changes
 import os
 import subprocess
 import sys
@@ -24,10 +20,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 import store
 from lib import env as envlib, http, schema, usage
-<<<<<<< Updated upstream
 from lib.watchlist_schedule import parse_schedule, schedule_due
-=======
->>>>>>> Stashed changes
 
 
 # --- Webhook Delivery Functions ---
@@ -37,17 +30,10 @@ def _deliver_findings(topic_name: str, counts: dict) -> None:
     channel = store.get_setting("delivery_channel", "")
     if not channel or counts.get("new", 0) == 0:
         return
-<<<<<<< Updated upstream
 
     mode = store.get_setting("delivery_mode", "announce")
     message = _format_delivery_message(topic_name, counts, mode)
 
-=======
-    
-    mode = store.get_setting("delivery_mode", "announce")
-    message = _format_delivery_message(topic_name, counts, mode)
-    
->>>>>>> Stashed changes
     # Require https before routing. The old "hooks.slack.com" in channel
     # substring test ran before any scheme check, so a channel like
     # http://evil.example/hooks.slack.com was treated as Slack and POSTed in
@@ -74,11 +60,7 @@ def _format_delivery_message(topic: str, counts: dict, mode: str) -> str:
     """Format notification message based on delivery mode."""
     new = counts.get("new", 0)
     updated = counts.get("updated", 0)
-<<<<<<< Updated upstream
 
-=======
-    
->>>>>>> Stashed changes
     if mode == "announce":
         return f"📰 *last30days update: {topic}*\n{new} new, {updated} updated"
     elif mode == "silent":
@@ -110,7 +92,6 @@ def _send_generic_webhook(url: str, text: str) -> None:
 
 def cmd_add(args):
     schedule = "0 8 * * 1" if args.weekly else (args.schedule or "0 8 * * *")
-<<<<<<< Updated upstream
     try:
         parse_schedule(schedule)
     except ValueError as exc:
@@ -118,11 +99,6 @@ def cmd_add(args):
     queries = [query.strip() for query in (args.queries or "").split(",") if query.strip()] or None
     topic = store.add_topic(args.topic, search_queries=queries, schedule=schedule)
     sched_desc = "weekly (Mondays 8am UTC)" if args.weekly else f"cron ({schedule}, UTC)"
-=======
-    queries = [query.strip() for query in (args.queries or "").split(",") if query.strip()] or None
-    topic = store.add_topic(args.topic, search_queries=queries, schedule=schedule)
-    sched_desc = "weekly (Mondays 8am)" if args.weekly else f"daily ({schedule})"
->>>>>>> Stashed changes
     print(json.dumps({
         "action": "added",
         "topic": topic["name"],
@@ -183,7 +159,6 @@ def cmd_run_all(args):
 
     budget_limit = float(store.get_setting("daily_budget", "5.00"))
     results = []
-<<<<<<< Updated upstream
     # All topics use the poll's entry time even if earlier research takes minutes.
     poll_time = datetime.now(timezone.utc)
     for topic in topics:
@@ -195,9 +170,6 @@ def cmd_run_all(args):
         if not due:
             results.append({"topic": topic["name"], "status": "skipped", "reason": "Schedule not due"})
             continue
-=======
-    for topic in topics:
->>>>>>> Stashed changes
         results.append(_budget_skip(topic) or _run_topic(topic))
 
     print(json.dumps({
@@ -291,17 +263,10 @@ def _research_topic(topic: dict, run_id: int, child_env: dict) -> dict:
             findings_new=counts["new"],
             findings_updated=counts["updated"],
         )
-<<<<<<< Updated upstream
 
         # Deliver webhook notification if configured
         _deliver_findings(topic["name"], counts)
 
-=======
-        
-        # Deliver webhook notification if configured
-        _deliver_findings(topic["name"], counts)
-        
->>>>>>> Stashed changes
         return {
             "topic": topic["name"],
             "status": "completed",
@@ -318,16 +283,11 @@ def _research_topic(topic: dict, run_id: int, child_env: dict) -> dict:
             duration_seconds=duration,
         )
         return {"topic": topic["name"], "status": "failed", "error": "timeout"}
-<<<<<<< Updated upstream
     except Exception as exc:
-=======
-    except json.JSONDecodeError as exc:
->>>>>>> Stashed changes
         duration = time.time() - start_time
         store.update_run(
             run_id,
             status="failed",
-<<<<<<< Updated upstream
             error_message=f"Research processing failed: {type(exc).__name__}",
             duration_seconds=duration,
         )
@@ -344,16 +304,6 @@ def cmd_config(args):
             raise SystemExit("Budget must be a finite, nonnegative amount")
         store.set_setting("daily_budget", str(value))
         print(json.dumps({"action": "config", "key": "daily_budget", "value": str(value)}))
-=======
-            error_message=f"Invalid JSON output: {exc}",
-            duration_seconds=duration,
-        )
-        return {"topic": topic["name"], "status": "failed", "error": f"parse error: {exc}"}
-def cmd_config(args):
-    if args.key == "budget":
-        store.set_setting("daily_budget", str(args.value))
-        print(json.dumps({"action": "config", "key": "daily_budget", "value": str(args.value)}))
->>>>>>> Stashed changes
         return
     if args.key == "delivery":
         value = str(args.value)

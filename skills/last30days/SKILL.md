@@ -2,11 +2,7 @@
 name: last30days
 version: "3.28.0"
 description: "Research what people actually say about any topic in the last 30 days. Pulls posts and engagement from Reddit, X, YouTube, TikTok, Hacker News, Polymarket, GitHub, and the web. Includes a doctor health check to diagnose broken or missing sources."
-<<<<<<< Updated upstream
 argument-hint: 'last30days nvidia earnings reaction | last30days AI video tools | last30days what users want in react'
-=======
-argument-hint: "last30days nvidia earnings reaction | last30days AI video tools | last30days what users want in react"
->>>>>>> Stashed changes
 allowed-tools: Bash, Read, Write, AskUserQuestion, WebSearch
 homepage: https://github.com/mvanhorn/last30days-skill
 repository: https://github.com/mvanhorn/last30days-skill
@@ -73,10 +69,7 @@ metadata:
       - clawhub
 ---
 
-<<<<<<< Updated upstream
 
-=======
->>>>>>> Stashed changes
 # last30days v3.28.0: Research Any Topic from the Last 30 Days
 
 ## Skill contract
@@ -99,7 +92,6 @@ Read this root in full. Read only references whose conditions apply, using the h
 
 Paths resolve relative to `SKILL_DIR`. A mode selected while reading a reference returns here to load its required reference before execution or synthesis.
 
-<<<<<<< Updated upstream
 | Condition | Required read | Return point |
 |---|---|---|
 | Before any engine command | Read [references/runtime.md](references/runtime.md) in full. | Stale-clone check, interpreter bootstrap, and trusted save/config resolution precede commands. |
@@ -118,26 +110,6 @@ Paths resolve relative to `SKILL_DIR`. A mode selected while reading a reference
 | Grok Bot X lane | Read [references/grok-bot-x.md](references/grok-bot-x.md) in full. | Fetch and validate the X envelope before the research engine command. |
 | Follow-up on existing research | Read [references/followups.md](references/followups.md) in full. | Answer or re-render existing research; use the explicit cached drill/freshness/queue routes when requested. |
 | HTML/export intent | Read [references/save-html-brief.md](references/save-html-brief.md) in full. | Create the local artifact, then follow its access and explicit publishing choices. |
-=======
-| Condition                                            | Required read                                                                                                                 | Return point                                                                                                                                                             |
-| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Before any engine command                            | Read [references/runtime.md](references/runtime.md) in full.                                                                  | Stale-clone check, interpreter bootstrap, and trusted save/config resolution precede commands.                                                                           |
-| Library search, feed, or queue intent                | Read [references/library-queue.md](references/library-queue.md) in full.                                                      | Execute the selected offline fast path, then stop.                                                                                                                       |
-| First-run setup is required                          | Read [references/setup-wizard.md](references/setup-wizard.md) in full.                                                        | Evaluate all credential sources; complete the applicable host flow, then resume the original request route.                                                              |
-| Source repair requested or indicated by doctor       | Read [references/setup-wizard.md](references/setup-wizard.md) in full.                                                        | Use the repair entry and applicable Manual Setup Guide subsection; preserve consent and host restrictions without restarting onboarding.                                 |
-| Trending/discovery intent                            | Read [references/discovery.md](references/discovery.md) in full.                                                              | Run the complete host-judged protocol and relay its brief; skip ordinary topic planning, supplements, and synthesis.                                                     |
-| Ordinary topic research or source-health diagnosis   | Read [references/research-runbook.md](references/research-runbook.md) in full.                                                | Diagnose sources; stop after health-check-only guidance. For research, parse intent, run query quality/resolution/planning, execute the engine, and collect supplements. |
-| Before synthesizing ordinary or comparison research  | Read [references/synthesis.md](references/synthesis.md) in full.                                                              | Synthesize grounded evidence (comparison bodies use the comparison template), then apply the root output laws and final checks.                                          |
-| Explicit comparison intent                           | Read [references/comparison.md](references/comparison.md) in full.                                                            | Use comparison execution and its output exceptions before writing the comparison body.                                                                                   |
-| `--competitors` mode                                 | Read [references/competitors.md](references/competitors.md) and [references/comparison.md](references/comparison.md) in full. | Use comparison execution and synthesis; preserve per-entity targeting.                                                                                                   |
-| Hiring intent or an engine `## Hiring Signals` block | Read [references/hiring-signals.md](references/hiring-signals.md) in full.                                                    | Apply the jobs lane and its scoped planning exception; in standard runs, apply its evidence-versus-interpretation rule.                                                  |
-| `--agent` mode or explicit machine-readable JSON     | Read [references/agent-mode.md](references/agent-mode.md) in full.                                                            | Apply structured output without treating absent consent as permission.                                                                                                   |
-| Recommendation intent                                | Read [references/recommendations.md](references/recommendations.md) in full.                                                  | Rank and render the recommended items before the footer/invitation.                                                                                                      |
-| Identifiable product requires category peers         | Read [references/category-peers.md](references/category-peers.md) in full.                                                    | Expand peers during Step 0.55 before planning.                                                                                                                           |
-| Grok Bot X lane                                      | Read [references/grok-bot-x.md](references/grok-bot-x.md) in full.                                                            | Fetch and validate the X envelope before the research engine command.                                                                                                    |
-| Follow-up on existing research                       | Read [references/followups.md](references/followups.md) in full.                                                              | Answer or re-render existing research; use the explicit cached drill/freshness/queue routes when requested.                                                              |
-| HTML/export intent                                   | Read [references/save-html-brief.md](references/save-html-brief.md) in full.                                                  | Create the local artifact, then follow its access and explicit publishing choices.                                                                                       |
->>>>>>> Stashed changes
 
 ## Dispatch before research
 
@@ -148,10 +120,6 @@ For library search/feed/queue, run the selected offline procedure and relay its 
 For a follow-up, use existing findings unless the user requests a different topic or an explicit drill/freshness action. Do not run setup again merely to answer a follow-up.
 
 For fresh research or discovery, resolve whether the agent session has a usable web-search tool, including a deferred or connector-provided tool. If the host requires loading, selecting, or enabling that tool, do so through the host's mechanism before use. Use the available capability rather than requiring one particular tool name or schema.
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 - When host web search is available, use it for applicable pre-research and supplements. Export `LAST30DAYS_NATIVE_SEARCH=1` in the same shell as the engine.
 - When no host web search is available, leave that signal unset. Skip Steps 0.55 and 0.75, and add `--auto-resolve`; the engine uses configured backends or its keyless floor.
 
@@ -173,10 +141,6 @@ This emits exactly one token: `1` or `FIRST_RUN_DETECTED`. The grep sees only th
 If a topic is waiting and the user declines X/browser access or chooses Skip, continue immediately with the available cookie-free sources. Do not repeat the X question. After useful findings, resume the deferred ScrapeCreators offer and, if a key is saved, source opt-in **in the same run**. Do not run the first-topic picker when the original request already supplied a topic. A discovery request remains discovery after onboarding; never downgrade it to normal topic research.
 
 After the gate:
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 - Trending, globally or in a domain: load discovery and use LAW 11. A user-typed `--trending` is intent, not an engine flag or topic. Bare global trending requires no domain question.
 - Topic supplied: load the topic runbook. Run Step 0.45 query quality before resolution, then all applicable Steps 0.5/0.55/0.75 before execution. Do not ask about an unspecified target tool before research.
 - No topic supplied: ask one short topic question and wait; do not research or WebSearch.
@@ -205,11 +169,7 @@ GENERAL / NEWS / PROMPTING / RECOMMENDATIONS use `What I learned:` on line 3 and
 
 **LAW 2 - NO INVENTED TITLE LINE (with COMPARISON exception).** GENERAL / NEWS / PROMPTING / RECOMMENDATIONS begin their body with the exact prose label `What I learned:`; nothing precedes it except the badge and one blank line. Use bold KEY PATTERNS and paragraph lead-ins where governing formatting permits them. COMPARISON instead requires `# {TOPIC_A} vs {TOPIC_B} [vs {TOPIC_C}]: What the Community Says (/Last30Days)` and never uses the `What I learned:` label.
 
-<<<<<<< Updated upstream
 **LAW 3 - NO EM-DASHES OR EN-DASHES.** Use ` - ` throughout the body, key patterns, and invitation. Preserve a source's literal dash inside a direct quote.
-=======
-**LAW 3 - NO EM-DASHES OR EN-DASHES.** Use `-` throughout the body, key patterns, and invitation. Preserve a source's literal dash inside a direct quote.
->>>>>>> Stashed changes
 
 **LAW 4 - NO `##` or `###` SECTION HEADERS IN BODY (with COMPARISON exception).** Normal bodies use bold-lead-in paragraphs, the prose label `KEY PATTERNS from the research:`, and a numbered list. An engine-emitted `## Pre-Research Status` warning is allowed and must pass through verbatim. COMPARISON permits only its required `## Quick Verdict`, `## {Entity}` per entity, `## Head-to-Head`, `## The Bottom Line`, and `## The emerging stack` headers.
 
@@ -228,10 +188,6 @@ Agent research without `--plan` exits 2 before live probes unless exempt.
 Write plans to a temporary file using `mktemp` with trailing `XXXXXX`, a cleanup trap, `cat >|`, and a quoted heredoc delimiter. Pass the file path, never inline single-quoted JSON. Run the heredoc directly in the shell tool. Never wrap the invocation in `bash -lc '...'` or `zsh -lc '...'`; apostrophes in search/ranking strings must remain data.
 
 **LAW 8 - CITE READABLY FOR THE CURRENT HOST.** Governing host/tool requirements and user instructions determine required links before renderer preferences. Detection is deterministic: `CLAUDECODE` or `CURSOR_AGENT` set means hidden-link default; both unset means visible-URL default. This renderer split is separate from onboarding; Cursor remains non-modal.
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 - Hidden-link default: inline-link each cited handle, subreddit, comment author, publication, channel/creator, repository, or market at first mention, using a verbatim URL from its evidence.
 - Visible-URL default: prefer plain source labels only when links are optional. Preserve required links even when URLs display inline.
 - A comment citation uses that comment's own URL. A GitHub root URL may use `owner/repo`; an issue/PR/release URL must have a matching item label such as `owner/repo#123`. Never trim an item URL to a guessed root.
@@ -272,10 +228,6 @@ After the response and required citations, stop and wait unless governing instru
 ## Security & Permissions
 
 **What this skill does:**
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 - Sends search queries to ScrapeCreators API (`api.scrapecreators.com`) for TikTok and Instagram search. With SCRAPECREATORS_API_KEY set, Reddit search queries also go to `api.scrapecreators.com` whenever the free Reddit path returns fewer than 5 items (the default floor; at most one backfill per distinct query, date window, and subreddit set per run, and each backfill is several API calls, roughly 10 at default depth), which spends credits. Set `LAST30DAYS_REDDIT_SC_MIN_ITEMS=0` to send Reddit queries only when the free path returns nothing (see also `LAST30DAYS_REDDIT_BACKEND`)
 - Legacy: Sends search queries to OpenAI's Responses API (`api.openai.com`) for Reddit discovery (fallback if no SCRAPECREATORS_API_KEY)
 - Sends search queries to X/Twitter via the official X API v2 (`api.x.com`, app-only bearer from `X_BEARER_TOKEN`, sent only in the Authorization header; the engine's default X path on a Grok Bot host next to xAI's API), optional user-provided `AUTH_TOKEN`/`CT0` env vars, explicit browser-cookie opt-in (`FROM_BROWSER` or setup consent), xAI's API (`api.x.ai` by default), Xquik's API (`xquik.com` by default), or the official X API v2 via xurl CLI (OAuth2, auto-detected when installed and authenticated)
@@ -294,10 +246,6 @@ After the response and required citations, stop and wait unless governing instru
 - Provides `--preflight` as an opt-in permission inspector (config source, planned writes, available sources); it does not read browser-cookie values, write files, or run live research. Do not run it as a required first-run step.
 
 **What this skill does NOT do:**
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 - Does not post, like, or modify content on any platform
 - Does not access browser cookies unless explicitly configured or consented (`FROM_BROWSER`, manual X cookies, or setup with `--allow-browser-cookies`); `--preflight` and `--diagnose` do not read browser-cookie values
 - Does not use Codex ChatGPT auth as an OpenAI provider credential
@@ -311,11 +259,8 @@ After the response and required citations, stop and wait unless governing instru
 **Bundled scripts:** `scripts/last30days.py` (main research engine), `scripts/lib/` (search, enrichment, rendering modules), `scripts/lib/vendor/bird-search/` (vendored X search client, MIT licensed)
 
 Review scripts before first use to verify behavior.
-<<<<<<< Updated upstream
-=======
 
 ---
 
 **Self-reflection and improvement:**
 Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/last30days` with any improvements you can think of for next time or suggest possible improvements.
->>>>>>> Stashed changes
