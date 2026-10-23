@@ -1,6 +1,6 @@
 ---
 name: wavebox-browser
-description: Select existing persistent Wavebox apps (Webdock shortcuts) or their tabs in named sidebar groups while verifying their cookie spaces. Use for Wavebox profiles, mixed-space groups, duplicate site tabs, and account-specific navigation.
+description: Select existing persistent Wavebox apps (Webdock shortcuts) or their tabs, and create new tabs in requested sidebar groups and cookie spaces. Use for Wavebox profiles, mixed-space groups, duplicate site tabs, and account-specific navigation.
 ---
 
 # Wavebox Browser
