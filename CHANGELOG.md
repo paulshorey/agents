@@ -4,6 +4,19 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-29 — Local development service operations
+
+- Added `local-dev-services` for status, scoped recovery and full restart of the
+  existing `~/git/local-dev` service catalog and private Tailscale routes.
+- Added a read-only workspace checker that uses the owning manager's identity,
+  local readiness and route ownership checks plus real private HTTPS probes.
+  Its Node 24 selector reuses an existing runtime without installing tools.
+- Documented native Tailscale versus per-app proxy recovery, bounded retries,
+  worker-code reload, no-Git operation and the distinction between availability
+  and source freshness. Ports and commands remain owned by local-dev config.
+- No schedule, competing supervisor, account, credentials or native app settings
+  were installed. Skill discovery needs no inventory registration.
+
 ## 2026-10-17 — Immediate Codex review requests
 
 - Updated the Git and PR management skills to request Codex review immediately
