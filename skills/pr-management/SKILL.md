@@ -1,42 +1,41 @@
 ---
 name: pr-management
-description: Help manage opened PRs. When you notice a PR or feature branch needs attention, even without an explicit review request, go ahead review it, comment on it, address comments, merge main. Sync local git filesystem.
+description: Review and maintain relevant PRs, address feedback and conflicts, diagnose checks, and synchronize checkouts. Use for requested PR maintenance or follow-up needed by the active task.
 ---
 
-# Project maintenance
+# PR maintenance
 
-**Own the codebase you're working on.** Do not simply write code for the task at hand, but manage the entire project. Maintain any active PRs and feature branches. Review, fix, address feedback, merge ready work, and synchronize the user's local checkout. Routine fixes, pushes, PR comments, and ready merges are authorized; respect current instructions and repository rules.
+Use [Git management](../git-management/SKILL.md) for branches, publishing, review
+requests, and production promotions. Work within current authorization and
+repository rules; preserve local edits, unpushed commits, and active processes.
+Incidental maintenance must not disrupt or expand the primary task.
 
-**Synchronize.** Verify the repository, branches, PR state, and local work; fetch current remote state. If the local branch is behind its upstream, pull with `--ff-only`. Inspect divergence rather than resetting or force-pushing.
+1. **Establish current state.** Fetch refs and inspect PR head/base, draft status,
+   reviews, unresolved threads, checks, and local divergence. Fast-forward with
+   `--ff-only` where safe; investigate divergence rather than resetting.
+2. **Review uncovered changes.** Identify which changes prior reviews covered;
+   review the remaining current changes and their affected context. Treat all
+   bot suggestions, including Cursor fix PRs, as proposals: verify correctness,
+   scope, and validation before accepting or rejecting them. Respect user-specified
+   reviewer exclusions and product/device/release holds.
+3. **Address feedback.** Fix valid findings, validate, commit, push, and reply
+   with the outcome. Explain false positives or justified deferrals; resolve
+   handled inline threads only after verification. Leave genuine blockers and
+   undecided questions open. Ordinary comments cannot be resolved. Avoid duplicate
+   replies; link contribution PRs and record actionable concerns not fixed directly.
+4. **Repair conflicts/checks.** Merge fetched `main` (or the PR's actual base)
+   into a conflicting feature branch, resolve, and validate. Inspect failed logs
+   and fix understood causes. Do not guess product decisions or leave an unfinished
+   merge. Report blockers with evidence and a concrete next step.
+5. **Merge only when ready and authorized.** Recheck the exact head, review coverage,
+   required checks/approvals, conflicts, and substantive blockers. Respect protections
+   and holds; do not treat your own fixes as independent review or automatically
+   merge a same-run contribution. Verify the merge result.
+6. **Synchronize safely.** After merging, fast-forward a clean `main` or switch a
+   clean merged-task branch to `main` and fast-forward. Preserve another active
+   feature branch; integrate its base only when the task requires it. Never switch
+   or reset a busy primary checkout merely because a review clone is clean.
 
-**Request Codex review immediately.** Immediately after creating any PR, including drafts, post a standalone comment whose entire body is `@codex review` before doing any other work. With GitHub CLI, run `gh pr comment <PR_URL> --body '@codex review'`. Confirm the comment was posted; if posting fails, report the review request as incomplete.
-
-**Review.** If no review covers the current changes, review them. Fix obvious issues and improvements you are confident about; validate, commit, and push. If a fix needs product/design input or cannot be implemented conveniently, comment with findings and recommendations.
-
-**Address feedback.** Evaluate unaddressed reviews and comments against current code. Fix valid concerns, validate, commit, push, and reply with the outcome. Resolve verified fixes. Explain and resolve false positives or justified findings outside scope; leave genuine blockers and undecided questions open. Avoid duplicate comments.
-
-**Resolve feature-PR conflicts.** If conflicts block a feature PR, merge the latest fetched `main` into its feature branch, resolve conflicts, validate, commit, and push. Document decisions you cannot safely make; do not leave an unfinished merge blocking other work.
-
-**Resolve PR comments.** PRs are automatically reviewed by Cursor bot. Cursor will suggest fixes in another branch and PR. Review that suggestion PR. If you agree with the fix, go ahead merge it. If you disagree with the fix, close that PR. Either way, reply to the review comment with your assessment and action. Be careful - some reviews will be false positives or out of scope, so do not assume just because Cursor bot made a comment and opened a suggestion fix PR that it's worth merging. If there is no suggestion PR but only a comment, then think about what it says and how it should be addressed. Go ahead and make the fix or improvement if necessary, or not if unnecessary. Either way, reply to the comment and resolve it.
-
-**Repair checks.** Inspect failed build/check logs and fix understood causes. If blocked, comment with evidence and the developer's next step.
-
-**Promote production.** Follow [Git management's full-release workflow](../git-management/SKILL.md): promotion PRs merge `main` into `prod`, including required database migrations and release validation. Ordinary feature PRs land in `main` first.
-
-**Merge and update locally.** Merge when the current changes are reviewed, required checks and approvals are satisfied, and no conflicts or substantive blockers remain. Recheck the head before merging, respect branch protections, and verify the PR actually merged. Then update the primary checkout, not just a temporary review worktree:
-
-- On `main`: pull the latest changes.
-- On the merged PR's branch: switch to `main` and pull, provided no additional local work would be lost.
-- On another feature branch: keep that branch and merge the latest fetched `main` into it; resolve conflicts and validate.
-
-**Verify the final local branch and synchronization state.** Briefly report material changes and any deferred synchronization, including its blocker and next step.
-
-# When not to do maintenance
-
-If your primary task is not about maintaining or reviewing PRs and branches, then this maintenance is secondary to your main task. Do only if convenient and easy. Skip maintenance if it will disrupt your active task or if you can not easily checkout the feature branch in the filesystem or in a worktree.
-
-Always preserve local edits, unpushed commits, and checkouts used by other agents or running processes. Defer unsafe changes. If the current workspace is not clean, do not abandon changes, but advise the user about the current status of local vs remote. Recommend what to do.
-
-# Self-reflection and improvement
-
-Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/pr-management` with any improvements you can think of for next time or suggest possible improvements.
+Report material changes, PR links, validation, final local branch/synchronization,
+and deferred work with its blocker. Verify each affected checkout rather than
+claiming the primary one is synchronized from a temporary clone's state.
