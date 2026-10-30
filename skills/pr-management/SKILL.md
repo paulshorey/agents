@@ -6,8 +6,9 @@ description: Review and maintain relevant PRs, address feedback and conflicts, d
 # PR maintenance
 
 Use [Git management](../git-management/SKILL.md) for branches, publishing, review
-requests, and production promotions. Work within current authorization and
-repository rules; preserve local edits, unpushed commits, and active processes.
+requests, and production promotions. Routine review fixes, pushes, comments, and
+ready merges are part of requested maintenance; follow user instructions, repository
+rules, and holds. Preserve local edits, unpushed commits, and active processes.
 Incidental maintenance must not disrupt or expand the primary task.
 
 1. **Establish current state.** Fetch refs and inspect PR head/base, draft status,

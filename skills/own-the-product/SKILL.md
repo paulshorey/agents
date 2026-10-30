@@ -9,8 +9,8 @@ Notice friction while building, reviewing, or testing. Fix clear, low-risk,
 reversible problems within the user's authorized scope; for example, improve a
 confusing control label or a missing diagnostic. Validate the affected behavior.
 
-For broader architecture, product choices, unrelated work, or changes with material
-consequences, explain the problem and recommend a concrete next step. Do not let
+For broader architecture, product choices, or changes with material consequences,
+explain the problem and recommend a concrete next step. Do not let
 incidental improvements displace the requested outcome.
 
 Use [Git management](../git-management/SKILL.md) for publishing and review requests.

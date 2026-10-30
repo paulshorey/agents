@@ -1,17 +1,6 @@
 # Project: Shared agent configuration
 
-Public source for shared skills, configuration, and provider tools. The active
-checkout is `~/.agents`; copies under `~/prs/` are for contributions and review.
-The human developer pulls merged `main` into `~/.agents` to activate changes.
-
-## Global instructions and shared skills
-
-- This `AGENTS.md` guides work on this repository. Keep application-specific
-  context and goals in each application's own `AGENTS.md`.
-- [rules/AGENTS.md](rules/AGENTS.md) supplies global Codex instructions through
-  `~/.codex/AGENTS.md`; [config/links.json](config/links.json) owns that link.
-- Other projects can reference `~/.agents/skills/<skill>/SKILL.md`. Maintain
-  reusable workflows here instead of copying them into each project.
+Shared AI-agent skills, configuration, and provider tooling.
 
 ## Ownership and maintenance
 
@@ -35,7 +24,8 @@ Before committing, run `bin/agents-config validate`, `bin/agents-config docs`,
 
 # Research and report
 
-If something went wrong, stop and report back. Include all info, data, and logs.
+If something goes wrong, stop the affected operation and report relevant findings, data, and logs.
+Redact secrets and private content.
 If unsure about something, research, search the web, find latest techniques and best practices.
 
 # Next steps

@@ -12,9 +12,9 @@ and PR creation/updates are part of the handoff; read-only work needs no empty P
    commits, and existing PR; fetch current refs. Preserve unrelated or ambiguously
    owned work. Use an isolated checkout if switching would disturb it or a process.
 2. **Choose the branch.** Continue an existing feature branch only for the same
-   ongoing task. Start independent work from updated `main` or a verified base;
-   never reuse a merged branch. Base work on an unmerged branch only when required
-   by the task. Move task edits off `main` before committing. Do not publish
+   ongoing task. For independent work, create a new feature branch from updated
+   `main` or a verified base; never reuse a merged branch. Base work on an unmerged
+   branch only when required by the task. Move task edits off `main` before committing. Do not publish
    pre-existing work merely to clear the checkout.
 3. **Validate and publish.** Run relevant checks, stage only task files, commit,
    and push. Create a PR after the first push or update the existing task PR.
