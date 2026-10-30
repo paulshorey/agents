@@ -1,8 +1,17 @@
 # Project: Shared agent configuration
 
 Public source for shared skills, configuration, and provider tools. The active
-checkout is `~/.agents`; `~/prs/agents` is for contributions and review. The human
-developer pulls merged changes into `~/.agents` to make them available locally.
+checkout is `~/.agents`; copies under `~/prs/` are for contributions and review.
+The human developer pulls merged `main` into `~/.agents` to activate changes.
+
+## Global instructions and shared skills
+
+- This `AGENTS.md` guides work on this repository. Keep application-specific
+  context and goals in each application's own `AGENTS.md`.
+- [rules/AGENTS.md](rules/AGENTS.md) supplies global Codex instructions through
+  `~/.codex/AGENTS.md`; [config/links.json](config/links.json) owns that link.
+- Other projects can reference `~/.agents/skills/<skill>/SKILL.md`. Maintain
+  reusable workflows here instead of copying them into each project.
 
 ## Ownership and maintenance
 

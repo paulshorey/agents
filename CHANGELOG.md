@@ -4,6 +4,11 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-29 — Shared instruction roles
+
+- Clarified repository guidance, global Codex rules, and shared skill references
+  under `~/.agents`; review copies do not activate changes in other projects.
+
 ## 2026-10-17 — Immediate Codex review requests
 
 - Updated the Git and PR management skills to request Codex review immediately

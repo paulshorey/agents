@@ -1,9 +1,11 @@
 # Paul’s agent configuration
 
 This is the Git repository for shared skills, provider tooling, and agent
-configuration: https://github.com/paulshorey/agents. The checkout is `~/.agents`.
-It is **public**. Credentials, OAuth state, application-maintained settings,
-installation backups, DNS plans, and runtime journals stay out of Git.
+configuration: https://github.com/paulshorey/agents. The active checkout is `~/.agents`;
+copies under `~/prs/` are for contributions and review. Pull merged `main` into
+`~/.agents` to activate changes. It is **public**. Credentials, OAuth state,
+application-maintained settings, installation backups, DNS plans, and runtime
+journals stay out of Git.
 
 ## Start here
 

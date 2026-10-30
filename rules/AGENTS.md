@@ -12,9 +12,11 @@ Resolve uncertainty through inspection and research when possible. Use current a
 
 Read `~/.agents/README.md` before changing global agent configuration or connecting
 provider accounts. It documents shared configuration, installed tools, credential
-profiles, and deployment commands. Skills live in `~/.agents/skills`. Keep shared
-config and scripts in this repository; keep credentials, OAuth state, backups, and
-rendered application settings in ignored local storage. Never commit or print secrets.
+profiles, and deployment commands. Read relevant shared workflows at
+`~/.agents/skills/<skill>/SKILL.md`; keep project-specific context and goals in
+that project's `AGENTS.md`. Shared config and scripts belong in `~/.agents`;
+credentials, OAuth state, backups, and rendered settings stay in ignored local
+storage. Never commit or print secrets.
 
 For Railway plus Cloudflare hosting, use `deploy-railway-with-cloudflare` and
 `railway-iac`. Select the workspace profile explicitly. A failing account identity
