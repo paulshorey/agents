@@ -1,30 +1,29 @@
 # Railway profiles and hosting configuration
 
-Use `agents-config show railway.webarts-token` to locate the selected workspace
-profile. Its location comes from `railway.webarts` in `config/profiles.json`; the
-Paul manifest and native MCP launcher both select that profile ID.
-The current file is `~/.config/railway/webarts.env`, outside this repository and
-owner-only mode 600. Its secret variable is `RAILWAY_API_TOKEN`.
-
-The generic `~/.secrets.sh` Railway token accesses another workspace. It is an
-external reference, not an inventory-managed dotenv file. Inventory checks neither
-source nor parse it. `RAILWAY_TOKEN` is a separate environment/project CI credential;
-update it in the affected CI secret store and document that store's reference.
+The Railway workspace token is `RAILWAY_API_TOKEN` in `~/.secrets.sh` (owner-only,
+mode 600), for workspace **my workspace** (`c64d0999-e00c-4c52-bbd4-2614210e3758`).
+Every shell exports it (see `agents-config show shell.secrets`). Profile
+`railway.workspace` in `config/profiles.json` points at the same file and reads only
+that literal assignment; the Paul manifest and the native MCP launcher select it, so
+they work even when a client starts them without a shell. Use
+`agents-config show railway.workspace-token` for its consumers.
+`RAILWAY_TOKEN` is a separate environment/project CI credential; update it in the
+affected CI secret store and document that store's reference.
 
 ## Update a workspace credential
 
-Use Railway's supported credential management for the intended workspace. Edit
-only the selected profile locally with a trusted editor and hidden secret handling.
-Keep literal `KEY=value` assignments, not executable shell commands, and mode 600.
-Never paste a value into a command argument, documentation, or Git.
+Use Railway's supported credential management for the intended workspace. Replace
+only the `RAILWAY_API_TOKEN` line in `~/.secrets.sh` with a trusted editor and hidden
+secret handling. Keep it a literal `export RAILWAY_API_TOKEN="..."` assignment and
+the file mode 600. Never paste a value into a command argument, documentation, or Git.
 
-Run `agents-config check --live`; the Railway result reads the registered project
-and validates workspace, environments, and source branches. A failing account
-identity endpoint alone does not establish that a workspace token is invalid.
-Restart an existing Railway MCP session after a credential change; a fresh launcher
-clears inherited Railway tokens and loads the explicit profile.
-For another workspace, register its profile ID and select it explicitly; do not
-repoint the WebArts ID to switch an unrelated task's account.
+Open a new shell, then run `agents-config check --live`; the Railway result reads the
+registered project and validates workspace, environments, and source branches. A
+failing account identity endpoint alone does not establish that a workspace token is
+invalid. Restart an existing Railway MCP session after a credential change; a fresh
+launcher clears inherited Railway tokens and reads the profile file.
+For another workspace, register its own profile ID and select it explicitly; do not
+repoint `railway.workspace` to switch an unrelated task's account.
 
 Record the replacement date, profile reference, affected consumers, and outcome in
 `CHANGELOG.md`. To recover, retrieve the value from your encrypted backup or issue

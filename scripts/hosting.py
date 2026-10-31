@@ -36,14 +36,30 @@ def credential_profiles(root=None):
             raise ValueError()
         for name, entry in profiles.items():
             if (not re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', name)
-                    or not isinstance(entry, dict) or set(entry) != {'provider', 'path'}
+                    or not isinstance(entry, dict)
+                    or not {'provider', 'path'} <= set(entry) <= {'provider', 'path', 'variables'}
                     or entry['provider'] != name.split('.')[0]
                     or not isinstance(entry['path'], str)
                     or not (entry['path'].startswith('~/') or Path(entry['path']).is_absolute())):
                 raise ValueError()
+            variables = entry.get('variables')
+            if variables is not None and (
+                    not isinstance(variables, list) or not variables
+                    or not all(isinstance(v, str) and re.fullmatch(r'[A-Z][A-Z0-9_]*', v) for v in variables)):
+                raise ValueError()
     except (ValueError, KeyError, TypeError):
         raise HostingError('Credential profile catalog is malformed; inspect it locally') from None
     return profiles
+
+
+def profile_variables(profile, root=None):
+    """Variables a registered shell-file profile exposes; None means a whole dotenv file."""
+    profile = str(profile)
+    if re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', profile):
+        entry = credential_profiles(root).get(profile)
+        if entry:
+            return entry.get('variables')
+    return None
 
 
 def resolve_profile(profile, root=None):
@@ -59,9 +75,15 @@ def resolve_profile(profile, root=None):
     return Path(profile).expanduser()
 
 
-def profile_environment(path, base=None):
-    """Parse trusted owner-only dotenv data; never execute a shell profile."""
+def profile_environment(path, base=None, variables=None):
+    """Parse trusted owner-only credential data; never execute a shell profile.
+
+    A dotenv profile must contain only literal assignments. A shell-file profile
+    registered with `variables` contributes only those literal assignments; its
+    other lines are skipped, never evaluated.
+    """
     env = dict(os.environ if base is None else base)
+    variables = profile_variables(path) if variables is None else variables
     file = resolve_profile(path)
     if not file.exists():
         return env
@@ -73,6 +95,8 @@ def profile_environment(path, base=None):
         if not line or line.startswith('#'):
             continue
         match = re.fullmatch(r'(?:export\s+)?([A-Z][A-Z0-9_]*)=(.*)', line)
+        if variables is not None and (not match or match[1] not in variables):
+            continue
         if not match:
             raise HostingError(f'Use literal dotenv assignments in {file}; shell commands are unsupported')
         values = shlex.split(match[2], comments=True)

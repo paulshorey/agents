@@ -11,8 +11,8 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | Item | Kind | Owner | Location or source | Update instructions |
 | --- | --- | --- | --- | --- |
 | [cloudflare.dns-token](#cloudflare-dns-token) | credential | agents | ~/.agents/local/credentials/cloudflare.env | [docs/runbooks/cloudflare-token.md](../docs/runbooks/cloudflare-token.md) |
-| [railway.webarts-token](#railway-webarts-token) | credential | agents | ~/.config/railway/webarts.env | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
-| [railway.legacy-profile](#railway-legacy-profile) | runtime | reference | ~/.secrets.sh | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
+| [railway.workspace-token](#railway-workspace-token) | credential | agents | ~/.secrets.sh | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
+| [shell.secrets](#shell-secrets) | runtime | reference | ~/.secrets.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [environment.cloudflare](#environment-cloudflare) | environment | agents | config/hosting/paul.json | [docs/runbooks/cloudflare-token.md](../docs/runbooks/cloudflare-token.md) |
 | [environment.railway](#environment-railway) | environment | agents | config/hosting/paul.json | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [configuration.cursor](#configuration-cursor) | configuration | agents | config/mcp.json → ~/.cursor/mcp.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
@@ -73,31 +73,31 @@ Permissions are the dashboard-confirmed declared grant. Read-only checks prove t
 
 [Update and recovery instructions](../docs/runbooks/cloudflare-token.md).
 
-<a id="railway-webarts-token"></a>
+<a id="railway-workspace-token"></a>
 
-## railway.webarts-token
+## railway.workspace-token
 
-Explicit Railway workspace profile for WebArts and Paul.
+Railway workspace API token for all workspace projects, read from the shell secrets file.
 
 Owner: **agents**.
 
-Location: `~/.config/railway/webarts.env`.
+Location: `~/.secrets.sh`.
 
 Variable names: `RAILWAY_API_TOKEN`.
 
-Declared permissions: `Existing workspace access; do not infer scope from account identity endpoint failures`.
+Declared permissions: `Workspace c64d0999-e00c-4c52-bbd4-2614210e3758 (my workspace); do not infer scope from account identity endpoint failures`.
 
 Consumers: `railway.mcp`, `hosting.paul`.
 
-The existing profile remains outside this repository. It is owner-only mode 600. Inventory records its location; this task does not migrate or rotate it.
+Tools read only the literal RAILWAY_API_TOKEN assignment from ~/.secrets.sh and never execute the file. Shells export the same value; see shell.secrets.
 
 [Update and recovery instructions](../docs/runbooks/railway.md).
 
-<a id="railway-legacy-profile"></a>
+<a id="shell-secrets"></a>
 
-## railway.legacy-profile
+## shell.secrets
 
-Legacy shell credential source for another Railway workspace.
+Global shell secret file loaded by every zsh and bash on this machine.
 
 Owner: **reference**.
 
@@ -105,11 +105,13 @@ Location: `~/.secrets.sh`.
 
 Variable names: `RAILWAY_API_TOKEN`.
 
-Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile.
+~/.zshenv loads it for every zsh (login, interactive, scripts, agent and app shells); ~/.profile and ~/.bashrc load it for bash. Exported variables reach child processes.
 
-This is also the global shell secret source. App-local .env files use their own loaders; see environment.project-secrets and the customization runbook. Authorized edits must preserve unrelated assignments and avoid printing values.
+It is a shell script with other credentials and commands. Profiles registered with variables read only those literal assignments; never execute it from tools or print its lines. Authorized edits must preserve unrelated assignments.
 
-[Update and recovery instructions](../docs/runbooks/railway.md).
+App-local .env files use their own loaders; see environment.project-secrets. Cloud agents do not have this file; inject secrets through each platform's secret manager.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
 
 <a id="environment-cloudflare"></a>
 
@@ -237,11 +239,11 @@ Codex uses the owner-only profile through the header helper. Cursor has its own 
 
 ## railway.mcp
 
-Official native Railway MCP using an explicit workspace profile.
+Official native Railway MCP using the workspace token profile.
 
 Owner: **agents**.
 
-bin/railway-mcp selects the WebArts profile by default; another workspace requires an explicit profile.
+bin/railway-mcp selects railway.workspace by default and reads its token without relying on an inherited shell environment; another workspace requires an explicit profile.
 
 [Update and recovery instructions](../docs/runbooks/railway.md).
 
@@ -418,7 +420,7 @@ Single source of credential profile IDs and file locations for wrappers, hosting
 
 Owner: **agents**.
 
-Profile IDs such as cloudflare.default and railway.webarts resolve through this catalog. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog.
+Profile IDs such as cloudflare.default and railway.workspace resolve through this catalog. A profile with variables reads only those literal assignments from a shell file. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
@@ -550,7 +552,7 @@ Owner: **reference**.
 
 Each project owns its .env, .env.local, or other declared environment-file locations and loader precedence. Inspect applicable project documentation and code; no global .env discovery or automatic loading by both agents is assumed.
 
-The existing railway.legacy-profile entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.
+The shell.secrets entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.
 
 The user intends agents to make authorized environment/secret edits. Filesystem sandbox access, provider permission, and reload/redeploy behavior still need explicit capability checks in the selected harness.
 

@@ -4,6 +4,18 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-31 — Railway token from the shell secrets file
+
+- Profile `railway.workspace` points at `~/.secrets.sh` and reads only its literal
+  `RAILWAY_API_TOKEN` assignment; profiles may now list `variables` for shell files
+  and never execute them. The Paul manifest and `bin/railway-mcp` select it.
+- Railway rejected the token in `~/.config/railway/webarts.env`; profile
+  `railway.webarts` was removed and nothing reads that file. Inventory records
+  `railway.workspace-token` and the global `shell.secrets` source.
+- Every zsh loads `~/.secrets.sh` from `~/.zshenv`; bash loads it from `~/.profile`
+  and `~/.bashrc`. Verified: `check --live` Railway read, and project-scoped Railway
+  MCP calls with an empty environment.
+
 ## 2026-10-17 — Immediate Codex review requests
 
 - Updated the Git and PR management skills to request Codex review immediately

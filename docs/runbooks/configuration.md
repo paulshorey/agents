@@ -15,6 +15,7 @@ is the metadata index; existing configuration files own actual settings.
 | Global agent instructions | `rules/AGENTS.md` | Symlink already installed; new agent session |
 | Repository agent entrypoint | `AGENTS.md` | Links repository work to the inventory and global rules |
 | Agent utility PATH hook | `config/env.sh`; installer owns its `.zprofile` source hook | New login shell or explicitly source env.sh |
+| Shell secrets | `~/.secrets.sh`, loaded by `~/.zshenv` (every zsh) and by `~/.profile` and `~/.bashrc` (bash) | New shell; restart apps that started before the change |
 | Other shell settings | Your active `.zprofile`, currently backed by ignored `local/shell/zprofile` | New login shell |
 | Link destinations | `config/links.json` | Installer after checking destination ownership |
 | Inventory metadata | `config/inventory.json` | Regenerate `docs/INVENTORY.md` |

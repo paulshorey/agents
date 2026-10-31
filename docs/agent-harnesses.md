@@ -185,8 +185,9 @@ for the actual desired mode before installing anything.
    Check Cursor ignore behavior separately from shell/file permissions; verify
    secret edits without making private files available to automatic indexing.
    Test with dummy values; document reload/redeploy requirements and encrypted
-   recovery. Do not automatically source the broad executable `~/.secrets.sh` into
-   every tool. GUI-launched apps may have different environments from login shells.
+   recovery. Every shell loads `~/.secrets.sh`; tools launched without a shell read
+   only registered variables from it and never execute it. GUI-launched apps may have
+   different environments from shells.
 5. **Add focused project/process and GitHub administration runbooks.** Reuse
    local-dev's registry/manager and existing Git skills rather than creating a second
    service supervisor. A new-app workflow should cover local folder, repository,

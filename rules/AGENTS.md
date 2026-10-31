@@ -17,7 +17,8 @@ config and scripts in this repository; keep credentials, OAuth state, backups, a
 rendered application settings in ignored local storage. Never commit or print secrets.
 
 For Railway plus Cloudflare hosting, use `deploy-railway-with-cloudflare` and
-`railway-iac`. Select the workspace profile explicitly. A failing account identity
+`railway-iac`. Every shell exports the workspace token from `~/.secrets.sh`; unset
+`RAILWAY_TOKEN` for workspace operations. A failing account identity
 endpoint does not prove a workspace token cannot access its projects. For Cloudflare
 API/DNS tasks use pinned `~/.agents/bin/cf`, or `cf` after sourcing
 `~/.agents/config/env.sh`; preserve existing Wrangler deployment workflows.

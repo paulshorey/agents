@@ -44,8 +44,10 @@ than native auth files, raw prompt dumps, or full environment/config output.
 
 ## Secrets and local services
 
-The global shell source is `~/.secrets.sh`. Provider-specific profiles are listed
-in `config/profiles.json`; application `.env*` files remain in their project.
+The global shell source is `~/.secrets.sh`; every zsh and bash loads it (inventory
+`shell.secrets`). Provider-specific profiles are listed in `config/profiles.json`;
+a profile with `variables` reads only those literal assignments from the file
+without executing it. Application `.env*` files remain in their project.
 Inspect the project's actual loader and precedence before choosing a file. Do not
 load another workspace's token as an authentication fallback.
 
@@ -53,7 +55,10 @@ When the task authorizes secret edits, use the registered private destination,
 preserve unrelated assignments and owner-only permissions, and update atomically.
 Suppress value-bearing logs/diffs and verify names/presence or authenticated
 behavior without printing values. A shell source can execute commands; do not
-source arbitrary contents just to discover variable names. Record only paths,
+source arbitrary contents just to discover variable names. Never print lines from a
+secret file, even through a mask: commented lines can hold full old credentials.
+Derive only assignment key names, and run secret-handling snippets under bash, since
+zsh prints a variable's value when `local` re-declares it. Record only paths,
 names, consumers, reload steps, and grants in Git.
 
 For process/service work, start with `~/git/AGENTS.md` and the actual project's

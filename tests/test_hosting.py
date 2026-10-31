@@ -100,6 +100,31 @@ class HostingTests(unittest.TestCase):
             with self.assertRaises(hosting.HostingError):
                 hosting.profile_environment(str(file), {})
 
+    def test_shell_profile_reads_only_selected_literal_variables(self):
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'secrets.sh'
+            file.write_text('#!/usr/bin/env bash\nif [[ $- == *i* ]]; then\n  echo "banner"\nfi\n'
+                            'export PATH="$HOME/bin:$PATH"\nexport OTHER_KEY="other-value"\n'
+                            '# export RAILWAY_API_TOKEN="commented-value"\n'
+                            'export RAILWAY_API_TOKEN="dummy-railway"\n')
+            file.chmod(0o600)
+            env = hosting.profile_environment(str(file), {}, ['RAILWAY_API_TOKEN'])
+            self.assertEqual(env, {'RAILWAY_API_TOKEN': 'dummy-railway'})
+            with self.assertRaises(hosting.HostingError):
+                hosting.profile_environment(str(file), {})
+            file.write_text('export RAILWAY_API_TOKEN="$(touch /tmp/never-run)"\n')
+            with self.assertRaises(hosting.HostingError):
+                hosting.profile_environment(str(file), {}, ['RAILWAY_API_TOKEN'])
+            file.chmod(0o644)
+            with self.assertRaises(hosting.HostingError):
+                hosting.profile_environment(str(file), {}, ['RAILWAY_API_TOKEN'])
+
+    def test_registered_railway_profile_selects_its_token_from_shell_secrets(self):
+        self.assertEqual(hosting.profile_variables('railway.workspace'), ['RAILWAY_API_TOKEN'])
+        self.assertIsNone(hosting.profile_variables('cloudflare.default'))
+        manifest = json.loads((ROOT / 'config/hosting/paul.json').read_text())
+        self.assertEqual(manifest['railway']['profile'], 'railway.workspace')
+
     def test_explicit_railway_profile_does_not_reuse_inherited_token(self):
         with patch.dict(os.environ, {'RAILWAY_API_TOKEN': 'wrong-workspace', 'RAILWAY_TOKEN': 'wrong-project'}):
             with self.assertRaises(hosting.HostingError):
