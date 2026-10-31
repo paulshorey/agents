@@ -141,7 +141,7 @@ Applying to the base does not retroactively update existing previews. Discover
 current previews and reconcile each affected owning partial only when required by
 the task. Preserve each repository's preview source branch; branches can differ
 between services. Do not infer a preview branch from the environment's name.
-For WebArts, read [local connections](local-connections.md) and supply the actual
+Read [local connections](local-connections.md) and supply the actual
 `RAILWAY_IAC_BRANCH` before planning. If a partial's services unexpectedly use
 different branches, resolve that discrepancy rather than applying one branch to all.
 

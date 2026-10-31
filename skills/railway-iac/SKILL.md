@@ -15,8 +15,8 @@ and existing workflow files before choosing commands.
 1. Extract project, environment, service, and deployment IDs from the user's URL.
    Select the matching credential profile and confirm access to that exact project.
 2. Read [local connections and project map](references/local-connections.md) for
-   this machine's profiles, WebArts service ownership, LivX/World distinctions,
-   environment IDs, and CI secret names.
+   this machine's profile, project and partial ownership, environment IDs,
+   and CI secret names.
 3. For a failed deployment, read [deployment operations](references/deployment-operations.md)
    and identify the first failing stage before changing anything.
 4. For IaC changes, imports, or CI, read [authoring and CI](references/authoring-and-ci.md).
@@ -37,28 +37,24 @@ for production database migrations and release validation alongside IaC verifica
 
 ## Local access on this machine
 
-The standard API token name is `RAILWAY_API_TOKEN`:
+The standard API token name is `RAILWAY_API_TOKEN`, exported by `~/.secrets.sh`,
+which every zsh and bash loads. Unset `RAILWAY_TOKEN` when using it;
+a project token in that variable takes precedence. In CI, use the intended
+environment's project token in `RAILWAY_TOKEN` instead. Pass the Homebrew CLI path
+(`/opt/homebrew/bin/railway`) when a repository's npm CLI binary was not installed.
 
-- Global profile: `~/.secrets.sh`, loaded by `~/.zprofile` for login shells.
-- WebArts: **source `~/.config/railway/webarts.env` explicitly**, even if a global
-  API token is present. The global profile cannot access WebArts.
-- Unset `RAILWAY_TOKEN` when using either workspace API profile; a project token
-  in that variable takes precedence. In CI, use the intended environment's
-  project token in `RAILWAY_TOKEN` instead.
-
-For a read-only check of WebArts dev (subshell keeps the profile local):
+For a read-only check of Notes dev:
 
 ```bash
-(
-  source "$HOME/.config/railway/webarts.env"
+bash --noprofile --norc -c '
+  source "$HOME/.secrets.sh" >/dev/null 2>&1
   unset RAILWAY_TOKEN
   test -n "${RAILWAY_API_TOKEN:-}"
-  export RAILWAY_PROJECT_ID=c6260c51-8b01-4934-8ccb-9cf32456744c
-  export RAILWAY_ENVIRONMENT_ID=4e7d33aa-1de0-441f-a105-352bbe3b6697
-  railway api 'query($id: String!) { project(id: $id) { id name } }' \
+  export RAILWAY_PROJECT_ID=7c451bd1-350a-4fb3-a08f-5295863269ce
+  export RAILWAY_ENVIRONMENT_ID=8cbb1415-ac2b-46c3-ae8c-144265017189
+  railway api "query(\$id: String!) { project(id: \$id) { id name } }" \
     --raw-var id="$RAILWAY_PROJECT_ID"
-  railway status --json
-)
+'
 ```
 
 Run repository plans in a shell with the same profile and explicit target, using
@@ -66,7 +62,12 @@ its pinned CLI. A valid workspace token may return Unauthorized for `whoami`,
 account-wide `list`, or `link`; test a scoped project query before concluding the
 credential is invalid. IDs and token scope must agree before mutation.
 
-Never print credentials or returned secret values. Credential profiles and local
+Never print credentials or returned secret values. Run secret-handling snippets
+under `bash --noprofile --norc -c '...'`, not the default zsh: zsh prints
+`name=value` when `local`/`typeset` re-declares an already-set variable, so a
+`local v` inside a copy loop leaks the previous secret. Copy values between
+services with `railway variable set KEY --stdin --skip-deploys`, never via
+arguments or echo. Credential profiles and local
 skills are not automatically copied to cloud agents: supply this skill and inject
 the intended scoped token through that agent's secret manager. A credential profile
 or skill does not grant authorization for additional actions.

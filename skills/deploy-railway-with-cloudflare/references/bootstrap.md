@@ -6,13 +6,13 @@ The manifest helper validates existing infrastructure; it does not create paid r
 
 ## Workspace project creation
 
-`railway init` returned Unauthorized with the WebArts workspace token while explicit
-API creation succeeded. Inspect paginated project inventory first; after a lost
+`railway init` returns Unauthorized with the workspace API token while explicit
+API creation succeeds. Inspect paginated project inventory first; after a lost
 response, reconcile state before retrying creation.
 
 ```sh
 (
-  source "$HOME/.config/railway/webarts.env"
+  source "$HOME/.secrets.sh" >/dev/null 2>&1
   unset RAILWAY_TOKEN
   railway api 'mutation($input:ProjectCreateInput!){projectCreate(input:$input){id name workspaceId environments{edges{node{id name}}}}}' \
     --var 'input={"name":"REQUESTED_NAME","workspaceId":"CONFIRMED_WORKSPACE_ID","defaultEnvironmentName":"production"}'
