@@ -1,32 +1,48 @@
 ---
 name: git-management
-description: When starting, continuing, or finishing changes in a Git repository, and whenever committing or pushing task work - keep each new task on a separate feature branch. Push changes. Open or edit a PR as the engineering handoff for each task.
+description: Manage task branches, commits, pushes, and PR handoffs while preserving existing work. Use when starting, continuing, or finishing changes in a Git repository.
 ---
 
 # Git task management
 
-**Manage the branch and PR throughout the task.** Routine commits, pushes, and PR creation or updates are authorized. Respect current instructions and repository rules. Read-only work needs no new branch or empty PR.
+Follow the current request and repository rules. Routine task commits, pushes,
+and PR creation/updates are part of the handoff; read-only work needs no empty PR.
 
-**Inspect before working.** Check the current branch, working tree, unpushed commits, upstream, and existing PR. Fetch current remote state. Understand what previous changes accomplish before deciding whether the new request continues that task.
+1. **Inspect.** Check repository identity, branch, worktree, upstream, unpushed
+   commits, and existing PR; fetch current refs. Preserve unrelated or ambiguously
+   owned work. Use an isolated checkout if switching would disturb it or a process.
+2. **Choose the branch.** Continue an existing feature branch only for the same
+   ongoing task. For independent work, create a new feature branch from updated
+   `main` or a verified base; never reuse a merged branch. Base work on an unmerged
+   branch only when required by the task. Move task edits off `main` before committing. Do not publish
+   pre-existing work merely to clear the checkout.
+3. **Validate and publish.** Run relevant checks, stage only task files, commit,
+   and push. Create a PR after the first push or update the existing task PR.
+   Use a draft for unfinished or blocked work. Keep its title/body aligned with
+   final scope: problem, resulting behavior, material decisions, validation, and
+   remaining work. Scale detail to complexity; do not repeat every file or commit.
+4. **Request review.** Immediately after creating a PR, including drafts, post
+   a standalone comment containing exactly `@codex review` and confirm success.
+   Request again after significant subsequent changes; avoid duplicate requests
+   for an unchanged head. With GitHub CLI:
+   `gh pr comment <PR_URL> --body '@codex review'`.
+5. **Handle feedback.** Use [PR management](../pr-management/SKILL.md) for review,
+   fixes, conflicts, and merges within the authorized scope. Report actionable
+   concerns in a PR comment unless contributing the fix immediately.
+6. **Finish cleanly.** Ensure task commits are pushed and the PR reflects the
+   final state. Return a temporary review checkout to `main` when requested;
+   preserve active feature checkouts. Report the PR, validation, final branch,
+   and any unpublished work or synchronization blocker. Never discard changes
+   or force-push just to switch tasks.
 
-**Publish previous work.** Before new work, commit changes that clearly belong to the current feature branch and push unpushed commits. Stage only relevant files. Ensure that branch has an open PR before leaving it; use a draft for unfinished work. Put changes found on `main` on an appropriate feature branch before committing. Preserve unrelated or ambiguously owned work; use another worktree or clarify ownership.
+## Production promotions
 
-**Choose the task branch.** Reuse a feature branch only to continue the same ongoing task; similar files alone are insufficient. For independent implementation work, or when implementing on `main`, create a new feature branch from updated `main` or the verified base. Do not reuse a merged task's branch. Start from unmerged work only when the task explicitly depends on it. Production promotions use the existing branches as described below.
-
-**Promote the full development branch.** For repositories using `main` for development and `prod` for production, an authorized promotion merges all of current `main` into `prod`: use a PR with head `main`, base `prod`. Feature work and conflict fixes land in `main` first. Inspect production-only fixes and preserve intentional environment differences. Use a narrower release only when explicitly requested. Promotion includes necessary production database migrations through the project's workflow, affected checks, and verification of the deployed commit and application/database health. Check pending migrations even when code is already synchronized; report an up-to-date promotion once validation passes. Distinguish unmerged PRs from work ready for promotion.
-
-**Keep the PR current.** Validate, commit, and push task changes. After every push, create a PR if none is open; otherwise update it. Immediately after creating any PR, including drafts, post a standalone comment containing exactly `@codex review` using `gh pr comment <PR_URL> --body '@codex review'`, and confirm it was posted before proceeding. At completion, ensure intended changes are committed and pushed and the PR reflects the final scope. Revise its title and description as scope evolves; a continuing task keeps its PR.
-
-**Resolve PR comments.** PRs are automatically reviewed by Cursor bot. Cursor will suggest fixes in another branch and PR. Review that suggestion PR. If you agree with the fix, go ahead merge it. If you disagree with the fix, close that PR. Either way, reply to the review comment with your assessment and action. Be careful - some reviews will be false positives or out of scope, so do not assume just because Cursor bot made a comment and opened a suggestion fix PR that it's worth merging. If there is no suggestion PR but only a comment, then think about what it says and how it should be addressed. Go ahead and make the fix or improvement if necessary, or not if unnecessary. Either way, whenever dealing with a PR comments, even if you decided no change is necessary, reply to the comment and resolve it.
-
-**Write PR descriptions as durable handoffs** to future engineers and AI agents. Lead with the problem and resulting behavior. Include relevant scope, product/design decisions and rationale, architecture and technical choices, constraints and tradeoffs, integration details, validation commands and results, and remaining work or risks. Explain context that the changed code cannot convey. Scale detail to complexity, preserve useful earlier decisions, and remove stale statements rather than narrating commits or repeating the diff.
-
-**Write PR comments.** If you read a PR, if you notice any potential issues, potential future problems, or potential improvements, write your concerns and suggestions in a PR comment, unless you plan to commit/push a fix immediately, then the commit contribution is enough.
-
-**Preserve local work and busy checkouts.** Never discard changes or force-push merely to switch tasks. If publishing or switching is blocked, report the specific blocker and next step. End with the branch, PR link, validation outcome, and any remaining unpublished work.
-
-**Trigger independent code review.** If you start a new PR or push significant changes to a PR feature branch, add a new comment with value "@codex review" to trigger a review.
-
-# Self-reflection and improvement:
-
-Consider these instructions with your current use case. Can anything be done do to make your job easier? Can we improve these instructions to help make the task easier next time? Edit this skill `skills/git-management` with any improvements you can think of for next time or suggest possible improvements.
+For repositories using `main` for development and `prod` for production, an
+authorized promotion merges all current `main` into `prod` through a PR with head
+`main`, base `prod`. Feature/conflict fixes land in `main` first. Preserve intentional
+production differences and inspect production-only commits; narrow releases need
+an explicit request. Follow the project's migration/release workflow, inspect
+pending migrations even when code is synchronized, and verify the deployed commit,
+application/database health, and retained data. An unmerged feature PR is not part
+of the release. Report an already-current promotion only after relevant validation.
+For other branch models, follow the project's release workflow.
