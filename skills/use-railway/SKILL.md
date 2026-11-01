@@ -12,6 +12,11 @@ installs.
 
 Read `~/.agents/README.md` for installed tools and access. For this user's targets,
 read `railway-iac` and its local connections reference before selecting credentials.
+Local access is profile `railway.workspace` → `RAILWAY_API_TOKEN` in
+`~/.secrets.sh`; `~/.shortcuts.sh` is a helper file. Unset `RAILWAY_TOKEN` for
+local workspace commands. CI/cloud tasks use only their environment’s injected
+`RAILWAY_TOKEN` with `RAILWAY_API_TOKEN` unset; never broaden CI to the local token.
+Clean noninteractive shells need explicit injection or profile loading.
 Use a scoped project query for workspace tokens: `whoami`/`me` may fail despite valid
 access. Select the intended workspace and resource IDs before creating or deploying.
 Do not treat a failed identity endpoint as proof of missing authentication.

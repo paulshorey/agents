@@ -33,42 +33,43 @@
       ]
     },
     {
-      "id": "railway.webarts-token",
+      "id": "railway.workspace-token",
       "kind": "credential",
       "owner": "agents",
-      "description": "Explicit Railway workspace profile for WebArts and Paul.",
+      "description": "Railway workspace API token for all workspace projects, read from the shell secrets file.",
       "runbook": "docs/runbooks/railway.md",
       "path_ref": {
         "file": "config/profiles.json",
-        "pointer": "/profiles/railway.webarts/path"
+        "pointer": "/profiles/railway.workspace/path"
       },
       "variables": [
         "RAILWAY_API_TOKEN"
       ],
       "permissions": [
-        "Existing workspace access; do not infer scope from account identity endpoint failures"
+        "Workspace c64d0999-e00c-4c52-bbd4-2614210e3758 (my workspace); do not infer scope from account identity endpoint failures"
       ],
       "consumers": [
         "railway.mcp",
         "hosting.paul"
       ],
       "notes": [
-        "The existing profile remains outside this repository. It is owner-only mode 600. Inventory records its location; this task does not migrate or rotate it."
+        "Tools read only the literal RAILWAY_API_TOKEN assignment from ~/.secrets.sh and never execute the file. Shells export the same value; see shell.secrets."
       ]
     },
     {
-      "id": "railway.legacy-profile",
+      "id": "shell.secrets",
       "kind": "runtime",
       "owner": "reference",
-      "description": "Legacy shell credential source for another Railway workspace.",
-      "runbook": "docs/runbooks/railway.md",
+      "description": "Global shell secret file loaded by normal zsh and login/interactive Bash on this machine.",
+      "runbook": "docs/runbooks/configuration.md",
       "path": "~/.secrets.sh",
       "variables": [
         "RAILWAY_API_TOKEN"
       ],
       "notes": [
-        "Reference only. This shell script may contain other credentials or commands; inventory checks do not read or source it. Never substitute its token for the explicitly selected workspace profile.",
-        "This is also the global shell secret source. App-local .env files use their own loaders; see environment.project-secrets and the customization runbook. Authorized edits must preserve unrelated assignments and avoid printing values."
+        "~/.zshenv loads it for normal zsh; ~/.profile and ~/.bashrc load it for login/interactive Bash. Children inherit exports. Clean noninteractive Bash does not load these files and needs explicit injection or the registered profile loader. ~/.shortcuts.sh contains aliases/directory helpers, not Railway credentials or target selection.",
+        "It is a shell script with other credentials and commands. Profiles registered with variables read only those literal assignments; never execute it from tools or print its lines. Authorized edits must preserve unrelated assignments.",
+        "App-local .env files use their own loaders; see environment.project-secrets. Cloud agents do not have this file; inject secrets through each platform's secret manager."
       ]
     },
     {
@@ -116,7 +117,8 @@
       ],
       "notes": [
         "RAILWAY_API_TOKEN and RAILWAY_TOKEN are secret. IDs and branch names are selectors.",
-        "Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry."
+        "Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry.",
+        "Use one token type at a time and fail when the selected token is absent. Verify projectToken projectId/environmentId before CI secret replacement, and verify a PR plan afterward; never copy the local workspace credential to CI."
       ]
     },
     {
@@ -231,7 +233,7 @@
       "id": "railway.mcp",
       "kind": "integration",
       "owner": "agents",
-      "description": "Official native Railway MCP using an explicit workspace profile.",
+      "description": "Official native Railway MCP using the workspace token profile.",
       "runbook": "docs/runbooks/railway.md",
       "references": [
         {
@@ -243,7 +245,7 @@
         }
       ],
       "notes": [
-        "bin/railway-mcp selects the WebArts profile by default; another workspace requires an explicit profile."
+        "bin/railway-mcp selects railway.workspace by default and reads its token without relying on an inherited shell environment; another workspace requires an explicit profile."
       ]
     },
     {
@@ -490,7 +492,7 @@
         }
       ],
       "notes": [
-        "Profile IDs such as cloudflare.default and railway.webarts resolve through this catalog. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog."
+        "Profile IDs such as cloudflare.default and railway.workspace resolve through this catalog. A profile with variables reads only those literal assignments from a shell file. Hosting manifests select IDs; explicit file paths remain supported for ad hoc profiles. Do not put values in the catalog."
       ]
     },
     {
@@ -605,7 +607,7 @@
       "runbook": "docs/runbooks/agent-customization.md",
       "notes": [
         "Each project owns its .env, .env.local, or other declared environment-file locations and loader precedence. Inspect applicable project documentation and code; no global .env discovery or automatic loading by both agents is assumed.",
-        "The existing railway.legacy-profile entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.",
+        "The shell.secrets entry records ~/.secrets.sh; config/profiles.json owns registered provider-profile locations. Add per-project references and secret variable names when onboarding an app, never values, fragments, or hashes.",
         "The user intends agents to make authorized environment/secret edits. Filesystem sandbox access, provider permission, and reload/redeploy behavior still need explicit capability checks in the selected harness."
       ]
     },
