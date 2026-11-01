@@ -243,7 +243,12 @@ def local_checks(data, root=ROOT, home=None):
                 detail = 'owner-only mode 600' if passed else 'ownership or permissions differ'
                 if passed:
                     try:
-                        env = profile_environment(str(path), {})
+                        ref = entry.get('path_ref', {})
+                        variables = None
+                        if ref.get('file') == 'config/profiles.json':
+                            profile = ref['pointer'].split('/')[2]
+                            variables = read_data(root / 'config/profiles.json')['profiles'][profile].get('variables')
+                        env = profile_environment(str(path), {}, variables)
                         missing = [v for v in entry['variables'] if not env.get(v)]
                         passed = not missing
                         detail = 'required variable names present' if passed else 'required variable names missing'

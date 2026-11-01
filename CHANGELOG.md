@@ -4,6 +4,34 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-31 — Railway connection audit
+
+- Clarified normal shell inheritance versus clean noninteractive processes and the
+  role of `~/.shortcuts.sh`; the `railway.workspace` profile remains the owner of
+  local token loading. Local operations and CI now explicitly select one token type.
+- Completed the Railway skill’s project map with Events, Facts and HCI, exact CI
+  secret stores, separate LivX serving access, and project-token verification and
+  recovery. The hosting and provider skills use the same connection rules.
+- Replaced five rejected GitHub Actions credentials with newly scoped project
+  tokens: Map’s `RAILWAY_TOKEN` (Map/dev), Map’s `WEBARTS_RAILWAY_TOKEN_DEV`
+  (Experimental/dev), Paul’s `RAILWAY_TOKEN_DEV` (Paul/dev), and HCI’s
+  `development` environment `RAILWAY_TOKEN` (HCI/dev), and NLP’s
+  `WEBARTS_RAILWAY_TOKEN_DEV` (Experimental/dev). Each new token’s
+  project/environment was read back before saving through stdin; no token values
+  or fragments were recorded. Existing unrelated credentials were preserved.
+
+## 2026-10-31 — Railway token from the shell secrets file
+
+- Profile `railway.workspace` points at `~/.secrets.sh` and reads only its literal
+  `RAILWAY_API_TOKEN` assignment; profiles may now list `variables` for shell files
+  and never execute them. The Paul manifest and `bin/railway-mcp` select it.
+- Railway rejected the token in `~/.config/railway/webarts.env`; profile
+  `railway.webarts` was removed and nothing reads that file. Inventory records
+  `railway.workspace-token` and the global `shell.secrets` source.
+- Every zsh loads `~/.secrets.sh` from `~/.zshenv`; bash loads it from `~/.profile`
+  and `~/.bashrc`. Verified: `check --live` Railway read, and project-scoped Railway
+  MCP calls with an empty environment.
+
 ## 2026-10-17 — Immediate Codex review requests
 
 - Updated the Git and PR management skills to request Codex review immediately
