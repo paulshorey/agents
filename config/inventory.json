@@ -270,7 +270,7 @@
         }
       ],
       "notes": [
-        "Restore from the lockfile with npm ci --prefix ~/.agents/tools --ignore-scripts. Preserve existing Wrangler workflows."
+        "Restore from the lockfile with npm ci --prefix ~/.agents/tools --ignore-scripts using a Node version allowed by tools/package.json engines. Preserve existing Wrangler workflows."
       ]
     },
     {

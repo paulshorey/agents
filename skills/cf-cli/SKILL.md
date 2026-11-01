@@ -44,7 +44,8 @@ cf --version
 cf auth whoami
 ```
 
-- Requires Node.js 22.18 or later. Bun is not supported.
+- The managed pin requires Node.js 22.23+, 24.22+, or 26.12+ within those majors.
+  Bun is not supported. Check the invoking runtime before restoring tools.
 - If another tool named `cf` is on your `PATH`, use `cloudflare` instead — the package installs both commands.
 - `cf auth login` prints a link and a one-time code, then opens the browser. On a remote machine, over SSH, or in a container, add `--no-browser` so `cf` only prints the link; approve it from another device. Add `--force` to sign in again.
 - `cf` keeps its own credentials and does not reuse a Wrangler login.
@@ -76,7 +77,10 @@ cf <command> --help                   # arguments and options (e.g. cf deploy --
 ## Run commands safely
 
 - **Preview first.** `--dry-run` prints the request as JSON without sending it, and needs no credentials.
-- **Aborted deletes still exit 0.** In a non-interactive session, a destructive command without `--force` prints `Aborted.` to standard error and exits `0` — a zero exit does not mean the resource was deleted.
+- **Noninteractive confirmation fails closed.** Destructive commands that require
+  confirmation exit nonzero without `--force` when no terminal is available.
+  An interactive decline can still exit 0; verify the resulting state rather than
+  using exit status alone as proof of deletion.
 - **Review `--force` before allowing it.** On some commands `--force` is also an API parameter (for example, `cf workers delete --force` also deletes a Worker that other Workers reference).
 - **`--local` is limited.** It works for KV keys, D1 databases (`cf d1 raw`, `cf d1 migrations list|apply`), and R2 objects; other commands (including `cf d1 query`) return an error instead of calling the API.
 
