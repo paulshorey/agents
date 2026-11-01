@@ -166,8 +166,8 @@ tools into a running conversation.
 
 ## Provider tools and authentication
 
-The installed Cloudflare CLI is **`cf@1.0.0-beta.16`**, pinned in `tools/`. It requires
-Node 22.18 or newer; Node 24 is suitable for CI. This setup uses the CLI for API
+The Cloudflare CLI pin is **`cf@1.0.0-beta.23`** in `tools/`. It requires
+Node 22.23+, 24.22+, or 26.12+ within those majors; CI uses Node 24. This setup uses the CLI for API
 operations, not a migration of Railway applications to Workers. Installation skips
 npm lifecycle scripts; check build-specific prerequisites separately for future
 Workers development. Use `cf cli search "create a DNS record"`, inspect the discovered
