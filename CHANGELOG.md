@@ -12,10 +12,11 @@ Verification dates describe historical observations, not current readiness.
 - Completed the Railway skill’s project map with Events, Facts and HCI, exact CI
   secret stores, separate LivX serving access, and project-token verification and
   recovery. The hosting and provider skills use the same connection rules.
-- Replaced four rejected GitHub Actions credentials with newly scoped project
+- Replaced five rejected GitHub Actions credentials with newly scoped project
   tokens: Map’s `RAILWAY_TOKEN` (Map/dev), Map’s `WEBARTS_RAILWAY_TOKEN_DEV`
   (Experimental/dev), Paul’s `RAILWAY_TOKEN_DEV` (Paul/dev), and HCI’s
-  `development` environment `RAILWAY_TOKEN` (HCI/dev). Each new token’s
+  `development` environment `RAILWAY_TOKEN` (HCI/dev), and NLP’s
+  `WEBARTS_RAILWAY_TOKEN_DEV` (Experimental/dev). Each new token’s
   project/environment was read back before saving through stdin; no token values
   or fragments were recorded. Existing unrelated credentials were preserved.
 
