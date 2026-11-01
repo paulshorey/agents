@@ -257,7 +257,7 @@ Pinned official cf CLI with explicit local credential loading.
 
 Owner: **agents**.
 
-Restore from the lockfile with npm ci --prefix ~/.agents/tools --ignore-scripts. Preserve existing Wrangler workflows.
+Restore from the lockfile with npm ci --prefix ~/.agents/tools --ignore-scripts using a Node version allowed by tools/package.json engines. Preserve existing Wrangler workflows.
 
 [Update and recovery instructions](../docs/runbooks/utilities.md).
 

@@ -10,8 +10,8 @@ are needed only when updating those imports. Skills are discovered directly from
 - Local skill: [`skills/cf-cli`](../skills/cf-cli/).
 - Upstream: [cloudflare/skills at `53395984c3ea1925d00fce03b266112302f050e6`](https://github.com/cloudflare/skills/tree/53395984c3ea1925d00fce03b266112302f050e6/skills/cf-cli).
 - Imported path: `skills/cf-cli`.
-- Local adaptations: managed pinned CLI setup and anonymous discovery guidance in
-  `SKILL.md`.
+- Local adaptations: managed pinned CLI setup, its supported Node versions, and
+  anonymous discovery guidance in `SKILL.md`.
 - Preserved license: [cf-cli/LICENSE](cf-cli/LICENSE).
 
 ## Railway

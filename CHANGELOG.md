@@ -4,6 +4,16 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-01 — Patched Cloudflare CLI dependency tree
+
+- Pinned cf to 1.0.0-beta.23, the first release with the patched upstream Zod and
+  undici dependencies, to repair the toolkit audit blocking PRs #20 and #21.
+- Aligned tool engine metadata and restore guidance with upstream's supported
+  Node 22.23+, 24.22+, and 26.12+ ranges. Existing Node 24.22.2 was used for review.
+- Validated a clean install without lifecycle scripts, the enforced dependency
+  audit and offline command compatibility. Active tools, runtimes, credentials,
+  native settings and provider resources are not changed by this source update.
+
 ## 2026-10-31 — Railway connection audit
 
 - Clarified normal shell inheritance versus clean noninteractive processes and the
