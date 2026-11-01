@@ -69,10 +69,18 @@ the location and maintenance procedure without publishing the contents.
 ## Restore and update tools
 
 Restore the pinned cf CLI with `npm ci --prefix ~/.agents/tools --ignore-scripts`.
+First check that `node --version` satisfies `tools/package.json`'s `engines` range;
+the current pin requires Node 22.23+, 24.22+, or 26.12+ within those majors.
+Use an existing supported runtime when available. Updating the source pin does not
+replace an installed runtime or restore `tools/node_modules` automatically.
 Restore the TOML editor with the README's hash-verified pip command. Its wheel is
 pure Python and has no transitive dependencies; it is installed only under ignored
 `local/python-packages`, not into the global Python environment.
 Version changes are deliberate lockfile edits, followed by review and validation.
+The beta.23 cf pin updates the upstream dependency tree to patched Zod and undici
+releases. Validate a clean restore, `npm audit --omit=dev`, version/help, command
+search, schema inspection and a DNS dry run before adopting another pin. Keep the
+audit enforced; do not force an automatic upgrade or add unvalidated overrides.
 The Railway native CLI is externally installed; application repositories keep their
 own pins. Do not switch existing Wrangler deployments to cf incidentally.
 
