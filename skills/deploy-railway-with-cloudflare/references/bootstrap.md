@@ -12,8 +12,10 @@ response, reconcile state before retrying creation.
 
 ```sh
 (
+  set -e
+  unset RAILWAY_API_TOKEN RAILWAY_TOKEN
   source "$HOME/.secrets.sh" >/dev/null 2>&1
-  unset RAILWAY_TOKEN
+  test -n "${RAILWAY_API_TOKEN:-}" || exit 1
   railway api 'mutation($input:ProjectCreateInput!){projectCreate(input:$input){id name workspaceId environments{edges{node{id name}}}}}' \
     --var 'input={"name":"REQUESTED_NAME","workspaceId":"CONFIRMED_WORKSPACE_ID","defaultEnvironmentName":"production"}'
 )
