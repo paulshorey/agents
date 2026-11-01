@@ -191,8 +191,8 @@ deployment task.
 
 | Variable | Purpose and source |
 | --- | --- |
-| `RAILWAY_API_TOKEN` | Workspace token for **my workspace** (`c64d0999-e00c-4c52-bbd4-2614210e3758`), stored in `~/.secrets.sh`. Every shell exports it; the `railway.workspace` profile reads it directly for launchers that start without a shell. |
-| `RAILWAY_TOKEN` | Environment-scoped project token for CI. It takes precedence over the workspace token, so unset it for workspace operations; never reuse another project’s CI secret. |
+| `RAILWAY_API_TOKEN` | Workspace token for **my workspace** (`c64d0999-e00c-4c52-bbd4-2614210e3758`), stored in `~/.secrets.sh`. Normal zsh and login/interactive Bash export it; clean noninteractive shells need injection. The `railway.workspace` profile reads it directly without shell startup. |
+| `RAILWAY_TOKEN` | Environment-scoped project token for CI. Use one token type at a time: unset this for local workspace operations, or unset `RAILWAY_API_TOKEN` for project-token operations; never reuse another project’s CI secret. |
 | `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`, `RAILWAY_SERVICE_ID` | Non-secret target selectors, where supported. Prefer explicit CLI IDs. These do not broaden credential scope. |
 | `RAILWAY_IAC_BRANCH` | Required by some existing preview IaC definitions; inspect the actual source branch. |
 | `CLOUDFLARE_API_TOKEN` | Scoped API token for unattended DNS/CLI/API use. Store in `local/credentials/cloudflare.env`, mode 600, or inject through an external secret manager. |
@@ -243,12 +243,17 @@ token. It sets the account default and leaves the zone unbound; `--pin-zone` exp
 adds a global zone default for a deliberately single-zone profile. Run the doctor to
 verify current access rather than relying on this recorded setup state.
 
-Shells already export the workspace token. For an ad hoc Railway operation, drop
-any project token first:
+Normal zsh and login/interactive Bash load `~/.secrets.sh`; their children inherit
+exports. A clean noninteractive Bash process does not load it automatically.
+`~/.shortcuts.sh` contains aliases and directory helpers; its `*-prod` hook is not a
+Railway target selector. For clients without shell startup, use the registered
+profile loader. For an ad hoc command in an initialized shell, require the
+workspace credential and drop any project token first:
 
 ```sh
 (
   unset RAILWAY_TOKEN
+  test -n "${RAILWAY_API_TOKEN:-}" || exit 1
   railway api 'query($id:String!){project(id:$id){id name workspaceId}}' \
     --raw-var id=0147ed48-9a17-4d6f-a17f-43e989df9adf
 )

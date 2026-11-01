@@ -97,7 +97,7 @@ Tools read only the literal RAILWAY_API_TOKEN assignment from ~/.secrets.sh and 
 
 ## shell.secrets
 
-Global shell secret file loaded by every zsh and bash on this machine.
+Global shell secret file loaded by normal zsh and login/interactive Bash on this machine.
 
 Owner: **reference**.
 
@@ -105,7 +105,7 @@ Location: `~/.secrets.sh`.
 
 Variable names: `RAILWAY_API_TOKEN`.
 
-~/.zshenv loads it for every zsh (login, interactive, scripts, agent and app shells); ~/.profile and ~/.bashrc load it for bash. Exported variables reach child processes.
+~/.zshenv loads it for normal zsh; ~/.profile and ~/.bashrc load it for login/interactive Bash. Children inherit exports. Clean noninteractive Bash does not load these files and needs explicit injection or the registered profile loader. ~/.shortcuts.sh contains aliases/directory helpers, not Railway credentials or target selection.
 
 It is a shell script with other credentials and commands. Profiles registered with variables read only those literal assignments; never execute it from tools or print its lines. Authorized edits must preserve unrelated assignments.
 
@@ -144,6 +144,8 @@ Variable names: `RAILWAY_API_TOKEN`, `RAILWAY_TOKEN`, `RAILWAY_PROJECT_ID`, `RAI
 RAILWAY_API_TOKEN and RAILWAY_TOKEN are secret. IDs and branch names are selectors.
 
 Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry.
+
+Use one token type at a time and fail when the selected token is absent. Verify projectToken projectId/environmentId before CI secret replacement, and verify a PR plan afterward; never copy the local workspace credential to CI.
 
 [Update and recovery instructions](../docs/runbooks/railway.md).
 

@@ -12,7 +12,8 @@ IDs below identify targets; they are not credentials or authorization.
 | CI or cloud agent for one environment | Secret manager injects `RAILWAY_TOKEN` | Project token scoped to the intended project/environment; do not replace it with the broader local token |
 
 The local token belongs to workspace `c64d0999-e00c-4c52-bbd4-2614210e3758`,
-displayed as **my workspace**, in the Railway account in Wavebox group
+displayed as **my workspace** (scoped project reads rechecked October 31, 2026),
+in the Railway account in Wavebox group
 **web@artspaces.net**. It can access Notes, Experimental, Map, Livx (`80a86bab…`),
 Paul, Facts, Events, and HCI.
 
@@ -20,7 +21,8 @@ Never read profiles into tool output, use shell tracing, print environment dumps
 or copy token values into a skill, repository, prompt, plan comment, or artifact.
 Source a profile inside a subshell to avoid carrying one workspace's token into
 another operation. When using `RAILWAY_API_TOKEN`, unset `RAILWAY_TOKEN`; when
-using a project token, avoid setting both. Project/environment selector variables
+using a project token, unset `RAILWAY_API_TOKEN`. Fail when the selected token is
+empty rather than falling back to a stored CLI login. Project/environment selector variables
 do not broaden a token's scope.
 
 Workspace tokens can query authorized projects while account identity endpoints
@@ -103,22 +105,59 @@ plan before rerunning an authorized apply.
 
 | Project | ID | Environments | Repository / authoring shape |
 | --- | --- | --- | --- |
-| Map | `d25b93f2-bea9-4f05-a6c0-4a045e8b18ac` | dev `01e37c22-5804-4b63-80a3-5d00255951e4`, production `a77c64bc-8e82-46b7-8634-7b72453ebfd8` | `~/git/map`, `.railway/railway.ts`; services `map`, `DB_MAP`; CI `railway-config.yml` with `RAILWAY_TOKEN` |
+| Map | `d25b93f2-bea9-4f05-a6c0-4a045e8b18ac` | dev `01e37c22-5804-4b63-80a3-5d00255951e4`, production `a77c64bc-8e82-46b7-8634-7b72453ebfd8` | `~/git/map`, `.railway/railway.ts`; inspect live `map`/`DB_MAP` and the full plan before applying; CI `railway-config.yml` uses dev-only `RAILWAY_TOKEN` |
 | Livx | `80a86bab-aca8-422b-8487-b17bb36768eb` | dev `e68dfed4-2931-4833-8779-65ff582f7e9a`, production `87986a21-933a-447b-bf7e-6e726347e080` | `~/git/livx`, `.railway/migration-dev.ts` and `migration-production.ts`; services include `apps/backend`, `apps/admin`, `apps/client` |
-| Paul | `0147ed48-9a17-4d6f-a17f-43e989df9adf` | dev `79b60708-8a5e-41d1-9853-4336136ed0e7`, production `9019f433-ea50-40eb-9239-c1e697353491` | `~/git/paul`, `.railway/railway.ts`; service `paul` |
+| Paul | `0147ed48-9a17-4d6f-a17f-43e989df9adf` | dev `79b60708-8a5e-41d1-9853-4336136ed0e7`, production `9019f433-ea50-40eb-9239-c1e697353491` | `~/git/paul`, `.railway/railway.ts`; service `paul`; CI uses `RAILWAY_TOKEN_DEV` / `RAILWAY_TOKEN_PRODUCTION` |
 
 `~/git/livx/.railway/railway.ts` targets project `4acaad07-06dc-4766-9bf3-6144e9c1ca90`,
-which the local token cannot access; its `railway-iac.yml` uses `RAILWAY_TOKEN_DEV`
-and `RAILWAY_TOKEN_PRODUCTION`. Ask the user for access before working on it.
+which the default workspace token cannot access (scoped read rechecked October 31,
+2026); its `railway-iac.yml` uses `RAILWAY_TOKEN_DEV` and
+`RAILWAY_TOKEN_PRODUCTION`. Keep that serving project separate from destination
+validation copies. For authorized work, supply an explicitly selected credential
+for the serving project; do not source `~/.secrets.sh` afterward or reactivate a
+commented-out token. Continue independent work when access is unavailable.
+
+## Events, Facts, and HCI
+
+| Project | ID | Environments | Owning instructions and CI credentials |
+| --- | --- | --- | --- |
+| Events | `a0315029-9b64-41a0-9c83-e4367366947d` | dev `fb0a7dbd-2f66-4183-b3c3-7b1e7a7afe24`, production `cf2c1bdd-7938-4b8a-b752-3c3bb6826b9e` | `~/git/events/.railway/project.json` and README; whole-environment `.railway/railway.ts`; no Railway credential in Actions |
+| Facts | `f463753e-8db6-4d2b-b8d1-127e9ab5d59d` | dev `bd4378a5-dd88-44c3-957f-57877e8ca905` | `~/git/facts/.railway/project.json` and README; storage only, no application deployment or Railway Actions credential |
+| HCI | `114d34ca-984f-43a0-b9ac-6e0d72ee489e` | dev `5603e862-49cb-498b-a036-136264957f66`, production `9b8cb8a9-31f2-4913-8fa4-75eafd25f0da` | `~/git/hci/docs/deployment.md`; `hci` partial; GitHub environments `development` and `production` each supply their own `RAILWAY_TOKEN` |
+
+HCI authoring also needs its exact `HCI_RAILWAY_PROJECT_ID`,
+`HCI_RAILWAY_ENVIRONMENT_ID`, `HCI_RAILWAY_TARGET` (`development`/`production`),
+`HCI_BUCKET_REGION=iad`, and `HCI_STORAGE_PROVIDER=railway`. These are selectors,
+not credentials. Map’s repository skill must use the same local/CI distinction
+as this skill. Map’s cloud runtime bootstrap must not persist control-plane tokens.
+
+Railway CI credentials belong to each repository/environment’s secret store.
+An invalid-token check does not prove expiry; inspect its exact log and token type.
+When a task authorizes repair, mint a project token for the verified environment,
+check `projectToken { projectId environmentId }`, save it through hidden stdin to
+the existing GitHub secret name, and verify a PR plan. Never substitute a workspace
+token or rerun a push/apply workflow merely to test authentication.
+
+## Planning blockers
+
+Read-only plans checked October 31, 2026 authenticated successfully. The default
+Map/dev whole graph proposes replacing the app and deleting `DB_MAP` and
+`Postgres-PITR`; do not merge/apply it before ownership and service reconciliation.
+The Map Experimental partial proposes an app creation. Livx destination definitions
+retain live RSVP variables but still propose URL/reference and dev upload-volume
+changes; they are not no-op connection checks. Authentication does not approve
+infrastructure changes, service cutover, or database replacement.
 
 ## Shared workflow rules
 
 - Same-repository PRs plan only against their target persistent environment.
-- Pushes/manual dispatch on `main` plan and apply to dev; `prod` applies to production
-  where the repository has a production mapping. The workflow must exist on the
-  branch being deployed.
-- The non-PR job creates and applies a saved plan in that run, checks the latest
-  branch head, then requires a clean follow-up plan. Destructive confirmation is disabled.
+- Most CLI workflows plan/apply on `main` pushes or manual dispatch, with `prod`
+  mapping to production where configured. Verify that exact branch’s workflow.
+- Those CLI apply jobs create their saved plan in the same run, check the branch
+  head, and require a clean follow-up plan, with destructive confirmation disabled.
+- Map’s default `railwayapp/config` workflow instead plans PRs and applies the
+  reviewed artifact after merge. Its apply also disables destructive confirmation;
+  do not enable it to bypass the current graph’s destructive plan.
 
 Do not infer workflow availability from a successful source deployment. Verify the
 current branch's workflow file and GitHub Actions **config job**, separately from

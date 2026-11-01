@@ -44,8 +44,10 @@ than native auth files, raw prompt dumps, or full environment/config output.
 
 ## Secrets and local services
 
-The global shell source is `~/.secrets.sh`; every zsh and bash loads it (inventory
-`shell.secrets`). Provider-specific profiles are listed in `config/profiles.json`;
+The global shell source is `~/.secrets.sh`; normal zsh and login/interactive Bash
+load it (inventory `shell.secrets`), and child processes inherit exports. Clean
+noninteractive shells need explicit injection/profile loading. `~/.shortcuts.sh`
+contains shell helpers, not provider credentials. Provider-specific profiles are listed in `config/profiles.json`;
 a profile with `variables` reads only those literal assignments from the file
 without executing it. Application `.env*` files remain in their project.
 Inspect the project's actual loader and precedence before choosing a file. Do not

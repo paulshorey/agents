@@ -185,7 +185,8 @@ for the actual desired mode before installing anything.
    Check Cursor ignore behavior separately from shell/file permissions; verify
    secret edits without making private files available to automatic indexing.
    Test with dummy values; document reload/redeploy requirements and encrypted
-   recovery. Every shell loads `~/.secrets.sh`; tools launched without a shell read
+   recovery. Normal zsh and login/interactive Bash load `~/.secrets.sh`; children inherit
+   exports. Clean noninteractive shells need explicit injection, and tools launched without a shell read
    only registered variables from it and never execute it. GUI-launched apps may have
    different environments from shells.
 5. **Add focused project/process and GitHub administration runbooks.** Reuse

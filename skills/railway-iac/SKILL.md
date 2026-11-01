@@ -37,19 +37,29 @@ for production database migrations and release validation alongside IaC verifica
 
 ## Local access on this machine
 
-The standard API token name is `RAILWAY_API_TOKEN`, exported by `~/.secrets.sh`,
-which every zsh and bash loads. Unset `RAILWAY_TOKEN` when using it;
-a project token in that variable takes precedence. In CI, use the intended
-environment's project token in `RAILWAY_TOKEN` instead. Pass the Homebrew CLI path
+The local workspace credential is `RAILWAY_API_TOKEN` in `~/.secrets.sh`, selected
+by profile `railway.workspace` in `~/.agents/config/profiles.json`. On this Mac,
+normal zsh and login/interactive Bash load that file; children inherit exported
+values. A clean noninteractive Bash process does not load it automatically.
+`~/.shortcuts.sh` defines aliases and directory helpers, not Railway credentials;
+its `*-prod` directory hook does not select a Railway project or environment.
+Use an inherited token, explicitly load the trusted file in a Bash subshell as below,
+or use the registered profile loader for clients without shell startup.
+
+Unset `RAILWAY_TOKEN` and fail if `RAILWAY_API_TOKEN` is absent before local workspace
+commands. In CI/cloud tasks, use only the intended environment’s project token in
+`RAILWAY_TOKEN`, with `RAILWAY_API_TOKEN` unset. Never copy the local workspace
+credential into GitHub Actions to repair a failed project-token job. Pass the Homebrew CLI path
 (`/opt/homebrew/bin/railway`) when a repository's npm CLI binary was not installed.
 
 For a read-only check of Notes dev:
 
 ```bash
 bash --noprofile --norc -c '
+  set -e
   source "$HOME/.secrets.sh" >/dev/null 2>&1
   unset RAILWAY_TOKEN
-  test -n "${RAILWAY_API_TOKEN:-}"
+  test -n "${RAILWAY_API_TOKEN:-}" || exit 1
   export RAILWAY_PROJECT_ID=7c451bd1-350a-4fb3-a08f-5295863269ce
   export RAILWAY_ENVIRONMENT_ID=8cbb1415-ac2b-46c3-ae8c-144265017189
   railway api "query(\$id: String!) { project(id: \$id) { id name } }" \
@@ -111,7 +121,8 @@ the useful identifiers in this shape:
 https://railway.com/project/<PROJECT_ID>/service/<SERVICE_ID>?environmentId=<ENVIRONMENT_ID>
 ```
 
-Extract those IDs before using a possibly unrelated local link. When no URL or local
+Extract those IDs before using a possibly unrelated local link. Clear inherited service selectors when they
+do not belong to the target. When no URL or local
 documentation identifies the target, inspect the authenticated context. With a
 workspace-scoped token, use `railway api` to discover projects first; the identity
 commands below can require broader scope:
@@ -132,7 +143,8 @@ actually populated by the installed CLI.
 
 Interactive developers use `railway login`; truly headless sessions may use
 `railway login --browserless`. CI and unattended agents should use a project token in
-`RAILWAY_TOKEN`, scoped to one project/environment. Reserve the broader
+`RAILWAY_TOKEN`, scoped to one project/environment, and verify both IDs with
+`railway api 'query{projectToken{projectId environmentId}}'`. Reserve the broader
 `RAILWAY_API_TOKEN` for account/workspace operations. Do not set both, print tokens,
 or write credentials or decrypted variable values into the repository.
 

@@ -26,7 +26,7 @@
         "hosting.paul"
       ],
       "notes": [
-        "Provider label: Agent DNS — all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
         "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
         "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
@@ -60,14 +60,14 @@
       "id": "shell.secrets",
       "kind": "runtime",
       "owner": "reference",
-      "description": "Global shell secret file loaded by every zsh and bash on this machine.",
+      "description": "Global shell secret file loaded by normal zsh and login/interactive Bash on this machine.",
       "runbook": "docs/runbooks/configuration.md",
       "path": "~/.secrets.sh",
       "variables": [
         "RAILWAY_API_TOKEN"
       ],
       "notes": [
-        "~/.zshenv loads it for every zsh (login, interactive, scripts, agent and app shells); ~/.profile and ~/.bashrc load it for bash. Exported variables reach child processes.",
+        "~/.zshenv loads it for normal zsh; ~/.profile and ~/.bashrc load it for login/interactive Bash. Children inherit exports. Clean noninteractive Bash does not load these files and needs explicit injection or the registered profile loader. ~/.shortcuts.sh contains aliases/directory helpers, not Railway credentials or target selection.",
         "It is a shell script with other credentials and commands. Profiles registered with variables read only those literal assignments; never execute it from tools or print its lines. Authorized edits must preserve unrelated assignments.",
         "App-local .env files use their own loaders; see environment.project-secrets. Cloud agents do not have this file; inject secrets through each platform's secret manager."
       ]
@@ -117,7 +117,8 @@
       ],
       "notes": [
         "RAILWAY_API_TOKEN and RAILWAY_TOKEN are secret. IDs and branch names are selectors.",
-        "Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry."
+        "Workspace launchers clear inherited Railway tokens before loading the selected profile. RAILWAY_TOKEN is project/environment CI access; its value is maintained in the relevant CI secret store, not this registry.",
+        "Use one token type at a time and fail when the selected token is absent. Verify projectToken projectId/environmentId before CI secret replacement, and verify a PR plan afterward; never copy the local workspace credential to CI."
       ]
     },
     {

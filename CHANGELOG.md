@@ -4,6 +4,20 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-10-31 — Railway connection audit
+
+- Clarified normal shell inheritance versus clean noninteractive processes and the
+  role of `~/.shortcuts.sh`; the `railway.workspace` profile remains the owner of
+  local token loading. Local operations and CI now explicitly select one token type.
+- Completed the Railway skill’s project map with Events, Facts and HCI, exact CI
+  secret stores, separate LivX serving access, and project-token verification and
+  recovery. The hosting and provider skills use the same connection rules.
+- Replaced three rejected GitHub Actions credentials with newly scoped project
+  tokens: Map’s `RAILWAY_TOKEN` (Map/dev), Map’s `WEBARTS_RAILWAY_TOKEN_DEV`
+  (Experimental/dev), and Paul’s `RAILWAY_TOKEN_DEV` (Paul/dev). Each new token’s
+  project/environment was read back before saving through stdin; no token values
+  or fragments were recorded. Existing unrelated credentials were preserved.
+
 ## 2026-10-31 — Railway token from the shell secrets file
 
 - Profile `railway.workspace` points at `~/.secrets.sh` and reads only its literal
