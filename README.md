@@ -191,8 +191,8 @@ deployment task.
 
 | Variable | Purpose and source |
 | --- | --- |
-| `RAILWAY_API_TOKEN` | Workspace/account access. For WebArts and Paul, source `~/.config/railway/webarts.env` explicitly. The generic token in `~/.secrets.sh` accesses another workspace. |
-| `RAILWAY_TOKEN` | Environment-scoped project token for CI. Unset when selecting a workspace profile; never reuse another project’s CI secret. |
+| `RAILWAY_API_TOKEN` | Workspace token for **my workspace** (`c64d0999-e00c-4c52-bbd4-2614210e3758`), stored in `~/.secrets.sh`. Normal zsh and login/interactive Bash export it; clean noninteractive shells need injection. The `railway.workspace` profile reads it directly without shell startup. |
+| `RAILWAY_TOKEN` | Environment-scoped project token for CI. Use one token type at a time: unset this for local workspace operations, or unset `RAILWAY_API_TOKEN` for project-token operations; never reuse another project’s CI secret. |
 | `RAILWAY_PROJECT_ID`, `RAILWAY_ENVIRONMENT_ID`, `RAILWAY_SERVICE_ID` | Non-secret target selectors, where supported. Prefer explicit CLI IDs. These do not broaden credential scope. |
 | `RAILWAY_IAC_BRANCH` | Required by some existing preview IaC definitions; inspect the actual source branch. |
 | `CLOUDFLARE_API_TOKEN` | Scoped API token for unattended DNS/CLI/API use. Store in `local/credentials/cloudflare.env`, mode 600, or inject through an external secret manager. |
@@ -202,13 +202,15 @@ deployment task.
 
 The helper parses literal `KEY=value` or `export KEY=value` assignments from owner-only
 profiles; it does not execute shell commands. Quote literal values if needed. It rejects
-command substitution and group/world-readable credential files. The explicit Railway
-profile replaces inherited Railway tokens. The Cloudflare wrapper/profile supplies
+command substitution and group/world-readable credential files. A profile registered
+with `variables` reads only those literal assignments from a shell file such as
+`~/.secrets.sh` and skips every other line. The Railway profile replaces inherited
+Railway tokens with that file's value. The Cloudflare wrapper/profile supplies
 its configured credentials to the pinned CLI. Avoid shell tracing, environment dumps,
 token-bearing command arguments, and printing full API variable values.
 
 [`config/profiles.json`](config/profiles.json) owns the locations for profile IDs
-`cloudflare.default` and `railway.webarts`. Hosting manifests select these IDs;
+`cloudflare.default`, `railway.workspace`, and `twilio.sms`. Hosting manifests select these IDs;
 CLI/MCP launchers and the inventory resolve the same catalog. Change a location there
 instead of editing multiple consumers. Explicit profile file paths remain supported
 for ad hoc manifests. Changing a catalog entry does not move or rotate its credential.
@@ -241,12 +243,17 @@ token. It sets the account default and leaves the zone unbound; `--pin-zone` exp
 adds a global zone default for a deliberately single-zone profile. Run the doctor to
 verify current access rather than relying on this recorded setup state.
 
-For an ad hoc Railway operation, keep profile selection local:
+Normal zsh and login/interactive Bash load `~/.secrets.sh`; their children inherit
+exports. A clean noninteractive Bash process does not load it automatically.
+`~/.shortcuts.sh` contains aliases and directory helpers; its `*-prod` hook is not a
+Railway target selector. For clients without shell startup, use the registered
+profile loader. For an ad hoc command in an initialized shell, require the
+workspace credential and drop any project token first:
 
 ```sh
 (
-  source "$HOME/.config/railway/webarts.env"
   unset RAILWAY_TOKEN
+  test -n "${RAILWAY_API_TOKEN:-}" || exit 1
   railway api 'query($id:String!){project(id:$id){id name workspaceId}}' \
     --raw-var id=0147ed48-9a17-4d6f-a17f-43e989df9adf
 )
@@ -254,10 +261,11 @@ For an ad hoc Railway operation, keep profile selection local:
 
 ### MCP connections
 
-Railway uses the official `railway mcp local` server with the existing WebArts
-workspace profile, launched through `bin/railway-mcp`. No new account OAuth grant is
-needed for that existing access. Pass another explicit profile to the launcher when
-that workspace is intended. Cloudflare uses `https://mcp.cloudflare.com/mcp`.
+Railway uses the official `railway mcp local` server with the `railway.workspace`
+profile, launched through `bin/railway-mcp`, which reads the token from `~/.secrets.sh`
+even when a client starts it without a shell. Workspace tokens cannot call
+account-wide tools such as `list_projects` or `whoami`; project-scoped tools work.
+Pass another explicit profile to the launcher when that workspace is intended. Cloudflare uses `https://mcp.cloudflare.com/mcp`.
 Codex can use Cloudflare OAuth when a scoped API token is not configured:
 
 ```sh

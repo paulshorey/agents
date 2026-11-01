@@ -15,10 +15,9 @@ Paul uses SDK 3.15.0 and native CLI 5.62.1. Its npm CLI installer introduced vul
 `tar` dependencies, and a dependency override broke the import. Keep other repositories'
 reviewed pins; do not add the npm CLI to app dependencies incidentally.
 
-Use the repository's package manager and `packageManager` version. The WebArts
-migration used SDK 3.11.0, CLI 5.62.1 for Notes/NLP, and the existing pinned CLI
-5.59.0 for Map; these are tested versions, not requirements to override future
-pins. Node 24 was used for IaC CI. Evaluating IaC and building the application can
+Use the repository's package manager and `packageManager` version. Notes and NLP
+pin SDK 3.11.0 and CLI 5.62.1; Map pins CLI 5.59.0. These are tested versions, not
+requirements to override future pins. IaC CI uses Node 24. Evaluating IaC and building the application can
 use different Node versions; do not upgrade app runtimes solely for SDK evaluation.
 Run the repository's IaC type-check script and lint a changed workflow with
 `actionlint` when available, then review live plans for every affected environment.
@@ -108,11 +107,9 @@ the repository and live graph, then explicitly clear the custom config path.
 With CLI 5.62.1's `serviceInstanceUpdate` API, `railwayConfigFile: null` was ignored;
 an empty string cleared it. Verify the field after mutation and run a fresh plan.
 
-Audit dev, production, and existing PR environments separately. In WebArts, four
-app services across dev and four previews retained 20 stale paths after the files
-were removed; production already had no path. Removing a repository file does not
-clear these live settings. Read [local connections](local-connections.md) for the
-correct project/profile and partials.
+Audit dev, production, and existing PR environments separately. Removing a
+repository file does not clear a live config-file path. Read
+[local connections](local-connections.md) for the correct project/profile and partials.
 
 If an authorized manual recovery requires clearing one confirmed stale path, first
 inspect the live schema, then update only that service instance:
@@ -140,8 +137,8 @@ Verified CLI 5.62.1 supplied `ctx.environmentId` while environment/project names
 could be null. Use stable persistent-environment IDs and a known project name when
 needed; confirm both dev and production plans before replacing that logic with
 `ctx.isEnvironment()`. Keep a project-ID guard for files targeting similarly named
-projects. WebArts preview files require `RAILWAY_IAC_BRANCH` from the existing
-source; never omit it or silently choose main.
+projects. Partial files that serve previews require `RAILWAY_IAC_BRANCH` from the
+existing source; never omit it or silently choose main.
 
 An explicit default `restartPolicyType: "ON_FAILURE"` produced recurring drift in
 this import; omitting the redundant field gave a clean plan while preserving the
@@ -167,7 +164,7 @@ artifact only after merge. Grant `contents: read`, `pull-requests: write`, and
 Fork PRs do not receive repository secrets.
 
 Keep an existing custom workflow when it correctly implements the repository's
-deployment contract. WebArts/LivX use a read-only PR plan plus a **fresh saved plan
+deployment contract. Notes, NLP, Map, and LivX use a read-only PR plan plus a **fresh saved plan
 on the deployment-branch push**, then apply that saved plan in the same job. The
 official action can instead apply the reviewed PR artifact at merge. Identify
 which model a workflow implements; do not claim PR-artifact binding for the custom

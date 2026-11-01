@@ -4,9 +4,12 @@
       "provider": "cloudflare",
       "path": "~/.agents/local/credentials/cloudflare.env"
     },
-    "railway.webarts": {
+    "railway.workspace": {
       "provider": "railway",
-      "path": "~/.config/railway/webarts.env"
+      "path": "~/.secrets.sh",
+      "variables": [
+        "RAILWAY_API_TOKEN"
+      ]
     },
     "twilio.sms": {
       "provider": "twilio",

@@ -185,21 +185,43 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(inventory.main(['--root', str(self.root), 'docs', '--check']), 1)
         self.assertEqual(path.read_text(), 'stale\n')
 
-    def test_local_checks_never_read_unsafe_profile_or_legacy_shell(self):
+    def test_local_checks_never_read_unsafe_profile(self):
         path = self.home / '.agents/local/credentials/cloudflare.env'
         path.parent.mkdir(parents=True)
         path.write_text('CLOUDFLARE_API_TOKEN=sentinel-secret\n')
         path.chmod(0o644)
         actual_read = Path.read_text
         def reading(file, *args, **kwargs):
-            if file == path or file == self.home / '.secrets.sh':
-                raise AssertionError('Unsafe or legacy credential file read')
+            if file == path:
+                raise AssertionError('Unsafe credential file read')
             return actual_read(file, *args, **kwargs)
         with patch.object(Path, 'read_text', reading):
             result = inventory.local_checks(self.data, self.root, self.home)
         cloudflare = next(item for item in result if item['id'] == 'cloudflare.dns-token')
         self.assertFalse(cloudflare['passed'])
         self.assertNotIn('sentinel-secret', json.dumps(result))
+
+    def test_local_checks_read_only_selected_variables_from_shell_secrets(self):
+        secrets = self.home / '.secrets.sh'
+        secrets.write_text('if [[ $- == *i* ]]; then\n  echo "sentinel-banner"\nfi\n'
+                           'export PATH="$HOME/bin:$PATH"\nexport OTHER_KEY="sentinel-other"\n'
+                           '# export RAILWAY_API_TOKEN="sentinel-commented"\n'
+                           'export RAILWAY_API_TOKEN="sentinel-railway"\n')
+        secrets.chmod(0o600)
+        result = inventory.local_checks(self.data, self.root, self.home)
+        railway = next(item for item in result if item['id'] == 'railway.workspace-token')
+        self.assertTrue(railway['passed'], railway['detail'])
+        self.assertNotIn('sentinel', json.dumps(result))
+
+    def test_profile_catalog_rejects_invalid_variable_selection(self):
+        path = self.root / 'config/profiles.json'
+        original = path.read_text()
+        for variables in ([], ['lowercase'], 'RAILWAY_API_TOKEN'):
+            profiles = json.loads(original)
+            profiles['profiles']['railway.workspace']['variables'] = variables
+            path.write_text(json.dumps(profiles))
+            with self.assertRaises(inventory.InventoryError):
+                inventory.load_inventory(self.root)
 
     def test_provider_failure_message_cannot_escape_into_status(self):
         class FailingClient:

@@ -24,7 +24,10 @@ as part of promotion, and never print credentials.
 1. Inspect repository instructions, remote, branches, current changes, and deployment
    runbook. Establish the requested project/workspace, environment-to-branch mapping,
    domains, port, and secret requirements. Preserve unrelated work.
-2. Select the workspace credential explicitly. Check scoped project access;
+2. Select the workspace credential explicitly (`railway.workspace` reads
+   `RAILWAY_API_TOKEN` from `~/.secrets.sh` locally). Unset `RAILWAY_TOKEN` for that
+   path; CI uses only its environment’s project token, never the local workspace token.
+   Check scoped project access;
    `whoami` can fail for valid workspace tokens. For new projects, read
    [bootstrap and recovery](references/bootstrap.md). Create only the requested
    resources. Record returned IDs in a non-secret manifest using
