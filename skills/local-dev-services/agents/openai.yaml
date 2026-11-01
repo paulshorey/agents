@@ -1,0 +1,3 @@
+interface:
+  display_name: "Local Dev Services"
+  short_description: "Check and restart local servers and Tailscale"
