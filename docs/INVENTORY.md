@@ -46,6 +46,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [context.local-services](#context-local-services) | context | reference | ~/git/AGENTS.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [twilio.sms-credentials](#twilio-sms-credentials) | credential | agents | ~/.agents/local/credentials/twilio-sms.env | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 | [twilio.sms-cli](#twilio-sms-cli) | tool | agents | bin/agents-sms | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
+| [application.last30days-config](#application-last30days-config) | configuration | application | ~/.config/last30days/.env | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -617,6 +618,26 @@ Reads stdin or a file; --check and --dry-run are local only, --status reads one 
 No provider endpoint, MCP server, background automation, or native permission override is installed. Remote agents require separate authorized provisioning.
 
 [Update and recovery instructions](../docs/runbooks/sms.md).
+
+<a id="application-last30days-config"></a>
+
+## application.last30days-config
+
+last30days engine settings, consent markers, and optional source keys on this machine.
+
+Owner: **application**.
+
+Location: `~/.config/last30days/.env`.
+
+Created 2026-11-02 by the skill's first-run Auto setup from Claude Code. It holds the setup-complete, browser-consent, and X cookie-access-denied markers; no API keys were stored, and the engine never saves cookie values.
+
+Paul granted browser-cookie consent in chat for X reads on that run and later runs. Set BROWSER_CONSENT=false or FROM_BROWSER=off in this file to revoke native browser and CDP reads.
+
+Optional source keys (SCRAPECREATORS_API_KEY, XAI_API_KEY, X_BEARER_TOKEN) belong here or in macOS Keychain items named last30days-<KEY>. The engine also reads process-environment keys such as PARALLEL_API_KEY and PERPLEXITY_API_KEY. Derive key names only; never print the file.
+
+Update and repair it through the last30days skill's setup-wizard reference. The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
 
 ## Utility files
 

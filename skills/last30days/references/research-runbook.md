@@ -101,6 +101,7 @@ Known keyword-trap classes and how to handle each:
 - Pattern: topic contains a specific number that collides with unrelated content (42 = Jackie Robinson + Hitchhiker's + a 42" quilt; 40 = 40th anniversary posts; 50 = state-count posts; 100 = bench-press posts).
 - Why it fails: the number dominates retrieval and pulls in unrelated content. A search that prominently features "42" returns jersey-number posts; a search for "the 100" returns TV-show posts.
 - Action: Strip the number from the engine search query unless changing or removing it would change the topic itself (e.g., "GPT-4" yes, "40 year old man" no, "Area 51" yes, "top 10 foods" no). Keep the number in the user's original framing for context; drop it from the engine query. Document in Resolved: "Dropping '{number}' from the search query - it is a keyword trap that pulls in unrelated content. Search will cover the concept generically."
+- Version suffixes: a bare version token (`3`, `2.5`) in a plan's `search_query` can match unrelated Hacker News and YouTube items by itself; a TimesFM 3.0 run returned 14 off-topic HN stories such as "Voxtral 3" and "2.5 hrs of makeup". For a versioned product, search the product name plus words (`timesfm new version`) and put the exact version in `ranking_query`. Keep the number in `search_query` only when older versions would otherwise dominate the window. Before trusting footer counts, check the saved raw file's per-source items for matches absent from the ranked clusters.
 
 **Class 3: Overly-literal concept phrase**
 - Pattern: `how to use X`, `what is Y`, `tutorial for Z`, `explain A` — tutorial-shaped phrasing where social posts are in different vocabulary.
@@ -145,7 +146,7 @@ Known keyword-trap classes and how to handle each:
 - It returns, per search, the query and each useful result's title, verbatim URL, publisher/date, and a 1-2 sentence finding, plus any resolved targeting (handles, GitHub user/repos, domain, Ad Library page id, subreddits, hashtags, creators) with its supporting URL. Engine commands, plan files, and the Step 2.5 append stay with you.
 - Cite returned URLs verbatim (LAW 8) and count the web pages in the invitation's link line.
 
-Without such a subagent, run the same searches directly with the same output; that fallback is best effort and grants no authority over a tool's own contract.
+Without such a subagent, or when the host permits subagents only at the user's explicit request (for example Claude Code), run the same searches directly with the same output; that fallback is best effort and grants no authority over a tool's own contract.
 
 ---
 
