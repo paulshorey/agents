@@ -46,7 +46,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [context.local-services](#context-local-services) | context | reference | ~/git/AGENTS.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [twilio.sms-credentials](#twilio-sms-credentials) | credential | agents | ~/.agents/local/credentials/twilio-sms.env | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 | [twilio.sms-cli](#twilio-sms-cli) | tool | agents | bin/agents-sms | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
-| [application.last30days-config](#application-last30days-config) | configuration | application | ~/.config/last30days/.env | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
+| [application.last30days-config](#application-last30days-config) | configuration | application | ~/.config/last30days/.env | [docs/runbooks/last30days.md](../docs/runbooks/last30days.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -635,9 +635,9 @@ Paul granted browser-cookie consent in chat for X reads on that run and later ru
 
 Optional source keys (SCRAPECREATORS_API_KEY, XAI_API_KEY, X_BEARER_TOKEN) belong here or in macOS Keychain items named last30days-<KEY>. The engine also reads process-environment keys such as PARALLEL_API_KEY and PERPLEXITY_API_KEY. Derive key names only; never print the file.
 
-Update and repair it through the last30days skill's setup-wizard reference. The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed.
+The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed.
 
-[Update and recovery instructions](../docs/runbooks/agent-customization.md).
+[Update and recovery instructions](../docs/runbooks/last30days.md).
 
 ## Utility files
 

@@ -16,8 +16,8 @@ Verification dates describe historical observations, not current readiness.
   `engineering-research`, the `claude-code` Railway MCP agent and a deployed-service
   query in `railway-iac`, and host-compatibility notes in `last30days`.
 - Ran the last30days first-run setup on this Mac with Paul's browser-cookie consent;
-  registered its application-owned config as `application.last30days-config`. No
-  API keys were stored, yt-dlp was installed with Homebrew, and X cookie access is
+  registered its application-owned config as `application.last30days-config` with
+  an update, revocation and recovery runbook. No API keys were stored, yt-dlp was installed with Homebrew, and X cookie access is
   still unverified (Safari access denied; no Chromium x.com login found).
 - The `~/.claude/skills` links are not managed by `config/links.json`; new skills
   need a link until installation covers Claude Code.

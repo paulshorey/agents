@@ -680,13 +680,13 @@
       "kind": "configuration",
       "owner": "application",
       "description": "last30days engine settings, consent markers, and optional source keys on this machine.",
-      "runbook": "docs/runbooks/agent-customization.md",
+      "runbook": "docs/runbooks/last30days.md",
       "path": "~/.config/last30days/.env",
       "notes": [
         "Created 2026-11-02 by the skill's first-run Auto setup from Claude Code. It holds the setup-complete, browser-consent, and X cookie-access-denied markers; no API keys were stored, and the engine never saves cookie values.",
         "Paul granted browser-cookie consent in chat for X reads on that run and later runs. Set BROWSER_CONSENT=false or FROM_BROWSER=off in this file to revoke native browser and CDP reads.",
         "Optional source keys (SCRAPECREATORS_API_KEY, XAI_API_KEY, X_BEARER_TOKEN) belong here or in macOS Keychain items named last30days-<KEY>. The engine also reads process-environment keys such as PARALLEL_API_KEY and PERPLEXITY_API_KEY. Derive key names only; never print the file.",
-        "Update and repair it through the last30days skill's setup-wizard reference. The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed."
+        "The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed."
       ]
     }
   ]
