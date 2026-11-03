@@ -143,17 +143,19 @@ only that page.
 
 Filtering changes output only. First, a regex tag scan balances nested `<details>`
 blocks and removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`.
-Inline code and fenced code examples are masked during that scan and preserved
+Inline, fenced, and indented code examples are masked during that scan and preserved
 verbatim in the returned body.
 Other details blocks and code formatting are preserved. Then any comment body
 containing `## Codex Review Summary` or `@codex review` is omitted, regardless of
-author. This order preserves useful review text when the excluded phrase appears
+author or whether that literal text is in prose or a code example. `--no-filter`
+returns excluded entries too. This order preserves useful review text when the excluded phrase appears
 only in the removed boilerplate. The Codex receipt HTML marker is also removed.
 Review decisions and thread metadata remain visible; filtered roots do not hide
 useful replies. No other bot/human findings are automatically discarded.
 
 Failures exit nonzero without partial JSON. This includes access/rate-limit errors,
-incomplete file/commit counts, feedback-count changes, and head/base changes during
+incomplete file/commit counts, feedback-count changes, submitted-review additions
+or state/body changes, and head/base changes during
 the read. GitHub caps the files endpoint at 3,000; inspect larger PRs with Git rather
 than assuming a truncated file list is complete. Check runs must match the API's
 `total_count`; the helper also fails conservatively at 1,000 runs rather than

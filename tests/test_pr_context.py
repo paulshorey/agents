@@ -202,6 +202,19 @@ Keep the finding suffix.</details>'''
         expected = body.replace("<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>", "")
         self.assertEqual(pr_context.filter_body(body), expected)
 
+    def test_indented_code_examples_survive_without_masking_real_html_summaries(self):
+        example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
+        for indent in ("    ", "\t"):
+            body = f"Reproduction:\n\n{indent}{example}\n\n{indent}Keep code.\n\nExplanation."
+            self.assertEqual(pr_context.filter_body(body), body)
+        raw = "<details>\n    <summary>ℹ️ About Codex in GitHub</summary>Noise\n</details>"
+        self.assertEqual(pr_context.filter_body("Finding.\n" + raw), "Finding.")
+
+    def test_requested_literal_exclusions_still_apply_inside_code_examples(self):
+        for body in ("Run `@codex review`", "Example:\n```text\n@codex review\n```",
+                     "Example:\n\n    ## Codex Review Summary"):
+            self.assertIsNone(pr_context.filter_body(body))
+
     def test_check_run_total_and_endpoint_cap_cannot_silently_truncate(self):
         api = pr_context.GitHub(URL)
         for total, size in ((1001, 1000), (1000, 1000), (5, 4)):
@@ -262,6 +275,31 @@ Keep the finding suffix.</details>'''
             with self.subTest(pages=pages), patch.object(pr_context, "gh", return_value=pages):
                 with self.assertRaises(pr_context.FetchError):
                     pr_context.GitHub(URL).connection("commits", "commit { oid }")
+
+    def test_body_only_new_review_or_changed_decision_invalidates_snapshot(self):
+        for change in ("new", "state", "body"):
+            fixture = Fixture()
+            original = fixture.gh
+            reads = 0
+
+            def changed(*args, **kwargs):
+                nonlocal reads
+                value = copy.deepcopy(original(*args, **kwargs))
+                if args[-1].endswith('/reviews?per_page=100'):
+                    reads += 1
+                    if reads == 2:
+                        if change == "new":
+                            value[0].append(dict(fixture.comment(5002, "New body-only finding"),
+                                                 state="CHANGES_REQUESTED", commit_id="abc"))
+                        elif change == "state":
+                            value[0][0]["state"] = "DISMISSED"
+                        else:
+                            value[0][0]["body"] = "Updated review finding"
+                return value
+
+            with self.subTest(change=change), patch.object(pr_context, "gh", side_effect=changed):
+                with self.assertRaisesRegex(pr_context.FetchError, "Submitted PR reviews changed"):
+                    pr_context.fetch_context(pr_context.GitHub(URL))
 
     def test_partial_failure_has_no_stdout_and_does_not_echo_response_body(self):
         stdout, stderr = io.StringIO(), io.StringIO()

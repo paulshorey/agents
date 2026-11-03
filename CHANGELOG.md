@@ -23,6 +23,9 @@ Verification dates describe historical observations, not current readiness.
 - Follow-up review also protects inline/fenced code examples during HTML
   filtering and separates current six-link routing status from the older harness
   observations and remaining fresh-client verification plan.
+- Extended code protection to indented examples and rechecks submitted review
+  IDs, decisions, commits, and bodies before returning a snapshot. Literal
+  whole-comment exclusion rules remain unchanged, including inside code examples.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

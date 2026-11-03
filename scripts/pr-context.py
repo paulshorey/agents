@@ -62,19 +62,33 @@ def mask_markdown_code(body):
     """Hide code from the HTML scan while preserving offsets into the original."""
     blocks = []
     fence, start, offset = None, 0, 0
+    indented, blank_before = None, True
     prefix = r"[ \t]*(?:>[ \t]*)*"
     for line in body.splitlines(keepends=True):
+        code_line = re.match(r"(?: {4}|\t)", line) is not None
+        if indented is not None:
+            if code_line or not line.strip():
+                offset += len(line)
+                blank_before = not line.strip()
+                continue
+            blocks.append((indented, offset))
+            indented = None
         if fence:
             if re.fullmatch(prefix + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*\r?\n?", line):
                 blocks.append((start, offset + len(line)))
                 fence = None
+        elif code_line and blank_before:
+            indented = offset
         else:
             opening = re.match(prefix + r"(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})([^\r\n]*)", line)
             if opening and (opening[1][0] == "~" or "`" not in opening[2]):
                 fence, start = opening[1], offset
         offset += len(line)
+        blank_before = not line.strip()
     if fence:
         blocks.append((start, len(body)))
+    if indented is not None:
+        blocks.append((indented, len(body)))
     ranges = list(blocks)
     start = 0
     for left, right in [*blocks, (len(body), len(body))]:
@@ -108,6 +122,7 @@ def filter_body(body):
             pieces.append(body[cursor:start])
             cursor = end
     body = "".join([*pieces, body[cursor:]])
+    # The requested whole-comment exclusions are literal, including code examples.
     if "## Codex Review Summary" in body or "@codex review" in body:
         return None
     return body.replace("<!-- codex-review-receipt:v1 -->", "").strip()
@@ -204,6 +219,12 @@ def feedback(raw, kind):
     return item
 
 
+def review_state(reviews):
+    return {review["id"]: tuple(review.get(key) for key in (
+        "state", "commit_id", "submitted_at", "body",
+    )) for review in reviews}
+
+
 def fetch_context(api, include_diff=False, no_filter=False):
     raw = api.api(api.pull)
     head = raw["head"]["sha"]
@@ -228,6 +249,7 @@ def fetch_context(api, include_diff=False, no_filter=False):
     issue_comments = api.pages(f"{api.prefix}/issues/{api.number}/comments")
     inline_comments = api.pages(f"{api.pull}/comments")
     raw_reviews = api.pages(f"{api.pull}/reviews")
+    initial_review_state = review_state(raw_reviews)
     raw_threads, state = api.connection(
         "reviewThreads",
         "id isResolved isOutdated path line startLine diffSide "
@@ -304,6 +326,8 @@ def fetch_context(api, include_diff=False, no_filter=False):
         raise FetchError("PR head or base changed during the fetch; rerun before acting.")
     if len(issue_comments) != final["comments"] or len(inline_comments) != final["review_comments"]:
         raise FetchError("PR feedback counts changed during the fetch; rerun for the latest comments.")
+    if review_state(api.pages(f"{api.pull}/reviews")) != initial_review_state:
+        raise FetchError("Submitted PR reviews changed during the fetch; rerun for the latest feedback.")
     return output
 
 
