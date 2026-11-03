@@ -29,6 +29,8 @@ Verification dates describe historical observations, not current readiness.
 - Added request-specific reaction evidence (actor/content/time), blockquoted
   indented-code protection, and final issue/inline comment state checks so edits
   and reaction-only review completion are visible to the review loop.
+- Recheck thread disposition and reaction state before the final ref read, and
+  preserve significant indentation when a comment contains only a code example.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

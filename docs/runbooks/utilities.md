@@ -172,6 +172,9 @@ seconds. Errors omit raw response bodies. The result is an observation, not an
 atomic snapshot; fetch again before replying, resolving threads, or merging.
 Issue/inline comment IDs, update times, and bodies and submitted-review state are
 read again before success, detecting edits that do not change comment counts.
+Thread IDs/resolution/outdated state and request/PR reactions are also rechecked;
+the final head/base/count read runs last. These guards reduce stale observations
+without providing a cross-endpoint GitHub transaction.
 The helper never posts, resolves, or deletes GitHub comments. Those actions follow
 the task's authorization and the skills' requirement to reply to each addressed
 comment after validating and pushing its fix.

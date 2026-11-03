@@ -231,6 +231,12 @@ Keep the finding suffix.</details>'''
                      "Example:\n\n    ## Codex Review Summary"):
             self.assertIsNone(pr_context.filter_body(body))
 
+    def test_code_only_comment_keeps_significant_indentation_and_trailing_spaces(self):
+        example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
+        for indent in ("    ", "\t"):
+            body = f"{indent}{example}\n{indent}code  "
+            self.assertEqual(pr_context.filter_body(body), body)
+
     def test_check_run_total_and_endpoint_cap_cannot_silently_truncate(self):
         api = pr_context.GitHub(URL)
         for total, size in ((1001, 1000), (1000, 1000), (5, 4)):
@@ -350,6 +356,45 @@ Keep the finding suffix.</details>'''
         self.assertEqual(request["reactions"][1]["author"], "reviewer")
         self.assertEqual(output["pr_reactions"][0]["author"], "chatgpt-codex-connector[bot]")
         self.assertEqual(output["pr_reactions"][0]["content"], "+1")
+
+    def test_resolved_or_outdated_thread_changes_invalidate_snapshot(self):
+        for key in ("isResolved", "isOutdated", "id"):
+            fixture = Fixture()
+            original = fixture.gh
+            reads = 0
+
+            def changed(*args, **kwargs):
+                nonlocal reads
+                value = copy.deepcopy(original(*args, **kwargs))
+                if "graphql" in args and any("reviewThreads(first:100" in a for a in args):
+                    reads += 1
+                    if reads == 2:
+                        node = value[0]["data"]["repository"]["pullRequest"]["reviewThreads"]["nodes"][0]
+                        node[key] = "new-id" if key == "id" else True
+                return value
+
+            with self.subTest(key=key), patch.object(pr_context, "gh", side_effect=changed):
+                with self.assertRaisesRegex(pr_context.FetchError, "PR review threads changed"):
+                    pr_context.fetch_context(pr_context.GitHub(URL))
+
+    def test_request_or_pr_reaction_changes_invalidate_snapshot(self):
+        for endpoint in ("/issues/comments/1/reactions?per_page=100", "/issues/7/reactions?per_page=100"):
+            fixture = Fixture()
+            original = fixture.gh
+            reads = 0
+
+            def changed(*args, **kwargs):
+                nonlocal reads
+                value = copy.deepcopy(original(*args, **kwargs))
+                if args[-1].endswith(endpoint):
+                    reads += 1
+                    if reads == 2:
+                        value[0] = []
+                return value
+
+            with self.subTest(endpoint=endpoint), patch.object(pr_context, "gh", side_effect=changed):
+                with self.assertRaisesRegex(pr_context.FetchError, "Review reactions changed"):
+                    pr_context.fetch_context(pr_context.GitHub(URL))
 
     def test_partial_failure_has_no_stdout_and_does_not_echo_response_body(self):
         stdout, stderr = io.StringIO(), io.StringIO()

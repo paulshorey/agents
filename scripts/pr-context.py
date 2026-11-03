@@ -127,7 +127,13 @@ def filter_body(body):
     # The requested whole-comment exclusions are literal, including code examples.
     if "## Codex Review Summary" in body or "@codex review" in body:
         return None
-    return body.replace("<!-- codex-review-receipt:v1 -->", "").strip()
+    lines = body.replace("<!-- codex-review-receipt:v1 -->", "").splitlines(keepends=True)
+    start, end = 0, len(lines)
+    while start < end and not lines[start].strip():
+        start += 1
+    while end > start and not lines[end - 1].strip():
+        end -= 1
+    return "".join(lines[start:end]).rstrip("\r\n")
 
 
 class GitHub:
@@ -232,6 +238,17 @@ def comment_state(comments):
             for comment in comments}
 
 
+THREAD_FIELDS = ("id isResolved isOutdated path line startLine diffSide "
+                 "comments(first:1) { nodes { databaseId } }")
+
+
+def thread_state(threads):
+    return {thread["id"]: (
+        tuple(thread.get(key) for key in ("isResolved", "isOutdated", "path", "line", "startLine", "diffSide")),
+        thread["comments"]["nodes"],
+    ) for thread in threads}
+
+
 def reactions(api, path):
     return [{**select(reaction, "id", "content", "created_at"),
              "author": login(reaction.get("user"))} for reaction in api.pages(path)]
@@ -279,11 +296,8 @@ def fetch_context(api, include_diff=False, no_filter=False):
     initial_inline_state = comment_state(inline_comments)
     raw_reviews = api.pages(f"{api.pull}/reviews")
     initial_review_state = review_state(raw_reviews)
-    raw_threads, state = api.connection(
-        "reviewThreads",
-        "id isResolved isOutdated path line startLine diffSide "
-        "comments(first:1) { nodes { databaseId } }",
-    )
+    raw_threads, state = api.connection("reviewThreads", THREAD_FIELDS)
+    initial_thread_state = thread_state(raw_threads)
     pr.update(state)
     raw_commits, _ = api.connection(
         "commits", "commit { oid message committedDate url author { name user { login } } }",
@@ -352,16 +366,22 @@ def fetch_context(api, include_diff=False, no_filter=False):
     }
     if include_diff:
         output["diff"] = gh("pr", "diff", raw["html_url"], "--color", "never", as_json=False)
-    final = api.api(api.pull)
-    if final["head"]["sha"] != head or final["base"]["sha"] != raw["base"]["sha"]:
-        raise FetchError("PR head or base changed during the fetch; rerun before acting.")
-    if len(issue_comments) != final["comments"] or len(inline_comments) != final["review_comments"]:
-        raise FetchError("PR feedback counts changed during the fetch; rerun for the latest comments.")
     if review_state(api.pages(f"{api.pull}/reviews")) != initial_review_state:
         raise FetchError("Submitted PR reviews changed during the fetch; rerun for the latest feedback.")
     if (comment_state(api.pages(f"{api.prefix}/issues/{api.number}/comments")) != initial_issue_state
             or comment_state(api.pages(f"{api.pull}/comments")) != initial_inline_state):
         raise FetchError("PR comment text changed during the fetch; rerun for the latest feedback.")
+    final_threads, _ = api.connection("reviewThreads", THREAD_FIELDS)
+    if thread_state(final_threads) != initial_thread_state:
+        raise FetchError("PR review threads changed during the fetch; rerun for current dispositions.")
+    if (review_requests(api, issue_comments) != output["review_requests"]
+            or reactions(api, f"{api.prefix}/issues/{api.number}/reactions") != output["pr_reactions"]):
+        raise FetchError("Review reactions changed during the fetch; rerun for current completion evidence.")
+    final = api.api(api.pull)
+    if final["head"]["sha"] != head or final["base"]["sha"] != raw["base"]["sha"]:
+        raise FetchError("PR head or base changed during the fetch; rerun before acting.")
+    if len(issue_comments) != final["comments"] or len(inline_comments) != final["review_comments"]:
+        raise FetchError("PR feedback counts changed during the fetch; rerun for the latest comments.")
     return output
 
 
