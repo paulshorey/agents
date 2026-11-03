@@ -20,6 +20,9 @@ Verification dates describe historical observations, not current readiness.
 - Addressed PR #26 feedback: preserve enclosing feedback around nested About Codex
   details blocks, and reject truncated/inconsistent check-run responses, including
   the conservative 1,000-run boundary. `--no-filter` exposes completion evidence.
+- Follow-up review also protects inline/fenced code examples during HTML
+  filtering and separates current six-link routing status from the older harness
+  observations and remaining fresh-client verification plan.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

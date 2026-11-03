@@ -53,20 +53,54 @@ DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 CODEX_ABOUT = re.compile(
     r"<summary\b[^>]*>\s*ℹ️ About Codex in GitHub\s*</summary\s*>", re.IGNORECASE,
 )
+INLINE_CODE = re.compile(
+    r"(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.DOTALL,
+)
+
+
+def mask_markdown_code(body):
+    """Hide code from the HTML scan while preserving offsets into the original."""
+    blocks = []
+    fence, start, offset = None, 0, 0
+    prefix = r"[ \t]*(?:>[ \t]*)*"
+    for line in body.splitlines(keepends=True):
+        if fence:
+            if re.fullmatch(prefix + re.escape(fence[0]) + "{" + str(len(fence)) + r",}[ \t]*\r?\n?", line):
+                blocks.append((start, offset + len(line)))
+                fence = None
+        else:
+            opening = re.match(prefix + r"(?:[-+*] |\d+[.)] )?(`{3,}|~{3,})([^\r\n]*)", line)
+            if opening and (opening[1][0] == "~" or "`" not in opening[2]):
+                fence, start = opening[1], offset
+        offset += len(line)
+    if fence:
+        blocks.append((start, len(body)))
+    ranges = list(blocks)
+    start = 0
+    for left, right in [*blocks, (len(body), len(body))]:
+        ranges.extend((m.start(), m.end()) for m in INLINE_CODE.finditer(body, start, left))
+        start = right
+    masked = list(body)
+    for left, right in ranges:
+        for i in range(left, right):
+            if masked[i] not in "\r\n":
+                masked[i] = " "
+    return "".join(masked)
 
 
 def filter_body(body):
     """Strip only the marked boilerplate before applying whole-comment exclusions."""
+    scan = mask_markdown_code(body)
     stack, removed = [], []
-    for tag in DETAILS_TAG.finditer(body):
+    for tag in DETAILS_TAG.finditer(scan):
         if not tag[0].startswith("</"):
             stack.append((tag.start(), tag.end()))
         elif stack:
             start, content_start = stack.pop()
             # An About summary must belong to this block, not a nested child.
-            first_child = DETAILS_TAG.search(body, content_start, tag.start())
+            first_child = DETAILS_TAG.search(scan, content_start, tag.start())
             summary_end = first_child.start() if first_child else tag.start()
-            if CODEX_ABOUT.search(body, content_start, summary_end):
+            if CODEX_ABOUT.search(scan, content_start, summary_end):
                 removed.append((start, tag.end()))
     cursor, pieces = 0, []
     for start, end in sorted(removed):

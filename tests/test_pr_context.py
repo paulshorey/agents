@@ -179,6 +179,29 @@ Keep the finding suffix.</details>'''
         self.assertEqual(pr_context.filter_body(body),
                          "Keep this.<details><summary>ℹ️ About Codex in GitHub</summary>Unclosed")
 
+    def test_details_examples_in_markdown_code_survive_beside_real_boilerplate(self):
+        example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
+        samples = [f"`{example}`", f"``{example} ` literal tick``",
+                   f"```html\n{example}\n```", f"~~~html\n{example}\n~~~",
+                   f"````html\n```\n{example}\n````", f"> ```html\n> {example}\n> ```",
+                   f"  ```html\n{example}\n  ```", f"- ```html\n  {example}\n  ```",
+                   f"`first line\n{example}`", f"```html\n{example}"]
+        real = "<details><summary>ℹ️ About Codex in GitHub</summary>Real boilerplate</details>"
+        for sample in samples:
+            with self.subTest(sample=sample):
+                # Keep the real block before a possibly unclosed code fence.
+                body = f"Useful finding.\n{real}\n\n{sample}"
+                expected = f"Useful finding.\n\n\n{sample}"
+                self.assertEqual(pr_context.filter_body(body), expected)
+
+    def test_literal_details_inside_code_cannot_unbalance_surrounding_html(self):
+        body = ("<details><summary>Reproduction</summary>\n"
+                "`</details><details>`\n"
+                "<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>\n"
+                "Keep this suffix.</details>")
+        expected = body.replace("<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>", "")
+        self.assertEqual(pr_context.filter_body(body), expected)
+
     def test_check_run_total_and_endpoint_cap_cannot_silently_truncate(self):
         api = pr_context.GitHub(URL)
         for total, size in ((1001, 1000), (1000, 1000), (5, 4)):

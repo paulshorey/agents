@@ -1,9 +1,9 @@
 # Codex and Cursor: discovery, capabilities, and improvement plan
 
-Researched October 14, 2026 against current official documentation and this Mac.
-Observed clients: Codex CLI 0.162.1 and Cursor editor 3.24.18. This task adds
-documentation, inventory references, and a maintenance skill. Proposed settings,
-hooks, integrations, account changes, and infrastructure are not applied here.
+Initial research: October 14, 2026, with Codex CLI 0.162.1 and Cursor editor
+3.24.18. Git/PR routing was updated November 3, 2026 as described below; those
+versions and other October observations are historical. Proposed hooks, account
+changes, and infrastructure in the remaining plan are unapplied.
 
 ## What reads `~/.agents` automatically
 
@@ -104,6 +104,27 @@ do not globally expose `.env` files just to make edits possible.
 
 ## What is already configured on this Mac
 
+### November 3, 2026 update
+
+- Six installer links are declared and match their sources: the original four
+  below, plus Claude Code's `~/.claude/rules/git-workflow.md` and Cursor's
+  `~/.cursor/rules/git-workflow.mdc`. Both new destinations were installed through
+  the targeted installer without changing native Codex or shell contents.
+- Codex's global instructions and the two local user rules route Git/PR work to
+  `git-management`; `pr-management` is a compatibility entrypoint. The review
+  loop, maintenance, and promotions each have one owning reference.
+- The shared Cursor startup bridge is registered and installed for Git/PR work.
+  Fresh-session Claude/Cursor selection remains unverified; broader startup
+  instructions, account User Rules, hooks, and permission policies are separate.
+- Targeted link checks report current. A full installer check also reports
+  pre-existing Codex rendering drift; this task deliberately left it untouched.
+  See the [installation runbook](runbooks/configuration.md#global-git-and-pr-routing).
+
+### October 14, 2026 observations
+
+The following records the earlier setup before the two user-rule links existed;
+its four-link count and missing-bridge observation are superseded by the update above.
+
 - All four installer links match their declared sources. The installer preserves
   unrelated Codex settings and refuses a conflicting Cursor MCP file.
 - `~/.codex/AGENTS.md` points to `rules/AGENTS.md`. The current Codex user config
@@ -124,8 +145,8 @@ do not globally expose `.env` files just to make edits possible.
   installed `agent` CLI.
 - No user `~/.cursor/hooks.json`, `permissions.json`, or `sandbox.json` was present.
   File absence does not determine effective editor mode or team policy. Cursor User
-  Rules were not inspected through the UI; no shared startup instruction bridge is
-  registered or verified. Fresh Cursor skill/MCP calls remain to be tested.
+  Rules were not inspected through the UI; no shared startup bridge was registered
+  or verified at that time. Fresh Cursor skill/MCP calls were still untested.
 - Codex's Computer Use and Node REPL runtimes belong to its application. Do not
   copy their private executable definitions into Cursor and assume interoperability.
 
@@ -162,13 +183,13 @@ for the actual desired mode before installing anything.
 
 ## Proposed implementation order
 
-1. **Establish Cursor startup context.** Keep a short canonical instruction in
-   `rules/` directing agents to the README/inventory, global rules, and workspace
-   instructions. Publish it through supported Cursor User Rules; record that
-   account-synced UI location and update procedure. For selected repositories,
-   add a small `AGENTS.md` entrypoint when needed, preserving their existing rules.
-   Acceptance: fresh Cursor chats in this repo and an app report the intended
-   instruction sources and can find the registered profile without revealing it.
+1. **Verify and extend startup context.** The Git/PR router is now installed in
+   the documented local Cursor and Claude Code user-rule locations, with Codex
+   using its global AGENTS.md. Verify fresh sessions in this repo and another app
+   select the intended rule and skill. Broader README/inventory/workspace routing
+   and account-synced Cursor User Rules remain separate work; preserve existing
+   project instructions. Acceptance: fresh sessions identify their sources and
+   find the intended registered profile without revealing credentials.
 2. **Make permissions and launch context explicit.** Record the actual Cursor
    editor mode/team overrides and CLI availability separately. Design owned,
    minimal native policy fragments only for required filesystem paths, package

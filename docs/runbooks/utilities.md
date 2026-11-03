@@ -143,6 +143,8 @@ only that page.
 
 Filtering changes output only. First, a regex tag scan balances nested `<details>`
 blocks and removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`.
+Inline code and fenced code examples are masked during that scan and preserved
+verbatim in the returned body.
 Other details blocks and code formatting are preserved. Then any comment body
 containing `## Codex Review Summary` or `@codex review` is omitted, regardless of
 author. This order preserves useful review text when the excluded phrase appears
