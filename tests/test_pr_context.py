@@ -78,6 +78,14 @@ class Fixture:
         self.assert_paginated(args)
         if "/issues/7/comments?" in path:
             items = self.issue
+        elif "/issues/comments/" in path and "/reactions?" in path:
+            return [[{"id": 9001, "content": "+1", "user": {"login": "chatgpt-codex-connector[bot]"},
+                      "created_at": "2026-01-01T00:00:01Z"}],
+                    [{"id": 9002, "content": "eyes", "user": {"login": "reviewer"},
+                      "created_at": "2026-01-01T00:00:00Z"}]]
+        elif "/issues/7/reactions?" in path:
+            return [[{"id": 9010, "content": "+1", "user": {"login": "chatgpt-codex-connector[bot]"},
+                      "created_at": "2026-01-01T00:00:01Z"}]]
         elif "/pulls/7/comments?" in path:
             items = self.inline
         elif "/reviews?" in path:
@@ -210,6 +218,14 @@ Keep the finding suffix.</details>'''
         raw = "<details>\n    <summary>ℹ️ About Codex in GitHub</summary>Noise\n</details>"
         self.assertEqual(pr_context.filter_body("Finding.\n" + raw), "Finding.")
 
+    def test_blockquoted_indented_examples_survive_blank_lines_and_nested_quotes(self):
+        example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
+        for quote in ("> ", ">> ", "> > "):
+            for indent in ("    ", "\t"):
+                body = (f"{quote}Reproduction:\n{quote}\n{quote}{indent}{example}\n"
+                        f"{quote}\n{quote}{indent}Keep code.\n{quote}\n{quote}Explanation.")
+                self.assertEqual(pr_context.filter_body(body), body.strip())
+
     def test_requested_literal_exclusions_still_apply_inside_code_examples(self):
         for body in ("Run `@codex review`", "Example:\n```text\n@codex review\n```",
                      "Example:\n\n    ## Codex Review Summary"):
@@ -300,6 +316,40 @@ Keep the finding suffix.</details>'''
             with self.subTest(change=change), patch.object(pr_context, "gh", side_effect=changed):
                 with self.assertRaisesRegex(pr_context.FetchError, "Submitted PR reviews changed"):
                     pr_context.fetch_context(pr_context.GitHub(URL))
+
+    def test_edited_issue_or_inline_body_invalidates_snapshot_without_count_change(self):
+        for endpoint in ("/issues/7/comments?per_page=100", "/pulls/7/comments?per_page=100"):
+            fixture = Fixture()
+            original = fixture.gh
+            reads = 0
+
+            def changed(*args, **kwargs):
+                nonlocal reads
+                value = copy.deepcopy(original(*args, **kwargs))
+                if args[-1].endswith(endpoint):
+                    reads += 1
+                    if reads == 2:
+                        value[0][0]["body"] = "Corrected finding"
+                        value[0][0]["updated_at"] = "2026-11-03T00:00:00Z"
+                return value
+
+            with self.subTest(endpoint=endpoint), patch.object(pr_context, "gh", side_effect=changed):
+                with self.assertRaisesRegex(pr_context.FetchError, "PR comment text changed"):
+                    pr_context.fetch_context(pr_context.GitHub(URL))
+
+    def test_review_reaction_evidence_survives_filtered_request_comments(self):
+        fixture = Fixture()
+        with patch.object(pr_context, "gh", side_effect=fixture.gh):
+            output = pr_context.fetch_context(pr_context.GitHub(URL))
+        self.assertFalse(any(c["kind"] == "issue" and c["id"] == 1 for c in output["comments"]))
+        request = output["review_requests"][0]
+        self.assertEqual(request["comment_id"], 1)
+        self.assertEqual(len(request["reactions"]), 2)
+        self.assertEqual(request["reactions"][0]["author"], "chatgpt-codex-connector[bot]")
+        self.assertEqual(request["reactions"][0]["content"], "+1")
+        self.assertEqual(request["reactions"][1]["author"], "reviewer")
+        self.assertEqual(output["pr_reactions"][0]["author"], "chatgpt-codex-connector[bot]")
+        self.assertEqual(output["pr_reactions"][0]["content"], "+1")
 
     def test_partial_failure_has_no_stdout_and_does_not_echo_response_body(self):
         stdout, stderr = io.StringIO(), io.StringIO()

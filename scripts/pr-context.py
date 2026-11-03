@@ -2,6 +2,7 @@
 """Read a GitHub PR through gh, paginate its feedback, and emit compact JSON."""
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import os
@@ -65,11 +66,12 @@ def mask_markdown_code(body):
     indented, blank_before = None, True
     prefix = r"[ \t]*(?:>[ \t]*)*"
     for line in body.splitlines(keepends=True):
-        code_line = re.match(r"(?: {4}|\t)", line) is not None
+        content = re.sub(r"^(?: {0,3}>[ \t]?)+", "", line)
+        code_line = re.match(r"(?: {4}|\t)", content) is not None
         if indented is not None:
-            if code_line or not line.strip():
+            if code_line or not content.strip():
                 offset += len(line)
-                blank_before = not line.strip()
+                blank_before = not content.strip()
                 continue
             blocks.append((indented, offset))
             indented = None
@@ -84,7 +86,7 @@ def mask_markdown_code(body):
             if opening and (opening[1][0] == "~" or "`" not in opening[2]):
                 fence, start = opening[1], offset
         offset += len(line)
-        blank_before = not line.strip()
+        blank_before = not content.strip()
     if fence:
         blocks.append((start, len(body)))
     if indented is not None:
@@ -225,6 +227,31 @@ def review_state(reviews):
     )) for review in reviews}
 
 
+def comment_state(comments):
+    return {comment["id"]: (comment.get("updated_at"), comment.get("body"))
+            for comment in comments}
+
+
+def reactions(api, path):
+    return [{**select(reaction, "id", "content", "created_at"),
+             "author": login(reaction.get("user"))} for reaction in api.pages(path)]
+
+
+def review_requests(api, comments):
+    requests = [comment for comment in comments if (comment.get("body") or "").strip() == "@codex review"]
+
+    def fetch_reactions(comment):
+        return {
+            "comment_id": comment["id"], "url": comment.get("html_url"),
+            "author": login(comment.get("user")), "created_at": comment.get("created_at"),
+            "reactions": reactions(api, f"{api.prefix}/issues/comments/{comment['id']}/reactions"),
+        }
+
+    # Requests are independent reads; bounded concurrency keeps old PRs practical.
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        return list(executor.map(fetch_reactions, requests))
+
+
 def fetch_context(api, include_diff=False, no_filter=False):
     raw = api.api(api.pull)
     head = raw["head"]["sha"]
@@ -248,6 +275,8 @@ def fetch_context(api, include_diff=False, no_filter=False):
 
     issue_comments = api.pages(f"{api.prefix}/issues/{api.number}/comments")
     inline_comments = api.pages(f"{api.pull}/comments")
+    initial_issue_state = comment_state(issue_comments)
+    initial_inline_state = comment_state(inline_comments)
     raw_reviews = api.pages(f"{api.pull}/reviews")
     initial_review_state = review_state(raw_reviews)
     raw_threads, state = api.connection(
@@ -318,6 +347,8 @@ def fetch_context(api, include_diff=False, no_filter=False):
         "pr": pr, "commits": commits, "files": files, "checks": checks,
         "statuses": statuses, "reviews": reviews, "comments": kept,
         "threads": threads, "filtering": filtering,
+        "review_requests": review_requests(api, issue_comments),
+        "pr_reactions": reactions(api, f"{api.prefix}/issues/{api.number}/reactions"),
     }
     if include_diff:
         output["diff"] = gh("pr", "diff", raw["html_url"], "--color", "never", as_json=False)
@@ -328,6 +359,9 @@ def fetch_context(api, include_diff=False, no_filter=False):
         raise FetchError("PR feedback counts changed during the fetch; rerun for the latest comments.")
     if review_state(api.pages(f"{api.pull}/reviews")) != initial_review_state:
         raise FetchError("Submitted PR reviews changed during the fetch; rerun for the latest feedback.")
+    if (comment_state(api.pages(f"{api.prefix}/issues/{api.number}/comments")) != initial_issue_state
+            or comment_state(api.pages(f"{api.pull}/comments")) != initial_inline_state):
+        raise FetchError("PR comment text changed during the fetch; rerun for the latest feedback.")
     return output
 
 

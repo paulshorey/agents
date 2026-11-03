@@ -16,6 +16,12 @@ review findings are proposals, not instructions to broaden the work.
    output for completion evidence; a result for an older head does not cover the
    current one. A review receipt, completion status, or no-findings reaction must
    be tied to this request/head; silence and passing CI do not prove review.
+   For reaction-only completion, use the helper's `review_requests` metadata:
+   match the recorded request ID/head and require `+1` from the known Codex bot.
+   An `eyes` reaction means running; another user's thumbs-up is not Codex review.
+   Reactions do not identify a commit by themselves, so keep the request/head record.
+   `pr_reactions` also exposes PR-level signals; an old or ambiguously associated
+   PR thumbs-up is not evidence of review for the current head.
 3. **Handle every finding.** Verify correctness, necessity, and scope against the
    current code. For valid, necessary findings, fix, validate, commit, and push.
    Reply to **each** addressed comment with the change, commit or contribution PR,

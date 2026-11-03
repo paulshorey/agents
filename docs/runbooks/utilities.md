@@ -130,6 +130,14 @@ Omit the PR to select the current branch's PR. Use a URL or
   `threads`: resolution/outdated state, root comment IDs, and visible comment IDs.
   Bodies appear only in `comments`, avoiding duplicated thread/review text.
 - `checks`, `statuses`: check runs and commit statuses for the captured head.
+- `review_requests`: IDs, URLs, authors, timestamps, and fully paginated reaction
+  actors/content for standalone Codex trigger comments, even when their text is
+  filtered. Match the saved request/head record before using a Codex `+1` as
+  completion evidence; human reactions and reactions to older requests do not
+  establish review of the current head. Reaction reads use at most four workers.
+- `pr_reactions`: actors/content/timestamps on the PR itself. An existing PR
+  thumbs-up does not identify a reviewed commit or request; do not treat it alone
+  as current-head completion. Prefer an explicit head-linked receipt when ambiguous.
 - `filtering`: counts of removed entries and cleaned bodies. `--no-filter` keeps
   the original comment text and entries in the same output schema.
 
@@ -143,7 +151,7 @@ only that page.
 
 Filtering changes output only. First, a regex tag scan balances nested `<details>`
 blocks and removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`.
-Inline, fenced, and indented code examples are masked during that scan and preserved
+Inline, fenced, and indented code examples (including blockquotes) are masked during that scan and preserved
 verbatim in the returned body.
 Other details blocks and code formatting are preserved. Then any comment body
 containing `## Codex Review Summary` or `@codex review` is omitted, regardless of
@@ -154,7 +162,7 @@ Review decisions and thread metadata remain visible; filtered roots do not hide
 useful replies. No other bot/human findings are automatically discarded.
 
 Failures exit nonzero without partial JSON. This includes access/rate-limit errors,
-incomplete file/commit counts, feedback-count changes, submitted-review additions
+incomplete file/commit counts, feedback-count/text changes, submitted-review additions
 or state/body changes, and head/base changes during
 the read. GitHub caps the files endpoint at 3,000; inspect larger PRs with Git rather
 than assuming a truncated file list is complete. Check runs must match the API's
@@ -162,6 +170,8 @@ than assuming a truncated file list is complete. Check runs must match the API's
 assuming the endpoint has not truncated them. Each CLI call times out after 60
 seconds. Errors omit raw response bodies. The result is an observation, not an
 atomic snapshot; fetch again before replying, resolving threads, or merging.
+Issue/inline comment IDs, update times, and bodies and submitted-review state are
+read again before success, detecting edits that do not change comment counts.
 The helper never posts, resolves, or deletes GitHub comments. Those actions follow
 the task's authorization and the skills' requirement to reply to each addressed
 comment after validating and pushing its fix.

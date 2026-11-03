@@ -26,6 +26,9 @@ Verification dates describe historical observations, not current readiness.
 - Extended code protection to indented examples and rechecks submitted review
   IDs, decisions, commits, and bodies before returning a snapshot. Literal
   whole-comment exclusion rules remain unchanged, including inside code examples.
+- Added request-specific reaction evidence (actor/content/time), blockquoted
+  indented-code protection, and final issue/inline comment state checks so edits
+  and reaction-only review completion are visible to the review loop.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 
