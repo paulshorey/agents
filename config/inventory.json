@@ -337,10 +337,14 @@
         },
         {
           "file": "tools/python-requirements.txt"
+        },
+        {
+          "file": "scripts/pr-context.py"
         }
       ],
       "notes": [
-        "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata."
+        "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata.",
+        "Git and PR management share scripts/pr-context.py through relative symlinks in their skill scripts/ folders. It reads PR data using the native GitHub CLI sign-in documented by application.github-auth; it does not post or delete comments."
       ]
     },
     {

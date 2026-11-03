@@ -26,7 +26,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [railway.cli](#railway-cli) | tool | external | Application-managed | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [hosting.paul](#hosting-paul) | integration | agents | config/hosting/paul.json, config/hosting/example.json | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
 | [environment.path](#environment-path) | environment | agents | config/env.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
-| [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml, tools/python-requirements.txt | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
+| [utilities.catalog](#utilities-catalog) | tool | agents | tools/package.json, .github/workflows/validate.yml, tools/python-requirements.txt, scripts/pr-context.py | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [context.global](#context-global) | context | agents | AGENTS.md, rules/AGENTS.md, README.md, CHANGELOG.md, docs/reviews/2026-10-14.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-auth](#application-codex-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.codex-mcp](#application-codex-mcp) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
@@ -311,6 +311,8 @@ Tracked helper scripts and executable wrappers.
 Owner: **agents**.
 
 The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata.
+
+Git and PR management share scripts/pr-context.py through relative symlinks in their skill scripts/ folders. It reads PR data using the native GitHub CLI sign-in documented by application.github-auth; it does not post or delete comments.
 
 [Update and recovery instructions](../docs/runbooks/utilities.md).
 
@@ -653,6 +655,7 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [scripts/install.py](../scripts/install.py)
 - [scripts/inventory.py](../scripts/inventory.py)
 - [scripts/mcp-headers.py](../scripts/mcp-headers.py)
+- [scripts/pr-context.py](../scripts/pr-context.py)
 - [scripts/railway-mcp.py](../scripts/railway-mcp.py)
 - [scripts/run-cf.py](../scripts/run-cf.py)
 - [scripts/send-sms.mjs](../scripts/send-sms.mjs)

@@ -4,6 +4,20 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-02 — Shared PR context and feedback replies
+
+- Clarified Git and PR management handoffs: validate and push each fix, then reply
+  to every addressed comment with the outcome, commit, and validation before
+  resolving its thread. One fix addressing several comments still needs replies
+  to each; already-posted responses should not be duplicated.
+- Added the common read-only `scripts/pr-context.py`, symlinked from both skills.
+  It paginates PR feedback, threads, commits, changed files, and head checks/statuses;
+  returns compact context with optional diff; and rejects incomplete/stale reads.
+- Added reversible output filtering for Codex summary/request comments and the
+  About Codex details block, preserving review decisions and substantive replies.
+  The helper reuses native `gh` authentication and does not mutate GitHub data,
+  credential stores, managed application links, or provider settings.
+
 ## 2026-11-02 — Claude Code skill compatibility and last30days setup
 
 - Verified that Claude Code discovers all 17 shared skills through per-skill links in
