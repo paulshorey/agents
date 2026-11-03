@@ -286,6 +286,48 @@ class InventoryTests(unittest.TestCase):
 
 
 class ManagedDefaultsTests(unittest.TestCase):
+    def test_selected_rule_links_preserve_native_settings_and_restore_cleanly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = Path(folder) / 'agents', Path(folder) / 'home'
+            (root / 'config').mkdir(parents=True)
+            (root / 'rules').mkdir()
+            definitions = json.loads((ROOT / 'config/links.json').read_text())['links']
+            for link in definitions:
+                if link['kind'] in ('text', 'json'):
+                    source = root / link['source']
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(ROOT / link['source'], source)
+            (root / 'config/links.json').write_text(json.dumps({'links': definitions}))
+            (home / '.codex').mkdir(parents=True)
+            native = home / '.codex/config.toml'
+            native.write_text('model = "keep-native-choice"\n')
+            shell = home / '.zprofile'
+            shell.write_text('# keep native shell\n')
+            targets = ['~/.claude/rules/git-workflow.md', '~/.cursor/rules/git-workflow.mdc']
+            for target in targets:
+                directory = install.expand(target, home).parent
+                directory.mkdir(parents=True)
+                (directory / 'personal.md').write_text('Keep personal rules.')
+            check = install.install(root, home, only_links=targets)
+            self.assertEqual(check['status'], 'needs_install')
+            self.assertEqual(len(check['changes']), 2)
+            installed = install.install(root, home, apply=True, only_links=targets)
+            self.assertEqual(installed['links'], 2)
+            self.assertEqual(install.install(root, home, only_links=targets)['status'], 'current')
+            self.assertEqual(native.read_text(), 'model = "keep-native-choice"\n')
+            self.assertEqual(shell.read_text(), '# keep native shell\n')
+            self.assertFalse((root / 'local/codex').exists())
+            for target in targets:
+                path = install.expand(target, home)
+                self.assertTrue(path.is_symlink())
+                self.assertEqual((path.parent / 'personal.md').read_text(), 'Keep personal rules.')
+            install.restore(Path(installed['backup']))
+            for target in targets:
+                self.assertFalse(install.expand(target, home).exists())
+            for selected in ([], ['~/.unknown'], ['~/.codex/config.toml']):
+                with self.assertRaises(ValueError):
+                    install.install(root, home, apply=True, only_links=selected)
+
     def test_restore_refuses_newer_application_edits_before_changing_any_link(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = Path(folder) / 'agents', Path(folder) / 'home'

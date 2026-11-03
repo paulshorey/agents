@@ -1,54 +1,55 @@
 ---
 name: git-management
-description: Manage task branches, commits, pushes, and PR handoffs while preserving existing work. Use when starting, continuing, or finishing changes in a Git repository.
+description: Manage Git branches, publishing, and the full GitHub PR lifecycle, including review feedback, checks, conflicts, and authorized merges. Use whenever committing, pushing, creating a PR, contributing to an existing PR, or maintaining PRs.
 ---
 
-# Git task management
+# Git and pull requests
 
-Follow the request and repository rules. Routine commits, pushes, and PR updates
-are part of the handoff; read-only work needs no empty PR.
+Follow the request, repository rules, protections, and holds. Routine commits,
+pushes, PR updates, and review replies belong to the task handoff. Read-only work
+needs no empty PR; publishing or completing review does not authorize a merge.
 
 1. **Inspect.** Fetch refs; check repository, branch, worktree, upstream, unpushed
-   commits, and existing PR. Preserve unrelated or ambiguously owned work. Use an
-   isolated checkout if switching would disturb edits or an active process.
+   commits, and existing PR. Preserve unrelated or ambiguously owned work and
+   active processes. Use an isolated checkout if switching would disturb them.
 2. **Choose a branch.** Continue a feature branch only for the same ongoing task.
    Start independent work from updated `main` or a verified base; never reuse a
-   merged branch. Use an unmerged base only when the task requires it. Move task
-   edits off `main` before committing; do not publish pre-existing work to clear
-   the checkout.
+   merged branch. Use an unmerged base only when required. Move task edits off
+   `main` before committing; do not publish pre-existing work to clear a checkout.
 3. **Publish.** Run relevant checks, stage only task files, commit, push, and create
-   or update the task PR. Use a draft for unfinished or blocked work. Describe the
-   problem, resulting behavior, material decisions, validation, and remaining work.
-   Keep the title/body aligned with final scope and scale detail to complexity.
-4. **Request review.** Immediately after creating any PR, including drafts, post
-   a standalone `@codex review` comment and verify it succeeded. Request again
-   after significant changes; avoid duplicates for an unchanged head:
-   `gh pr comment <PR_URL> --body '@codex review'`.
-5. **Handle feedback.** Fetch the complete PR context with
-   `python3 ~/.agents/skills/git-management/scripts/pr-context.py <PR_URL>`.
-   Add `--diff` for code changes; see the [helper guide](../../docs/runbooks/utilities.md#pr-context).
-   It paginates comments, reviews, and threads; never assume the first 30 comments
-   are the complete history. Use [PR management](../pr-management/SKILL.md) for
-   review, fixes, conflicts, and authorized merges. After validating and pushing
-   a fix or improvement, **reply to every comment it addresses**, stating the
-   change, commit, and validation. Reply in the original inline thread; for other
-   comments, link the original in a PR reply. Verify each reply was posted;
-   a commit, thread resolution, or final chat message does not replace it.
-   Report actionable concerns in a PR comment unless fixing them immediately.
+   or update the task PR. Use a draft for unfinished or blocked work. Keep its
+   title/body aligned with the final problem, behavior, material decisions,
+   validation, and remaining work; scale detail to complexity.
+4. **Complete the review loop.** For every GitHub PR, including drafts and code
+   contributed to an existing PR, follow the [Codex review loop](references/review-loop.md).
+   Request review immediately on creation and after functional changes, wait with
+   a 30-minute timeout, fetch all latest feedback, address each finding, and
+   repeat after fixes until the current head has no new valid issues to fix.
+   A timeout or missing review is pending review, never a clean result.
+5. **Maintain or merge.** For reviews, conflicts, failed checks, or authorized
+   merges, read [PR maintenance](references/pr-maintenance.md). Review the exact
+   current head; verify bot suggestions rather than accepting them automatically.
 6. **Finish cleanly.** Confirm task commits are pushed, addressed comments have
-   replies, and the PR reflects the final state. Return temporary review checkouts
-   to `main` when requested; preserve active feature checkouts. Report the PR,
-   validation, final branch, and unpublished work or synchronization blockers.
-   Never discard changes or force-push just to switch tasks.
+   verified replies, and the PR reflects the final state. Return temporary review
+   checkouts to `main` when requested; preserve active feature checkouts. Report
+   the PR, checks, review outcome or timeout, final branch, and unpublished work or
+   synchronization blockers. Never discard changes or force-push to switch tasks.
+
+## PR context
+
+```sh
+python3 ~/.agents/skills/git-management/scripts/pr-context.py <PR_URL>
+```
+
+Add `--diff` for code changes. Use `--no-filter` to check review requests and Codex
+completion receipts; the default output removes that boilerplate. The helper
+fetches all feedback pages and preserves reply IDs, review decisions, and thread
+state. Never assume the first 30 comments are complete. See the
+[helper guide](../../docs/runbooks/utilities.md#pr-context) for output and failures.
 
 ## Production promotions
 
-For repositories using `main` for development and `prod` for production, an
-authorized promotion merges all current `main` into `prod` through a PR with head
-`main`, base `prod`. Feature/conflict fixes land in `main` first. Preserve intentional
-production differences and inspect production-only commits; narrow releases need
-an explicit request. Follow the project's migration/release workflow, inspect
-pending migrations even when code is synchronized, and verify the deployed commit,
-application/database health, and retained data. An unmerged feature PR is not part
-of the release. Report an already-current promotion only after relevant validation.
-For other branch models, follow the project's release workflow.
+For repositories using `main` for development and `prod` for production, read
+[production promotions](references/production-promotions.md). Otherwise follow
+the project's release workflow. A review loop does not override release holds or
+authorize deployments, migrations, or a narrower release.

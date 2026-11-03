@@ -19,6 +19,16 @@
       "source": "rules/AGENTS.md",
       "target": "~/.codex/AGENTS.md",
       "kind": "text"
+    },
+    {
+      "source": "rules/git-workflow.md",
+      "target": "~/.claude/rules/git-workflow.md",
+      "kind": "text"
+    },
+    {
+      "source": "rules/git-workflow.mdc",
+      "target": "~/.cursor/rules/git-workflow.mdc",
+      "kind": "text"
     }
   ]
 }

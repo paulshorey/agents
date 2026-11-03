@@ -19,6 +19,8 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.codex](#configuration-codex) | configuration | agents | local/codex/config.toml → ~/.codex/config.toml | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.shell](#configuration-shell) | configuration | agents | local/shell/zprofile → ~/.zprofile | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.rules](#configuration-rules) | configuration | agents | rules/AGENTS.md → ~/.codex/AGENTS.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [configuration.claude-git-workflow](#configuration-claude-git-workflow) | configuration | agents | rules/git-workflow.md → ~/.claude/rules/git-workflow.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [configuration.cursor-git-workflow](#configuration-cursor-git-workflow) | configuration | agents | rules/git-workflow.mdc → ~/.cursor/rules/git-workflow.mdc | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.codex-defaults](#configuration-codex-defaults) | configuration | agents | config/codex.defaults.toml | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [cloudflare.mcp](#cloudflare-mcp) | integration | agents | config/mcp.json, scripts/mcp-headers.py | [docs/runbooks/cloudflare-token.md](../docs/runbooks/cloudflare-token.md) |
 | [railway.mcp](#railway-mcp) | integration | agents | config/mcp.json, scripts/railway-mcp.py | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
@@ -206,6 +208,34 @@ Run scripts/install.py to inspect links and rendering; --apply backs up and inst
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
+<a id="configuration-claude-git-workflow"></a>
+
+## configuration.claude-git-workflow
+
+User-level Claude Code routing to the shared Git and PR workflow.
+
+Owner: **agents**.
+
+Source: `rules/git-workflow.md`. Installed at `~/.claude/rules/git-workflow.md`. Installer kind: `text`.
+
+Install with scripts/install.py. This one user rule applies to all projects without replacing CLAUDE.md or other user rules. Policy stays in skills/git-management; verify selection in a fresh client session.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
+
+<a id="configuration-cursor-git-workflow"></a>
+
+## configuration.cursor-git-workflow
+
+Always-applied local Cursor user rule routing to the shared Git and PR workflow.
+
+Owner: **agents**.
+
+Source: `rules/git-workflow.mdc`. Installed at `~/.cursor/rules/git-workflow.mdc`. Installer kind: `text`.
+
+Install with scripts/install.py. The local user-rule file points to rules/git-workflow.md; account/team rules remain application-owned. User-rule files require a client supporting the documented ~/.cursor/rules entrypoint; verify selection in a fresh client session.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
+
 <a id="configuration-codex-defaults"></a>
 
 ## configuration.codex-defaults
@@ -327,6 +357,8 @@ Owner: **agents**.
 Update inventory records when configuration locations, ownership, credentials, consumers, or update/recovery procedures change. Skill contents are maintained directly in skills/ without inventory registration.
 
 AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex.
+
+Every Git/PR contributor is routed to skills/git-management. pr-management is a compatibility entrypoint; review-loop and maintenance policy have one owner. Claude Code and Cursor use the managed user-rule links in config/links.json.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
@@ -511,9 +543,9 @@ Cursor account/user rules and project instruction entrypoints.
 
 Owner: **application**.
 
-User Rules are maintained through Customize -> Rules. No shared global startup bridge is registered or verified yet; see the implementation plan.
+Account User Rules are maintained through Customize -> Rules. A separate local user-rule bridge is registered as configuration.cursor-git-workflow; file installation does not prove fresh-session selection.
 
-Repository AGENTS.md and .cursor/rules/*.mdc are project conventions. Do not infer that ~/.agents/AGENTS.md or ~/.codex/AGENTS.md supplies global Cursor instructions. Preserve existing User/Team Rules and verify fresh-session context.
+Repository AGENTS.md and .cursor/rules/*.mdc are project conventions; current Cursor documentation also supports ~/.cursor/rules user-rule files. Preserve existing User/Team Rules and verify client support and fresh-session context.
 
 [Update and recovery instructions](../docs/runbooks/agent-customization.md).
 

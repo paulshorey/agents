@@ -85,7 +85,7 @@ class Fixture:
         elif "/files?" in path:
             items = [{"filename": f"file-{i}.py", "status": "modified"} for i in range(101)]
         elif "/check-runs?" in path:
-            return [{"check_runs": [{"id": i, "name": f"test-{i}", "conclusion": "success"}
+            return [{"total_count": 101, "check_runs": [{"id": i, "name": f"test-{i}", "conclusion": "success"}
                                     for i in range(start, min(start + 100, 101))]}
                     for start in (0, 100)]
         elif "/statuses?" in path:
@@ -154,6 +154,40 @@ Reviews are triggered by "@codex review".
     def test_substantive_markdown_and_unrelated_details_are_unchanged(self):
         body = "Finding\n\n```python\nx = '''a\n\n\nb'''\n```\n<details>Keep @codex address that feedback</details>"
         self.assertEqual(pr_context.filter_body(body), body)
+
+    def test_nested_about_block_preserves_outer_feedback_and_balanced_tags(self):
+        body = '''<details><summary>Important finding</summary>
+Keep the reproduction before the quote.
+<details><summary>Quoted review</summary>Keep quoted findings.
+<details><summary>ℹ️ About Codex in GitHub</summary>
+Noise with @codex review.
+</details>Keep the quote suffix.</details>
+Keep the finding suffix.</details>'''
+        output = pr_context.filter_body(body)
+        for text in ("Important finding", "Keep the reproduction", "Keep quoted findings",
+                     "Keep the quote suffix", "Keep the finding suffix"):
+            self.assertIn(text, output)
+        self.assertNotIn("About Codex", output)
+        self.assertEqual(output.count("<details>"), 2)
+        self.assertEqual(output.count("</details>"), 2)
+
+    def test_multiple_nested_about_blocks_and_unclosed_blocks(self):
+        body = ("<details><summary>ℹ️ About Codex in GitHub</summary>"
+                "<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details></details>"
+                "Keep this.<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>"
+                "<details><summary>ℹ️ About Codex in GitHub</summary>Unclosed")
+        self.assertEqual(pr_context.filter_body(body),
+                         "Keep this.<details><summary>ℹ️ About Codex in GitHub</summary>Unclosed")
+
+    def test_check_run_total_and_endpoint_cap_cannot_silently_truncate(self):
+        api = pr_context.GitHub(URL)
+        for total, size in ((1001, 1000), (1000, 1000), (5, 4)):
+            pages = [{"total_count": total, "check_runs": [{"id": i} for i in range(size)]}]
+            with self.subTest(total=total, size=size), patch.object(pr_context, "gh", return_value=pages):
+                with self.assertRaises(pr_context.FetchError):
+                    api.pages("repos/example/project/commits/abc/check-runs", "check_runs")
+        with patch.object(pr_context, "gh", return_value=[{"total_count": 0, "check_runs": []}]):
+            self.assertEqual(api.pages("example/check-runs", "check_runs"), [])
 
     def test_no_filter_retains_original_bodies_and_excluded_comments(self):
         fixture = Fixture()

@@ -141,8 +141,8 @@ When a default page contains 30 comments, check/request the next page unless the
 API explicitly reports none. Do not infer completeness from the first page or sort
 only that page.
 
-Filtering changes output only. First, a non-greedy, multiline `<details>.*?</details>`
-regex removes blocks containing `<summary>ℹ️ About Codex in GitHub</summary>`.
+Filtering changes output only. First, a regex tag scan balances nested `<details>`
+blocks and removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`.
 Other details blocks and code formatting are preserved. Then any comment body
 containing `## Codex Review Summary` or `@codex review` is omitted, regardless of
 author. This order preserves useful review text when the excluded phrase appears
@@ -153,12 +153,20 @@ useful replies. No other bot/human findings are automatically discarded.
 Failures exit nonzero without partial JSON. This includes access/rate-limit errors,
 incomplete file/commit counts, feedback-count changes, and head/base changes during
 the read. GitHub caps the files endpoint at 3,000; inspect larger PRs with Git rather
-than assuming a truncated file list is complete. Each CLI call times out after 60
+than assuming a truncated file list is complete. Check runs must match the API's
+`total_count`; the helper also fails conservatively at 1,000 runs rather than
+assuming the endpoint has not truncated them. Each CLI call times out after 60
 seconds. Errors omit raw response bodies. The result is an observation, not an
 atomic snapshot; fetch again before replying, resolving threads, or merging.
 The helper never posts, resolves, or deletes GitHub comments. Those actions follow
 the task's authorization and the skills' requirement to reply to each addressed
 comment after validating and pushing its fix.
+
+The [Git management review loop](../../skills/git-management/references/review-loop.md)
+owns review requests, the 30-minute timeout, completion evidence for the current
+head, replies/resolution, and repetition after functional changes. The
+`pr-management` entrypoint routes to that same policy. Use `--no-filter` for
+request/completion evidence; it is intentionally absent from filtered output.
 
 Validate changes with `python3 -m unittest discover -s tests -p test_pr_context.py -v`
 and a read-only fetch of an accessible PR. Run both symlink entrypoints and compare

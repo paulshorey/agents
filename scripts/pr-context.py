@@ -49,7 +49,7 @@ def login(user):
     return (user or {}).get("login")
 
 
-DETAILS = re.compile(r"<details\b[^>]*>.*?</details\s*>", re.IGNORECASE | re.DOTALL)
+DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 CODEX_ABOUT = re.compile(
     r"<summary\b[^>]*>\s*ℹ️ About Codex in GitHub\s*</summary\s*>", re.IGNORECASE,
 )
@@ -57,7 +57,23 @@ CODEX_ABOUT = re.compile(
 
 def filter_body(body):
     """Strip only the marked boilerplate before applying whole-comment exclusions."""
-    body = DETAILS.sub(lambda m: "" if CODEX_ABOUT.search(m[0]) else m[0], body)
+    stack, removed = [], []
+    for tag in DETAILS_TAG.finditer(body):
+        if not tag[0].startswith("</"):
+            stack.append((tag.start(), tag.end()))
+        elif stack:
+            start, content_start = stack.pop()
+            # An About summary must belong to this block, not a nested child.
+            first_child = DETAILS_TAG.search(body, content_start, tag.start())
+            summary_end = first_child.start() if first_child else tag.start()
+            if CODEX_ABOUT.search(body, content_start, summary_end):
+                removed.append((start, tag.end()))
+    cursor, pieces = 0, []
+    for start, end in sorted(removed):
+        if start >= cursor:
+            pieces.append(body[cursor:start])
+            cursor = end
+    body = "".join([*pieces, body[cursor:]])
     if "## Codex Review Summary" in body or "@codex review" in body:
         return None
     return body.replace("<!-- codex-review-receipt:v1 -->", "").strip()
@@ -85,11 +101,18 @@ class GitHub:
             f"{path}{separator}per_page=100",
         )
         items = []
+        totals = []
         for page in pages:
             batch = page[key] if key else page
             if not isinstance(batch, list):
                 raise FetchError("Unexpected paginated API response.")
             items.extend(batch)
+            if key:
+                totals.append(page["total_count"])
+        if key and (not totals or any(total != len(items) for total in totals)):
+            raise FetchError(f"Incomplete {key} pagination; counts changed or an API limit was reached.")
+        if key == "check_runs" and len(items) >= 1000:
+            raise FetchError("Check-run API limit reached; inspect check suites before claiming completeness.")
         return items
 
     def connection(self, name, fields):

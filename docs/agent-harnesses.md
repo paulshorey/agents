@@ -40,11 +40,15 @@ That would mix authored configuration with credentials and application state.
 
 Instruction lookup and configuration layering are separate mechanisms. Codex
 loads its global instruction file and the project path, with closer instructions
-winning; project config requires trust. Cursor's published rules describe User
-Rules through its UI and project rules on disk. They do not establish arbitrary
-`~/.cursor/AGENTS.md` or global `~/.cursor/rules/*.mdc` as a replacement for User
-Rules. Treat alternate global rule layouts as unverified until the installed
-client demonstrates them. [Codex instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+winning; project config requires trust. Cursor has account User Rules and project
+rules, and its current help also documents local user-rule files in
+`~/.cursor/rules`. This is distinct from an arbitrary `~/.cursor/AGENTS.md`.
+The shared Git/PR router uses that documented user-rule entrypoint, Claude Code's
+`~/.claude/rules/`, and Codex's global AGENTS.md. Install these links through the
+manifest; verify fresh-session selection separately from file installation. See
+[global Git/PR routing](runbooks/configuration.md#global-git-and-pr-routing) and
+[Cursor user-rule storage](https://prod.cursor.com/help/customization/rules#where-are-rules-stored).
+[Codex instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
 [configuration](https://learn.chatgpt.com/docs/config-file/config-basic),
 [Cursor rules](https://cursor.com/docs/rules).
 

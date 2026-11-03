@@ -4,6 +4,23 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-03 — One Git/PR workflow and iterative Codex review
+
+- Consolidated Git publishing and PR maintenance under `git-management`, with
+  conditional references and a short `pr-management` compatibility entrypoint.
+  Existing invocations and both PR-context script symlinks remain available.
+- Added the loop for every created PR, including drafts, and functional PR
+  contributions: request once per head, wait with a 30-minute timeout, verify
+  current-head completion, handle/reply to each finding, resolve handled threads,
+  and repeat after functional fixes. Missing reviews stay pending.
+- Routed Git/PR work globally through Codex instructions and two installer-managed
+  Claude Code/Cursor user-rule files. The adapters point to the shared policy
+  without replacing other rules. Targeted installer link selection avoids
+  rendering unrelated Codex/shell settings. No credential or provider changes.
+- Addressed PR #26 feedback: preserve enclosing feedback around nested About Codex
+  details blocks, and reject truncated/inconsistent check-run responses, including
+  the conservative 1,000-run boundary. `--no-filter` exposes completion evidence.
+
 ## 2026-11-02 — Shared PR context and feedback replies
 
 - Clarified Git and PR management handoffs: validate and push each fix, then reply

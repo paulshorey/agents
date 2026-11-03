@@ -13,6 +13,8 @@ is the metadata index; existing configuration files own actual settings.
 | Credential profile IDs and locations | `config/profiles.json` | Move/restore private file separately; restart affected MCP clients |
 | Other Codex settings, profiles, plugin toggles, application MCP runtimes | Codex settings or the active `~/.codex/config.toml` | Follow application reload behavior; preserve managed sections |
 | Global agent instructions | `rules/AGENTS.md` | Symlink already installed; new agent session |
+| Claude Code Git/PR user rule | `rules/git-workflow.md` | Installer links `~/.claude/rules/git-workflow.md`; new session |
+| Cursor Git/PR user rule | `rules/git-workflow.mdc` | Installer links `~/.cursor/rules/git-workflow.mdc`; new session |
 | Repository agent entrypoint | `AGENTS.md` | Links repository work to the inventory and global rules |
 | Agent utility PATH hook | `config/env.sh`; installer owns its `.zprofile` source hook | New login shell or explicitly source env.sh |
 | Shell secrets | `~/.secrets.sh`, loaded by `~/.zshenv` (normal zsh), `~/.profile` (login Bash), and `~/.bashrc` (interactive Bash); clean noninteractive shells require injection/profile loading | New shell; restart apps that started before the change |
@@ -24,8 +26,8 @@ For native discovery, execution policies, hooks, role formats, and differences
 between Cursor editor/CLI and Codex, consult the
 [harness map](../agent-harnesses.md). Use the
 [customization runbook](agent-customization.md) for new tooling or repeated setup
-failures. Cursor User Rules are maintained through its supported UI; the Codex
-global instruction link alone does not supply them to Cursor.
+failures. Cursor account User Rules remain application-owned. The managed local
+user-rule file below supplies Git/PR routing separately from Codex instructions.
 
 The installer owns only keys present in `config/codex.defaults.toml` from its
 allowlist: model, reasoning effort, verbosity, reasoning summary, web search,
@@ -36,6 +38,41 @@ Project configurations and runtime overrides may take precedence over user defau
 Do not edit generated `docs/INVENTORY.md` directly. Do not store credentials in
 shared defaults or MCP JSON. The complete application config remains ignored;
 it can contain host-specific paths, runtime state, and sensitive settings.
+
+## Global Git and PR routing
+
+The policy lives in `skills/git-management/`, with `pr-management` as a short
+compatibility entrypoint. The common entrypoint covers Git publishing; conditional
+references cover the Codex review loop, PR maintenance, and production promotions.
+Keep instructions in that owning skill rather than copying them into projects.
+
+`rules/AGENTS.md` directs Codex through its existing global link. Claude Code's
+user-level `~/.claude/rules/git-workflow.md` loads the short shared router.
+Cursor's local user-level `~/.cursor/rules/git-workflow.mdc` uses
+`alwaysApply: true` and points to that same router. Both links are declared in
+`config/links.json` and installed by `scripts/install.py`; other user rules,
+project instructions, account rules, and application settings keep their existing
+owners. Do not replace a user's whole CLAUDE.md or account rules.
+
+Inspect installer output before `--apply`; it must contain only intended changes.
+Use repeatable `--only-link TARGET` selectors to install/check just these rule links
+without rendering unrelated Codex/shell settings. The installer backs up existing
+destinations and supports guarded restore. Verify link targets and contents, then
+check a fresh client session from another project for the routing instruction.
+A link proves installation, not model selection or compliance; current sessions
+and cloud agents with a different home need their own entrypoint or a new session.
+A Codex override can replace its global file; client restrictions can also affect
+rule loading.
+
+The 30-minute timeout is a maximum wait for a completed review of the captured
+head, not a mandatory delay after completion. Record the request/head/time, inspect
+all feedback when completion or timeout occurs, and repeat after functional fixes.
+If review has not completed, report it pending. Use `pr-context.py --no-filter`
+for the completion receipt and request text deliberately hidden by normal output.
+
+Sources: [Codex global instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[Claude Code user rules](https://code.claude.com/docs/en/memory#user-level-rules),
+and [Cursor local user-rule files](https://prod.cursor.com/help/customization/rules#where-are-rules-stored).
 
 ## Inspect and install
 

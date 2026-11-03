@@ -155,25 +155,33 @@ def atomic_write(path, data, mode=0o600):
     temporary.replace(path)
 
 
-def install(root=ROOT, home=Path.home(), apply=False):
+def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
     definitions = json.loads((root / 'config/links.json').read_text())['links']
-    servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
     validate_links(root, definitions, home)
-    validate_mcp(servers)
-    codex_target = home / '.codex/config.toml'
-    current = codex_target.read_text() if codex_target.exists() else ''
-    desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
-    codex_source = root / 'local/codex/config.toml'
+    if only_links is not None:
+        selected = {expand(target, home) for target in only_links}
+        definitions = [link for link in definitions if expand(link['target'], home) in selected]
+        if not selected or len(definitions) != len(selected):
+            raise ValueError('--only-link must select declared link targets.')
+        if any(link['kind'] not in ('text', 'json') for link in definitions):
+            raise ValueError('--only-link supports text/JSON links; use full installation for rendered settings.')
     problems = []
-    if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
-        problems.append('Codex managed preferences or MCP sections need rendering')
-    shell_target = home / '.zprofile'
-    shell_current = shell_target.read_text() if shell_target.exists() else ''
-    shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
-    shell_desired = shell_current if shell_hook in shell_current else shell_current.rstrip() + '\n\n# Managed agent tool PATH (credentials are selected per task).\n' + shell_hook + '\n'
-    shell_source = root / 'local/shell/zprofile'
-    if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
-        problems.append('Shell tool PATH hook needs rendering')
+    if only_links is None:
+        servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
+        validate_mcp(servers)
+        codex_target = home / '.codex/config.toml'
+        current = codex_target.read_text() if codex_target.exists() else ''
+        desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
+        codex_source = root / 'local/codex/config.toml'
+        if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
+            problems.append('Codex managed preferences or MCP sections need rendering')
+        shell_target = home / '.zprofile'
+        shell_current = shell_target.read_text() if shell_target.exists() else ''
+        shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
+        shell_desired = shell_current if shell_hook in shell_current else shell_current.rstrip() + '\n\n# Managed agent tool PATH (credentials are selected per task).\n' + shell_hook + '\n'
+        shell_source = root / 'local/shell/zprofile'
+        if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
+            problems.append('Shell tool PATH hook needs rendering')
     for link in definitions:
         source, target = root / link['source'], expand(link['target'], home)
         if not target.is_symlink() or target.resolve() != source.resolve():
@@ -217,8 +225,9 @@ def install(root=ROOT, home=Path.home(), apply=False):
             (backup / str(index)).chmod(0o600)
         saved.append(record)
     atomic_write(backup / 'manifest.json', json.dumps(saved, indent=2) + '\n')
-    atomic_write(codex_source, desired)
-    atomic_write(shell_source, shell_desired)
+    if only_links is None:
+        atomic_write(codex_source, desired)
+        atomic_write(shell_source, shell_desired)
     for link in definitions:
         source, target = root / link['source'], expand(link['target'], home)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -271,9 +280,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true', help='Back up and install links; default checks only')
     parser.add_argument('--restore', type=Path, help='Restore one reported backup without overwriting later edits')
+    parser.add_argument('--only-link', action='append', help='Check/install only this declared text/JSON target; repeat to select more')
     args = parser.parse_args()
+    if args.restore and args.only_link:
+        parser.error('--restore cannot be combined with --only-link')
     try:
-        result = restore(args.restore) if args.restore else install(apply=args.apply)
+        result = restore(args.restore) if args.restore else install(apply=args.apply, only_links=args.only_link)
         print(json.dumps(result, indent=2))
         return 1 if result['status'] == 'needs_install' else 0
     except (ValueError, OSError) as error:

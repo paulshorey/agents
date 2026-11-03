@@ -8,6 +8,15 @@ For an obvious, low-risk, reversible mistake with a clear intended outcome, brie
 
 Resolve uncertainty through inspection and research when possible. Use current authoritative sources when information may have changed, and ask for clarification when the remaining uncertainty depends on my intent or missing requirements. Establish a clear understanding and a plan proportional to the task before making changes. Explain evidence-based disagreements candidly, and revise your conclusion when the evidence warrants it.
 
+## Git and pull requests
+
+In every repository, read `~/.agents/skills/git-management/SKILL.md` before
+committing, pushing, creating a PR, contributing code to a PR, or maintaining PRs.
+It owns the shared Git/PR workflow and the required Codex review-and-fix loop,
+including the 30-minute review timeout and per-comment replies. `pr-management`
+is a compatibility entrypoint to that same workflow. Honor the current task's
+scope, explicit user instructions, repository protections, and release holds.
+
 ## Agent configuration and hosting
 
 Read `~/.agents/README.md` before changing global agent configuration or connecting
