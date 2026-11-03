@@ -30,6 +30,14 @@ persisting them. Post-subprocess report validation or storage failures set the r
 to failed when run-status storage remains available, and the usage journal is
 still finalized. Error summaries contain exception types rather than report data.
 
+Host-compatibility notes from a Claude Code run live where agents read them,
+because this file is not in the root routing table. `research-runbook.md`
+keeps bare version tokens out of plan `search_query` strings (Class 2) and
+allows the direct web-search fallback when the host permits subagents only on
+explicit user request. `setup-wizard.md` names Go as the prerequisite for the
+Digg, arXiv, and Techmeme CLI installers, and turns the ScrapeCreators offer
+into a user-run step when host policy forbids agent-created accounts.
+
 Run `python3 -m unittest discover -s tests -p test_last30days_review.py -v` from the
 shared repository for offline regressions using temporary SQLite and mocked
 provider/subprocess boundaries. No provider authentication or research is proven

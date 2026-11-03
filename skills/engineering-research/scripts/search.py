@@ -34,7 +34,7 @@ def main():
         sys.exit("Usage: search.py searches.json")
     api_key = os.environ.get("PARALLEL_API_KEY")
     if not api_key:
-        sys.exit("Set PARALLEL_API_KEY or PARALLEL_AI_API_KEY")
+        sys.exit("Set PARALLEL_API_KEY")
     try:
         with open(sys.argv[1], encoding="utf-8") as file:
             searches = json.load(file)["searches"]

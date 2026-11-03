@@ -4,6 +4,24 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-02 — Claude Code skill compatibility and last30days setup
+
+- Verified that Claude Code discovers all 17 shared skills through per-skill links in
+  `~/.claude/skills` and ran `engineering-research`, `railway-iac` (read-only
+  project/service listing), and `last30days` end to end from Claude Code.
+- Resolved merge-conflict markers committed in `parallel-deep-research` by
+  restoring its standalone-import text (verified `parallel-cli` 0.9.3), plus the
+  shared self-reflection footer that commit intended.
+- Documented Claude Code page fetching and the helper's result shape in
+  `engineering-research`, the `claude-code` Railway MCP agent and a deployed-service
+  query in `railway-iac`, and host-compatibility notes in `last30days`.
+- Ran the last30days first-run setup on this Mac with Paul's browser-cookie consent;
+  registered its application-owned config as `application.last30days-config` with
+  an update, revocation and recovery runbook. No API keys were stored, yt-dlp was installed with Homebrew, and X cookie access is
+  still unverified (Safari access denied; no Chromium x.com login found).
+- The `~/.claude/skills` links are not managed by `config/links.json`; new skills
+  need a link until installation covers Claude Code.
+
 ## 2026-11-01 — Patched Cloudflare CLI dependency tree
 
 - Pinned cf to 1.0.0-beta.23, the first release with the patched upstream Zod and

@@ -33,6 +33,13 @@ Use the scoped project query in `SKILL.md`, or this inventory query:
 railway api 'query { projects(first: 50) { edges { node { id name } } } }'
 ```
 
+To list what is deployed, add `pageInfo { hasNextPage }` beside `edges` and select
+`environments { edges { node { id name } } }` and `services { edges { node { id name
+serviceInstances { edges { node { environmentId latestDeployment { status createdAt
+} } } } } } }` on each project node, without variables. Some service instances
+reference environment IDs absent from the project's environment list; report them
+rather than guessing a name.
+
 Paginate when necessary; do not infer a project's absence from one page. Direct
 workspace/account API requests use `Authorization: Bearer <token>` at
 `https://backboard.railway.com/graphql/v2`. Project tokens use
@@ -182,10 +189,13 @@ and clipboard restrictions; if a newly authorized token cannot be stored through
 the available tools, have the user save it locally without pasting it into chat.
 
 Railway's hosted MCP uses OAuth or a `railway login` session. For a configured
-Codex agent connection, `railway mcp install --agent codex --oauth` lets the user
-choose the workspace during consent. Recheck current MCP documentation before
-setup, and use an existing connector when it supports the task. Workspace API
-tokens remain useful for `railway api` and direct GraphQL access.
+agent connection, `railway mcp install --agent <agent> --oauth` lets the user
+choose the workspace during consent; CLI 5.62.1 accepts `codex`, `claude-code`,
+`cursor`, and other agents (an unknown value prints the list). MCP is optional:
+the CLI with the workspace token covers project, service, and deployment reads in
+any harness. Recheck current MCP documentation before setup, and use an existing
+connector when it supports the task. Workspace API tokens remain useful for
+`railway api` and direct GraphQL access.
 
 Official references:
 

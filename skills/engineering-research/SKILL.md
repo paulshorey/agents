@@ -37,7 +37,8 @@ Use this order for web searches:
 }
 ```
 
-Run it with this skill's directory as `SKILL_DIR`:
+Run it with this skill's directory as `SKILL_DIR` (Claude Code shows it as the
+skill's base directory when the skill loads):
 
 ```bash
 if [ -z "${PARALLEL_API_KEY:-}" ] && [ -f ~/.secrets.sh ]; then
@@ -47,7 +48,8 @@ python3 "$SKILL_DIR/scripts/search.py" /absolute/path/to/searches.json
 ```
 
 - Check only whether the key is present; never print it, write it to the input file, or pass it as an argument. In other environments, use that environment's secret configuration.
-- The helper runs up to four requests concurrently, waits for all of them, and prints indexed `data` or `error` entries. A nonzero exit can coexist with useful results. It does not retry.
+- The helper runs up to four requests concurrently, waits for all of them, and prints `{"searches": [...]}` with an indexed `data` or `error` entry per request. Each `data.results` item has `url`, `title`, `publish_date`, and `excerpts`. A nonzero exit can coexist with useful results. It does not retry.
+- Results are search excerpts, often under 1,000 characters. To read a full page, use a connected Parallel fetch tool, `parallel-cli extract` when installed, or the harness's own page fetcher (Claude Code: WebFetch).
 - For HTTP errors, retry rules, and optional `parallel-cli` research jobs, read [references/parallel.md](references/parallel.md) — only when a request fails or you need those capabilities.
 
 ## Research and decide

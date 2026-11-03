@@ -36,6 +36,9 @@ are needed only when updating those imports. Skills are discovered directly from
   before submitting; watchlist polling honors numeric UTC cron schedules and avoids
   repeating a scheduled minute, validates finite nonnegative budgets, and marks
   schema/storage processing errors failed. Imported trailing whitespace is removed.
+  Host-compatibility notes in the research runbook and setup wizard cover version
+  tokens in search queries, the direct web-search fallback, the Go prerequisite for
+  CLI installers, and user-run ScrapeCreators signup.
   Offline regression coverage lives in `tests/test_last30days_review.py`; operation
   details are in the skill's [local adaptations](../skills/last30days/references/local-adaptations.md).
   No setup wizard, browser-cookie access, provider credential changes, extra CLI
