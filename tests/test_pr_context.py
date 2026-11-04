@@ -468,6 +468,26 @@ Keep the finding suffix.</details>'''
                 with self.assertRaisesRegex(pr_context.FetchError, "PR review threads changed"):
                     pr_context.fetch_context(pr_context.GitHub(URL))
 
+    def test_statuses_keep_only_each_contexts_newest_state(self):
+        fixture = Fixture()
+        original = fixture.gh
+
+        def history(*args, **kwargs):
+            value = original(*args, **kwargs)
+            if args[-1].endswith("/statuses?per_page=100"):
+                value[-1] = value[-1] + [
+                    {"id": 900, "context": "deploy", "state": "pending", "updated_at": "2026-01-01T00:00:00Z"},
+                    {"id": 902, "context": "deploy", "state": "success", "updated_at": "2026-01-01T00:02:00Z"},
+                    {"id": 901, "context": "deploy", "state": "failure", "updated_at": "2026-01-01T00:01:00Z"},
+                ]
+            return value
+
+        with patch.object(pr_context, "gh", side_effect=history):
+            output = pr_context.fetch_context(pr_context.GitHub(URL))
+        deploy = [s for s in output["statuses"] if s["context"] == "deploy"]
+        self.assertEqual([(s["id"], s["state"]) for s in deploy], [(902, "success")])
+        self.assertEqual(len(output["statuses"]), 102)
+
     def test_pr_reaction_changes_invalidate_snapshot(self):
         fixture = Fixture()
         original = fixture.gh

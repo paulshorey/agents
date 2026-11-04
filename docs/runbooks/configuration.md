@@ -56,7 +56,8 @@ owners. Do not replace a user's whole CLAUDE.md or account rules.
 
 Inspect installer output before `--apply`; it must contain only intended changes.
 Use repeatable `--only-link TARGET` selectors to install/check just these rule links
-without rendering unrelated Codex/shell settings. The installer backs up existing
+without rendering unrelated Codex/shell settings. Selecting the Cursor MCP link still
+validates `config/mcp.json` as a full installation does. The installer backs up existing
 destinations and supports guarded restore. Verify link targets and contents, then
 check a fresh client session from another project for the routing instruction.
 A link proves installation, not model selection or compliance; current sessions
@@ -120,9 +121,12 @@ python3 ~/.agents/scripts/install.py --restore ~/.agents/local/install-backups/T
 ```
 
 Restore refuses to overwrite destinations whose link changed after installation.
-New backups also retain private installed-state snapshots and refuse to overwrite
-later file edits even when the symlink still matches. Older backups predate this
-content guard; inspect and preserve newer local edits before restoring those.
+New backups also retain private installed-state snapshots and refuse to restore
+when an installer-rendered file (`local/codex/config.toml`, `local/shell/zprofile`)
+changed after install, even when the symlink still matches. Tracked sources such
+as rules and `config/mcp.json` keep their changes in Git, so updating them (for
+example by a pull) does not block restore. Older backups predate this content
+guard; inspect and preserve newer local edits before restoring those.
 A destination that was already a symlink is recreated as that symlink. Restore
 rewrites its target's saved bytes only when the target is one of the two files
 install re-renders, `local/codex/config.toml` or `local/shell/zprofile`; other

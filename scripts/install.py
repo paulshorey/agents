@@ -168,9 +168,11 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
         if any(link['kind'] not in ('text', 'json') for link in definitions):
             raise ValueError('--only-link supports text/JSON links; use full installation for rendered settings.')
     problems = []
-    if only_links is None:
+    if only_links is None or any(link['source'] == 'config/mcp.json' for link in definitions):
+        # Targeted installation must not link MCP JSON that full installation rejects.
         servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
         validate_mcp(servers)
+    if only_links is None:
         codex_target = home / '.codex/config.toml'
         current = codex_target.read_text() if codex_target.exists() else ''
         desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
@@ -261,7 +263,10 @@ def restore(backup):
         target = Path(record['target'])
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
             raise ValueError(f'Refusing to overwrite a config changed after installation: {target}')
-        if 'installed_file' in record and target.read_bytes() != (backup / record['installed_file']).read_bytes():
+        # Edits to an ignored rendered file would silently stop applying. Tracked
+        # sources (rules, MCP JSON) keep theirs in Git, so a pull never blocks restore.
+        if ('installed_file' in record and target.resolve() in rendered
+                and target.read_bytes() != (backup / record['installed_file']).read_bytes()):
             raise ValueError('Installed configuration has newer edits; preserve or reconcile them before restoring.')
     for record in records:
         target = Path(record['target'])

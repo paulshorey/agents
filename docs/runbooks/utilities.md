@@ -133,7 +133,8 @@ should write a file and query it rather than read truncated stdout. Fields:
 - `reviews`: decisions and reviewed commits, even when their text is filtered.
   `threads`: resolution/outdated state, root comment IDs, and visible comment IDs.
   Bodies appear only in `comments`, avoiding duplicated thread/review text.
-- `checks`, `statuses`: check runs and commit statuses for the captured head.
+- `checks`, `statuses`: latest check runs and each status context's newest commit
+  status for the captured head; older status updates are omitted.
 - `codex_review`: Codex's latest machine-readable review state, parsed from the
   `codex-review-state:v1` marker in its summary comment, with that comment's ID,
   URL, and update time. `covers_head` is true only when the code review's

@@ -328,6 +328,47 @@ class ManagedDefaultsTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     install.install(root, home, apply=True, only_links=selected)
 
+    def rule_root(self, folder):
+        root, home = Path(folder) / 'agents', Path(folder) / 'home'
+        definitions = json.loads((ROOT / 'config/links.json').read_text())['links']
+        for link in definitions:
+            if link['kind'] in ('text', 'json'):
+                source = root / link['source']
+                source.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / link['source'], source)
+        (root / 'config/links.json').write_text(json.dumps({'links': definitions}))
+        return root, home
+
+    def test_targeted_mcp_link_is_validated_like_full_installation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            (root / 'config/mcp.json').write_text('{"mcpServers":{"Bad Name":{"command":"x"}}}')
+            for target in (home / '.cursor/mcp.json', None):
+                if target:
+                    target.parent.mkdir(parents=True)
+                    target.write_text('')
+                with self.subTest(empty_destination=bool(target)), self.assertRaises(ValueError):
+                    install.install(root, home, apply=True, only_links=['~/.cursor/mcp.json'])
+                self.assertFalse((home / '.cursor/mcp.json').is_symlink())
+            (root / 'config/mcp.json').write_text('{not json')
+            with self.assertRaises(ValueError):
+                install.install(root, home, apply=True, only_links=['~/.cursor/mcp.json'])
+
+    def test_restore_is_not_blocked_by_tracked_source_updates(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            rule = home / '.claude/rules/git-workflow.md'
+            rule.parent.mkdir(parents=True)
+            rule.write_text('my original rule\n')
+            installed = install.install(root, home, apply=True, only_links=['~/.claude/rules/git-workflow.md'])
+            self.assertTrue(rule.is_symlink())
+            # A pull or branch switch updates the tracked source behind the link.
+            (root / 'rules/git-workflow.md').write_text('updated by git pull\n')
+            install.restore(Path(installed['backup']))
+            self.assertFalse(rule.is_symlink())
+            self.assertEqual(rule.read_text(), 'my original rule\n')
+            self.assertEqual((root / 'rules/git-workflow.md').read_text(), 'updated by git pull\n')
+
     def test_restore_rewrites_only_installer_rendered_symlink_targets(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = Path(folder) / 'agents', Path(folder) / 'home'

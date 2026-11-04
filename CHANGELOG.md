@@ -47,6 +47,12 @@ Verification dates describe historical observations, not current readiness.
   separate Codex task. The helper replaces request-reaction tracking
   (`review_requests`) with `codex_review`, the commit Codex last reviewed parsed
   from its summary comment, plus `covers_head` for the current head.
+- Addressed Codex's first automatic review: `statuses` keeps only each context's
+  newest state, targeted `--only-link` installation validates `config/mcp.json`
+  as full installation does, and restore's content guard applies only to the two
+  installer-rendered files, so a pull that updates a tracked rule no longer blocks
+  restore. Request comments were not reinstated as a fallback; a review that never
+  starts is reported to the user as possibly disabled automatic review.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

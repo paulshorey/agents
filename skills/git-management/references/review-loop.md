@@ -42,7 +42,9 @@ Codex task. Codex may not review a draft until it is marked ready for review.
    Do not push again for an unchanged head just to revisit a rejected finding.
 
 If 30 minutes pass without a review of the current head, handle any feedback that
-did arrive, keep the head/push record, and report the review pending. A later check
+did arrive, keep the head/push record, and report the review pending. If Codex
+never started (no 👀 reaction or running status), tell the user automatic review
+may be off for that repository; they configure it in Codex. A later check
 continues from step 3 when the review arrives. Do not request a review by comment,
 claim a clean review, or merge on silence. If review fails, access is unavailable,
 or a fix needs an unresolved product decision, report the concrete blocker.
