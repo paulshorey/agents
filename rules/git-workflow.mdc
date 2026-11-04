@@ -1,0 +1,10 @@
+---
+description: Shared Git and GitHub PR workflow for every project
+alwaysApply: true
+---
+
+For Git or PR work in any repository, read and follow
+`~/.agents/rules/git-workflow.md`. It routes to the single shared Git/PR skill,
+including the review loop: keep PRs ready for review (never draft) so Codex
+reviews every push automatically, check back within 30 minutes, and reply to each
+comment.

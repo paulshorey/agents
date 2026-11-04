@@ -286,6 +286,161 @@ class InventoryTests(unittest.TestCase):
 
 
 class ManagedDefaultsTests(unittest.TestCase):
+    def test_selected_rule_links_preserve_native_settings_and_restore_cleanly(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = Path(folder) / 'agents', Path(folder) / 'home'
+            (root / 'config').mkdir(parents=True)
+            (root / 'rules').mkdir()
+            definitions = json.loads((ROOT / 'config/links.json').read_text())['links']
+            for link in definitions:
+                if link['kind'] in ('text', 'json'):
+                    source = root / link['source']
+                    source.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(ROOT / link['source'], source)
+            (root / 'config/links.json').write_text(json.dumps({'links': definitions}))
+            (home / '.codex').mkdir(parents=True)
+            native = home / '.codex/config.toml'
+            native.write_text('model = "keep-native-choice"\n')
+            shell = home / '.zprofile'
+            shell.write_text('# keep native shell\n')
+            targets = ['~/.claude/rules/git-workflow.md', '~/.cursor/rules/git-workflow.mdc']
+            for target in targets:
+                directory = install.expand(target, home).parent
+                directory.mkdir(parents=True)
+                (directory / 'personal.md').write_text('Keep personal rules.')
+            check = install.install(root, home, only_links=targets)
+            self.assertEqual(check['status'], 'needs_install')
+            self.assertEqual(len(check['changes']), 2)
+            installed = install.install(root, home, apply=True, only_links=targets)
+            self.assertEqual(installed['links'], 2)
+            self.assertEqual(install.install(root, home, only_links=targets)['status'], 'current')
+            self.assertEqual(native.read_text(), 'model = "keep-native-choice"\n')
+            self.assertEqual(shell.read_text(), '# keep native shell\n')
+            self.assertFalse((root / 'local/codex').exists())
+            for target in targets:
+                path = install.expand(target, home)
+                self.assertTrue(path.is_symlink())
+                self.assertEqual((path.parent / 'personal.md').read_text(), 'Keep personal rules.')
+            install.restore(Path(installed['backup']))
+            for target in targets:
+                self.assertFalse(install.expand(target, home).exists())
+            for selected in ([], ['~/.unknown'], ['~/.codex/config.toml']):
+                with self.assertRaises(ValueError):
+                    install.install(root, home, apply=True, only_links=selected)
+
+    def rule_root(self, folder):
+        root, home = Path(folder) / 'agents', Path(folder) / 'home'
+        definitions = json.loads((ROOT / 'config/links.json').read_text())['links']
+        for link in definitions:
+            if link['kind'] in ('text', 'json'):
+                source = root / link['source']
+                source.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(ROOT / link['source'], source)
+        (root / 'config/links.json').write_text(json.dumps({'links': definitions}))
+        return root, home
+
+    def test_targeted_mcp_link_is_validated_like_full_installation(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            (root / 'config/mcp.json').write_text('{"mcpServers":{"Bad Name":{"command":"x"}}}')
+            for target in (home / '.cursor/mcp.json', None):
+                if target:
+                    target.parent.mkdir(parents=True)
+                    target.write_text('')
+                with self.subTest(empty_destination=bool(target)), self.assertRaises(ValueError):
+                    install.install(root, home, apply=True, only_links=['~/.cursor/mcp.json'])
+                self.assertFalse((home / '.cursor/mcp.json').is_symlink())
+            (root / 'config/mcp.json').write_text('{not json')
+            with self.assertRaises(ValueError):
+                install.install(root, home, apply=True, only_links=['~/.cursor/mcp.json'])
+
+    def test_existing_rule_with_other_content_is_never_replaced(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            selected = ['~/.claude/rules/git-workflow.md', '~/.cursor/rules/git-workflow.mdc']
+            rule = home / '.claude/rules/git-workflow.md'
+            rule.parent.mkdir(parents=True)
+            rule.write_text('My own Git rule.\n')
+            dotfile = home / 'dotfiles/rule.mdc'
+            dotfile.parent.mkdir(parents=True)
+            dotfile.write_text('My Cursor rule.\n')
+            cursor = home / '.cursor/rules/git-workflow.mdc'
+            cursor.parent.mkdir(parents=True)
+            cursor.symlink_to(dotfile)
+            for apply in (False, True):
+                with self.subTest(apply=apply), self.assertRaisesRegex(ValueError, 'has other content'):
+                    install.install(root, home, apply=apply, only_links=selected)
+            self.assertFalse(rule.is_symlink())
+            self.assertEqual(rule.read_text(), 'My own Git rule.\n')
+            self.assertEqual(os.readlink(cursor), str(dotfile))
+            self.assertFalse((root / 'local/install-backups').exists())
+            # Identical content carries no instructions that linking would deactivate.
+            rule.write_text((root / 'rules/git-workflow.md').read_text())
+            installed = install.install(root, home, apply=True, only_links=selected[:1])
+            self.assertEqual(installed['status'], 'installed')
+            self.assertTrue(rule.is_symlink())
+
+    def test_restore_is_not_blocked_by_tracked_source_updates(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            rule = home / '.claude/rules/git-workflow.md'
+            rule.parent.mkdir(parents=True)
+            original = (root / 'rules/git-workflow.md').read_text()
+            rule.write_text(original)
+            installed = install.install(root, home, apply=True, only_links=['~/.claude/rules/git-workflow.md'])
+            self.assertTrue(rule.is_symlink())
+            # A pull or branch switch updates the tracked source behind the link.
+            (root / 'rules/git-workflow.md').write_text('updated by git pull\n')
+            install.restore(Path(installed['backup']))
+            self.assertFalse(rule.is_symlink())
+            self.assertEqual(rule.read_text(), original)
+            self.assertEqual((root / 'rules/git-workflow.md').read_text(), 'updated by git pull\n')
+
+    def test_restore_rewrites_only_installer_rendered_symlink_targets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = Path(folder) / 'agents', Path(folder) / 'home'
+            (root / 'config').mkdir(parents=True)
+            (root / 'rules').mkdir()
+            (root / 'rules/git-workflow.md').write_text('managed rule\n')
+            (root / 'rules/git-workflow.mdc').write_text('managed cursor rule\n')
+            (root / 'config/codex.defaults.toml').write_text('model = "chosen-model"\n')
+            (root / 'config/mcp.json').write_text('{"mcpServers":{}}')
+            (root / 'config/links.json').write_text(json.dumps({'links': [
+                {'source': 'rules/git-workflow.md', 'target': '~/.claude/rules/git-workflow.md', 'kind': 'text'},
+                {'source': 'rules/git-workflow.mdc', 'target': '~/.cursor/rules/git-workflow.mdc', 'kind': 'text'},
+                {'source': 'local/codex/config.toml', 'target': '~/.codex/config.toml', 'kind': 'codex'},
+                {'source': 'local/shell/zprofile', 'target': '~/.zprofile', 'kind': 'shell'}]}))
+            # A dotfiles-managed rule link: install never writes its target.
+            dotfile = home / 'dotfiles/git-workflow.md'
+            dotfile.parent.mkdir(parents=True)
+            dotfile.write_text('managed rule\n')
+            rule = home / '.claude/rules/git-workflow.md'
+            rule.parent.mkdir(parents=True)
+            rule.symlink_to(dotfile)
+            # A rule link into another ignored local/ file: also never written by install.
+            local_rule = root / 'local/personal/cursor-rule.mdc'
+            local_rule.parent.mkdir(parents=True)
+            local_rule.write_text('managed cursor rule\n')
+            cursor_rule = home / '.cursor/rules/git-workflow.mdc'
+            cursor_rule.parent.mkdir(parents=True)
+            cursor_rule.symlink_to(local_rule)
+            # A Codex link already inside local/: install rewrites those bytes.
+            local_config = root / 'local/codex/config.toml'
+            local_config.parent.mkdir(parents=True)
+            local_config.write_text('model = "original"\n')
+            (home / '.codex').mkdir()
+            (home / '.codex/config.toml').symlink_to(local_config)
+            installed = install.install(root, home, apply=True)
+            self.assertIn('chosen-model', local_config.read_text())
+            dotfile.write_text('dotfiles v2 edited after install\n')
+            local_rule.write_text('local v2 edited after install\n')
+            install.restore(Path(installed['backup']))
+            self.assertEqual(os.readlink(rule), str(dotfile))
+            self.assertEqual(dotfile.read_text(), 'dotfiles v2 edited after install\n')
+            self.assertEqual(os.readlink(cursor_rule), str(local_rule))
+            self.assertEqual(local_rule.read_text(), 'local v2 edited after install\n')
+            self.assertEqual(local_config.read_text(), 'model = "original"\n')
+
     def test_restore_refuses_newer_application_edits_before_changing_any_link(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = Path(folder) / 'agents', Path(folder) / 'home'

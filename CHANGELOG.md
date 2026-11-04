@@ -4,6 +4,78 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-03 — One Git/PR workflow and iterative Codex review
+
+- Consolidated Git publishing and PR maintenance under `git-management`, with
+  conditional references and a short `pr-management` compatibility entrypoint.
+  Existing invocations and both PR-context script symlinks remain available.
+- Added the loop for every created PR and functional PR contributions: record
+  each pushed head, check back within 30 minutes for Codex's automatic review of
+  it, handle/reply to each comment, resolve handled threads, and repeat after
+  functional fixes. Missing reviews stay pending.
+- Routed Git/PR work globally through Codex instructions and two installer-managed
+  Claude Code/Cursor user-rule files. The adapters point to the shared policy
+  without replacing other rules. Targeted installer link selection avoids
+  rendering unrelated Codex/shell settings. No credential or provider changes.
+- Addressed PR #26 feedback: preserve enclosing feedback around nested About Codex
+  details blocks, and reject truncated/inconsistent check-run responses, including
+  the conservative 1,000-run boundary. `--no-filter` exposes completion evidence.
+- Follow-up review also protects inline/fenced code examples during HTML
+  filtering and separates current six-link routing status from the older harness
+  observations and remaining fresh-client verification plan.
+- Extended code protection to indented examples and rechecks submitted review
+  IDs, decisions, commits, and bodies before returning a snapshot.
+- Added request-specific reaction evidence (actor/content/time), blockquoted
+  indented-code protection, and final issue/inline comment state checks so edits
+  and reaction-only review completion are visible to the review loop.
+- Recheck thread disposition and reaction state before the final ref read, and
+  preserve significant indentation when a comment contains only a code example.
+- Narrowed default filtering so it cannot hide feedback: only exact `@codex review`
+  triggers and the Codex bot's summary comment are dropped, and About boilerplate
+  is stripped only from Codex-bot comments. Human comments and Codex findings that
+  mention the trigger now remain. Inline `diff_hunk` context is opt-in (`--hunks`),
+  and `--output` writes the JSON to a file, since full context exceeded agent
+  tool-output limits (283 KB for PR #26, 76% hunks).
+- Addressed Codex review of that change: `--output` uses an exclusively created
+  temporary file, receipt markers inside code examples are preserved, and
+  installer restore rewrites a pre-existing symlink's target only when it is one
+  of the two installer-rendered `local/` files, so edits to dotfiles-managed or
+  other linked rules made after install are not rolled back.
+- Codex's GitHub integration now reviews every PR push automatically (configured
+  in Codex settings, outside this repository). The loop no longer posts
+  `@codex review` request comments and warns that any mention of the bot starts a
+  separate Codex task. The helper replaces request-reaction tracking
+  (`review_requests`) with `codex_review`, the commit Codex last reviewed parsed
+  from its summary comment, plus `covers_head` for the current head.
+- Addressed Codex's first automatic review: `statuses` keeps only each context's
+  newest state, targeted `--only-link` installation validates `config/mcp.json`
+  as full installation does, and restore's content guard applies only to the two
+  installer-rendered files, so a pull that updates a tracked rule no longer blocks
+  restore. Request comments were not reinstated as a fallback; a review that never
+  starts is reported to the user as possibly disabled automatic review.
+- Agents now always open PRs ready for review, never as drafts, and mark a draft
+  ready after pushing to it, so every PR they create or update gets automatic
+  Codex review. Drafts are reserved for PRs the user parks to pause reviews.
+- Addressed Codex's review of that change: installation refuses to replace an
+  existing text destination (such as a user's own rule file) whose content
+  differs from its source, status history at GitHub's 1,000-entry limit fails
+  rather than risk omitting a context, and Enterprise PR URLs keep custom ports.
+  Readying a parked draft that an agent pushes to remains intended.
+
+## 2026-11-02 — Shared PR context and feedback replies
+
+- Clarified Git and PR management handoffs: validate and push each fix, then reply
+  to every addressed comment with the outcome, commit, and validation before
+  resolving its thread. One fix addressing several comments still needs replies
+  to each; already-posted responses should not be duplicated.
+- Added the common read-only `scripts/pr-context.py`, symlinked from both skills.
+  It paginates PR feedback, threads, commits, changed files, and head checks/statuses;
+  returns compact context with optional diff; and rejects incomplete/stale reads.
+- Added reversible output filtering for Codex summary/request comments and the
+  About Codex details block, preserving review decisions and substantive replies.
+  The helper reuses native `gh` authentication and does not mutate GitHub data,
+  credential stores, managed application links, or provider settings.
+
 ## 2026-11-02 — Claude Code skill compatibility and last30days setup
 
 - Verified that Claude Code discovers all 17 shared skills through per-skill links in

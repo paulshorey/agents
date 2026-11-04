@@ -76,6 +76,14 @@ format. The root `AGENTS.md` applies to this checkout; global Codex instructions
 load through `~/.codex/AGENTS.md`. Cursor's MCP loads through `~/.cursor/mcp.json`.
 Those explicit links are declared in `config/links.json`.
 
+Git and PR work has one policy owner: [`git-management`](skills/git-management/SKILL.md).
+`pr-management` remains a compatibility entrypoint. Codex's global instructions
+and the managed Claude Code/Cursor user rules direct contributors to that skill
+in every project. Agents keep PRs ready for review (never draft), so Codex reviews
+every push automatically; the review loop checks back within 30 minutes, replies to each finding, and repeats after functional
+fixes until the current head has no new valid issues to fix. See
+[global workflow installation](docs/runbooks/configuration.md#global-git-and-pr-routing).
+
 See the [native harness map and improvement plan](docs/agent-harnesses.md) for
 supported instruction/configuration paths, local observations, capability gaps,
 and proposed lifecycle improvements. Cursor User Rules, CLI settings, editor
@@ -128,6 +136,8 @@ The installer establishes these links:
 | `~/.cursor/mcp.json` | `config/mcp.json` |
 | `~/.codex/config.toml` | `local/codex/config.toml` |
 | `~/.codex/AGENTS.md` | `rules/AGENTS.md` |
+| `~/.claude/rules/git-workflow.md` | `rules/git-workflow.md` |
+| `~/.cursor/rules/git-workflow.mdc` | `rules/git-workflow.mdc` |
 | `~/.zprofile` | `local/shell/zprofile` |
 
 Codex uses TOML rather than `mcp.json`. The installer renders the shared

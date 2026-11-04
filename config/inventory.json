@@ -190,6 +190,40 @@
       ]
     },
     {
+      "id": "configuration.claude-git-workflow",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "User-level Claude Code routing to the shared Git and PR workflow.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 4,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/4"
+        }
+      ],
+      "notes": [
+        "Install with scripts/install.py. This one user rule applies to all projects without replacing CLAUDE.md or other user rules. Policy stays in skills/git-management; verify selection in a fresh client session."
+      ]
+    },
+    {
+      "id": "configuration.cursor-git-workflow",
+      "kind": "configuration",
+      "owner": "agents",
+      "description": "Always-applied local Cursor user rule routing to the shared Git and PR workflow.",
+      "runbook": "docs/runbooks/configuration.md",
+      "link_index": 5,
+      "references": [
+        {
+          "file": "config/links.json",
+          "pointer": "/links/5"
+        }
+      ],
+      "notes": [
+        "Install with scripts/install.py. The local user-rule file points to rules/git-workflow.md; account/team rules remain application-owned. User-rule files require a client supporting the documented ~/.cursor/rules entrypoint; verify selection in a fresh client session."
+      ]
+    },
+    {
       "id": "configuration.codex-defaults",
       "kind": "configuration",
       "owner": "agents",
@@ -337,10 +371,14 @@
         },
         {
           "file": "tools/python-requirements.txt"
+        },
+        {
+          "file": "scripts/pr-context.py"
         }
       ],
       "notes": [
-        "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata."
+        "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata.",
+        "Git and PR management share scripts/pr-context.py through relative symlinks in their skill scripts/ folders. It reads PR data using the native GitHub CLI sign-in documented by application.github-auth; it does not post or delete comments."
       ]
     },
     {
@@ -368,7 +406,8 @@
       ],
       "notes": [
         "Update inventory records when configuration locations, ownership, credentials, consumers, or update/recovery procedures change. Skill contents are maintained directly in skills/ without inventory registration.",
-        "AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex."
+        "AGENTS.md is the concise repository entrypoint. rules/AGENTS.md supplies the broader global instructions linked into Codex.",
+        "Every Git/PR contributor is routed to skills/git-management. pr-management is a compatibility entrypoint; review-loop and maintenance policy have one owner. Claude Code and Cursor use the managed user-rule links in config/links.json."
       ]
     },
     {
@@ -572,8 +611,8 @@
       "description": "Cursor account/user rules and project instruction entrypoints.",
       "runbook": "docs/runbooks/agent-customization.md",
       "notes": [
-        "User Rules are maintained through Customize -> Rules. No shared global startup bridge is registered or verified yet; see the implementation plan.",
-        "Repository AGENTS.md and .cursor/rules/*.mdc are project conventions. Do not infer that ~/.agents/AGENTS.md or ~/.codex/AGENTS.md supplies global Cursor instructions. Preserve existing User/Team Rules and verify fresh-session context."
+        "Account User Rules are maintained through Customize -> Rules. A separate local user-rule bridge is registered as configuration.cursor-git-workflow; file installation does not prove fresh-session selection.",
+        "Repository AGENTS.md and .cursor/rules/*.mdc are project conventions; current Cursor documentation also supports ~/.cursor/rules user-rule files. Preserve existing User/Team Rules and verify client support and fresh-session context."
       ]
     },
     {

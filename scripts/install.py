@@ -15,6 +15,8 @@ import tomllib
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
+# The only files install re-renders; restore rewrites bytes for these alone.
+CODEX_RENDERED, SHELL_RENDERED = 'local/codex/config.toml', 'local/shell/zprofile'
 DEFAULT_KEYS = {'model', 'model_reasoning_effort', 'model_verbosity',
                 'model_reasoning_summary', 'web_search', 'service_tier'}
 
@@ -155,25 +157,35 @@ def atomic_write(path, data, mode=0o600):
     temporary.replace(path)
 
 
-def install(root=ROOT, home=Path.home(), apply=False):
+def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
     definitions = json.loads((root / 'config/links.json').read_text())['links']
-    servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
     validate_links(root, definitions, home)
-    validate_mcp(servers)
-    codex_target = home / '.codex/config.toml'
-    current = codex_target.read_text() if codex_target.exists() else ''
-    desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
-    codex_source = root / 'local/codex/config.toml'
+    if only_links is not None:
+        selected = {expand(target, home) for target in only_links}
+        definitions = [link for link in definitions if expand(link['target'], home) in selected]
+        if not selected or len(definitions) != len(selected):
+            raise ValueError('--only-link must select declared link targets.')
+        if any(link['kind'] not in ('text', 'json') for link in definitions):
+            raise ValueError('--only-link supports text/JSON links; use full installation for rendered settings.')
     problems = []
-    if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
-        problems.append('Codex managed preferences or MCP sections need rendering')
-    shell_target = home / '.zprofile'
-    shell_current = shell_target.read_text() if shell_target.exists() else ''
-    shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
-    shell_desired = shell_current if shell_hook in shell_current else shell_current.rstrip() + '\n\n# Managed agent tool PATH (credentials are selected per task).\n' + shell_hook + '\n'
-    shell_source = root / 'local/shell/zprofile'
-    if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
-        problems.append('Shell tool PATH hook needs rendering')
+    if only_links is None or any(link['source'] == 'config/mcp.json' for link in definitions):
+        # Targeted installation must not link MCP JSON that full installation rejects.
+        servers = json.loads((root / 'config/mcp.json').read_text())['mcpServers']
+        validate_mcp(servers)
+    if only_links is None:
+        codex_target = home / '.codex/config.toml'
+        current = codex_target.read_text() if codex_target.exists() else ''
+        desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
+        codex_source = root / CODEX_RENDERED
+        if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
+            problems.append('Codex managed preferences or MCP sections need rendering')
+        shell_target = home / '.zprofile'
+        shell_current = shell_target.read_text() if shell_target.exists() else ''
+        shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
+        shell_desired = shell_current if shell_hook in shell_current else shell_current.rstrip() + '\n\n# Managed agent tool PATH (credentials are selected per task).\n' + shell_hook + '\n'
+        shell_source = root / SHELL_RENDERED
+        if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
+            problems.append('Shell tool PATH hook needs rendering')
     for link in definitions:
         source, target = root / link['source'], expand(link['target'], home)
         if not target.is_symlink() or target.resolve() != source.resolve():
@@ -185,6 +197,10 @@ def install(root=ROOT, home=Path.home(), apply=False):
                 raise ValueError(f'Link destination is not writable: {parent}. No configuration changed.')
         if link['kind'] not in ('codex', 'shell') and not source.exists():
             raise ValueError(f'Missing managed source: {source}')
+        if link['kind'] == 'text' and target.exists() and target.resolve() != source.resolve():
+            # Replacing a different rule file would silently stop its instructions applying.
+            if target.read_bytes() != source.read_bytes():
+                raise ValueError(f'{target} has other content. Merge it into {source} or move it before installing.')
         if link['kind'] == 'json' and target.exists():
             # Merge existing nonempty config only after it is explicitly migrated.
             raw = target.read_text().strip()
@@ -217,8 +233,9 @@ def install(root=ROOT, home=Path.home(), apply=False):
             (backup / str(index)).chmod(0o600)
         saved.append(record)
     atomic_write(backup / 'manifest.json', json.dumps(saved, indent=2) + '\n')
-    atomic_write(codex_source, desired)
-    atomic_write(shell_source, shell_desired)
+    if only_links is None:
+        atomic_write(codex_source, desired)
+        atomic_write(shell_source, shell_desired)
     for link in definitions:
         source, target = root / link['source'], expand(link['target'], home)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -243,23 +260,28 @@ def install(root=ROOT, home=Path.home(), apply=False):
 
 def restore(backup):
     records = json.loads((backup / 'manifest.json').read_text())
+    # Backups live in <root>/local/install-backups/<time>.
+    root = backup.resolve().parents[2]
+    rendered = {(root / path).resolve() for path in (CODEX_RENDERED, SHELL_RENDERED)}
     for record in records:
         target = Path(record['target'])
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
             raise ValueError(f'Refusing to overwrite a config changed after installation: {target}')
-        if 'installed_file' in record and target.read_bytes() != (backup / record['installed_file']).read_bytes():
+        # Edits to an ignored rendered file would silently stop applying. Tracked
+        # sources (rules, MCP JSON) keep theirs in Git, so a pull never blocks restore.
+        if ('installed_file' in record and target.resolve() in rendered
+                and target.read_bytes() != (backup / record['installed_file']).read_bytes()):
             raise ValueError('Installed configuration has newer edits; preserve or reconcile them before restoring.')
     for record in records:
         target = Path(record['target'])
         target.unlink()
         if 'symlink' in record:
             if 'file' in record:
-                resolved = Path(record['source'])
-                if Path(record['symlink']).is_absolute():
-                    resolved = Path(record['symlink'])
-                else:
-                    resolved = target.parent / record['symlink']
-                atomic_write(resolved.resolve(), (backup / record['file']).read_text())
+                resolved = (target.parent / record['symlink']).resolve()
+                # Other link targets (dotfiles, other local/ files) were never written
+                # by install; rewriting them would roll back edits made since.
+                if resolved in rendered:
+                    atomic_write(resolved, (backup / record['file']).read_text())
             target.symlink_to(record['symlink'])
         elif 'file' in record:
             shutil.copy2(backup / record['file'], target)
@@ -271,9 +293,12 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true', help='Back up and install links; default checks only')
     parser.add_argument('--restore', type=Path, help='Restore one reported backup without overwriting later edits')
+    parser.add_argument('--only-link', action='append', help='Check/install only this declared text/JSON target; repeat to select more')
     args = parser.parse_args()
+    if args.restore and args.only_link:
+        parser.error('--restore cannot be combined with --only-link')
     try:
-        result = restore(args.restore) if args.restore else install(apply=args.apply)
+        result = restore(args.restore) if args.restore else install(apply=args.apply, only_links=args.only_link)
         print(json.dumps(result, indent=2))
         return 1 if result['status'] == 'needs_install' else 0
     except (ValueError, OSError) as error:

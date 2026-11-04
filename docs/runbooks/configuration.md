@@ -13,6 +13,8 @@ is the metadata index; existing configuration files own actual settings.
 | Credential profile IDs and locations | `config/profiles.json` | Move/restore private file separately; restart affected MCP clients |
 | Other Codex settings, profiles, plugin toggles, application MCP runtimes | Codex settings or the active `~/.codex/config.toml` | Follow application reload behavior; preserve managed sections |
 | Global agent instructions | `rules/AGENTS.md` | Symlink already installed; new agent session |
+| Claude Code Git/PR user rule | `rules/git-workflow.md` | Installer links `~/.claude/rules/git-workflow.md`; new session |
+| Cursor Git/PR user rule | `rules/git-workflow.mdc` | Installer links `~/.cursor/rules/git-workflow.mdc`; new session |
 | Repository agent entrypoint | `AGENTS.md` | Links repository work to the inventory and global rules |
 | Agent utility PATH hook | `config/env.sh`; installer owns its `.zprofile` source hook | New login shell or explicitly source env.sh |
 | Shell secrets | `~/.secrets.sh`, loaded by `~/.zshenv` (normal zsh), `~/.profile` (login Bash), and `~/.bashrc` (interactive Bash); clean noninteractive shells require injection/profile loading | New shell; restart apps that started before the change |
@@ -24,8 +26,8 @@ For native discovery, execution policies, hooks, role formats, and differences
 between Cursor editor/CLI and Codex, consult the
 [harness map](../agent-harnesses.md). Use the
 [customization runbook](agent-customization.md) for new tooling or repeated setup
-failures. Cursor User Rules are maintained through its supported UI; the Codex
-global instruction link alone does not supply them to Cursor.
+failures. Cursor account User Rules remain application-owned. The managed local
+user-rule file below supplies Git/PR routing separately from Codex instructions.
 
 The installer owns only keys present in `config/codex.defaults.toml` from its
 allowlist: model, reasoning effort, verbosity, reasoning summary, web search,
@@ -36,6 +38,46 @@ Project configurations and runtime overrides may take precedence over user defau
 Do not edit generated `docs/INVENTORY.md` directly. Do not store credentials in
 shared defaults or MCP JSON. The complete application config remains ignored;
 it can contain host-specific paths, runtime state, and sensitive settings.
+
+## Global Git and PR routing
+
+The policy lives in `skills/git-management/`, with `pr-management` as a short
+compatibility entrypoint. The common entrypoint covers Git publishing; conditional
+references cover the Codex review loop, PR maintenance, and production promotions.
+Keep instructions in that owning skill rather than copying them into projects.
+
+`rules/AGENTS.md` directs Codex through its existing global link. Claude Code's
+user-level `~/.claude/rules/git-workflow.md` loads the short shared router.
+Cursor's local user-level `~/.cursor/rules/git-workflow.mdc` uses
+`alwaysApply: true` and points to that same router. Both links are declared in
+`config/links.json` and installed by `scripts/install.py`; other user rules,
+project instructions, account rules, and application settings keep their existing
+owners. Do not replace a user's whole CLAUDE.md or account rules.
+
+Inspect installer output before `--apply`; it must contain only intended changes.
+Use repeatable `--only-link TARGET` selectors to install/check just these rule links
+without rendering unrelated Codex/shell settings. Selecting the Cursor MCP link still
+validates `config/mcp.json` as a full installation does. The installer backs up existing
+destinations and supports guarded restore. Verify link targets and contents, then
+check a fresh client session from another project for the routing instruction.
+A link proves installation, not model selection or compliance; current sessions
+and cloud agents with a different home need their own entrypoint or a new session.
+A Codex override can replace its global file; client restrictions can also affect
+rule loading.
+
+Codex's GitHub integration reviews each ready PR when it opens and after every
+push, so the loop never posts review-request comments. Agents open PRs ready for
+review and mark a draft ready after pushing to it; drafts are left for PRs the
+user parks to pause automatic review. The 30-minute limit is the longest
+wait for Codex's review of the pushed head, not a mandatory delay after it
+completes. Record the head and push time, handle all feedback when the review
+arrives or time runs out, and repeat after functional fixes. If no review has
+arrived, report it pending. `pr-context.py` reports the head Codex last reviewed
+in `codex_review`; automatic-review settings live in Codex, not this repository.
+
+Sources: [Codex global instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[Claude Code user rules](https://code.claude.com/docs/en/memory#user-level-rules),
+and [Cursor local user-rule files](https://prod.cursor.com/help/customization/rules#where-are-rules-stored).
 
 ## Inspect and install
 
@@ -51,6 +93,9 @@ installs the links declared in `config/links.json`. If an application replaces a
 link while saving, the check reports it. The installer can adopt current application
 settings and restore the link without silently replacing unrelated settings.
 Cursor JSON with other definitions needs an explicit merge before installation.
+Likewise, an existing text destination such as `~/.codex/AGENTS.md` or a Git/PR
+rule file whose content differs from its source is refused; merge it into the
+source or move it first, so installation never silently deactivates instructions.
 
 ## Plugin and authentication state
 
@@ -81,10 +126,17 @@ python3 ~/.agents/scripts/install.py --restore ~/.agents/local/install-backups/T
 ```
 
 Restore refuses to overwrite destinations whose link changed after installation.
-New backups also retain private installed-state snapshots and refuse to overwrite
-later file edits even when the symlink still matches. Older backups predate this
-content guard; inspect and preserve newer local edits before restoring those.
-Backup restoration does not recover a
+New backups also retain private installed-state snapshots and refuse to restore
+when an installer-rendered file (`local/codex/config.toml`, `local/shell/zprofile`)
+changed after install, even when the symlink still matches. Tracked sources such
+as rules and `config/mcp.json` keep their changes in Git, so updating them (for
+example by a pull) does not block restore. Older backups predate this content
+guard; inspect and preserve newer local edits before restoring those.
+A destination that was already a symlink is recreated as that symlink. Restore
+rewrites its target's saved bytes only when the target is one of the two files
+install re-renders, `local/codex/config.toml` or `local/shell/zprofile`; other
+targets, such as dotfiles-managed rules or other `local/` files, keep their
+current contents. Backup restoration does not recover a
 revoked provider token. Keep encrypted secret backups separately or use provider
 replacement procedures. Update inventory records when configuration locations,
 ownership, credentials, consumers, or update/recovery procedures change; update
