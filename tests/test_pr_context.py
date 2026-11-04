@@ -2,8 +2,10 @@ import contextlib
 import copy
 import importlib.util
 import io
+import json
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +15,11 @@ SPEC = importlib.util.spec_from_file_location("pr_context", ROOT / "scripts/pr-c
 pr_context = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(pr_context)
 URL = "https://github.com/example/project/pull/7"
+BOT = "chatgpt-codex-connector[bot]"
+
+
+def codex(body):
+    return pr_context.filter_body(body, BOT)
 
 
 class Fixture:
@@ -22,13 +29,14 @@ class Fixture:
         self.calls = []
         self.issue = [self.comment(i, f"Finding {i}") for i in range(1, 106)]
         self.issue[0]["body"] = "@codex review"
-        self.issue[1]["body"] = "## Codex Review Summary\nNo new findings."
+        self.issue[1].update(body="## Codex Review Summary\nNo new findings.", user={"login": BOT})
         self.inline = [self.comment(i, f"Inline finding {i}") for i in range(1000, 1101)]
         self.inline[0]["body"] = "@codex review"
+        self.inline[1]["diff_hunk"] = "@@ -1 +1 @@\n-old\n+new"
         self.inline += [dict(self.comment(i, f"Reply {i}"), in_reply_to_id=1000)
                         for i in range(2000, 2205)]
         self.reviews = [
-            dict(self.comment(5000, "## Codex Review Summary\nReview wrapper"),
+            dict(self.comment(5000, "## Codex Review Summary\nReview wrapper"), user={"login": BOT},
                  state="CHANGES_REQUESTED", commit_id="abc", submitted_at="2026-01-01T00:00:00Z"),
             dict(self.comment(5001, ""), state="APPROVED", commit_id="abc",
                  submitted_at="2026-01-01T00:00:00Z"),
@@ -151,17 +159,18 @@ Useful finding.
 Reviews are triggered by "@codex review".
 </details>
 <details><summary>Reproduction</summary>Keep this.</details>'''
-        filtered = pr_context.filter_body(body)
+        filtered = codex(body)
         self.assertIn("Useful finding.", filtered)
         self.assertIn("Keep this.", filtered)
         self.assertNotIn("About Codex", filtered)
         self.assertNotIn("codex-review-receipt", filtered)
-        self.assertIsNone(pr_context.filter_body(body + "\n@codex review"))
-        self.assertIsNone(pr_context.filter_body("Useful preamble\n## Codex Review Summary\nSummary"))
+        self.assertIn("@codex review", codex(body + "\nRe-run with @codex review."))
+        self.assertIsNone(codex("Useful preamble\n## Codex Review Summary\nSummary"))
+        self.assertIsNone(codex("<!-- codex-pull-request-review-summary -->\nStatus table"))
 
     def test_substantive_markdown_and_unrelated_details_are_unchanged(self):
         body = "Finding\n\n```python\nx = '''a\n\n\nb'''\n```\n<details>Keep @codex address that feedback</details>"
-        self.assertEqual(pr_context.filter_body(body), body)
+        self.assertEqual(codex(body), body)
 
     def test_nested_about_block_preserves_outer_feedback_and_balanced_tags(self):
         body = '''<details><summary>Important finding</summary>
@@ -171,7 +180,7 @@ Keep the reproduction before the quote.
 Noise with @codex review.
 </details>Keep the quote suffix.</details>
 Keep the finding suffix.</details>'''
-        output = pr_context.filter_body(body)
+        output = codex(body)
         for text in ("Important finding", "Keep the reproduction", "Keep quoted findings",
                      "Keep the quote suffix", "Keep the finding suffix"):
             self.assertIn(text, output)
@@ -184,7 +193,7 @@ Keep the finding suffix.</details>'''
                 "<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details></details>"
                 "Keep this.<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>"
                 "<details><summary>ℹ️ About Codex in GitHub</summary>Unclosed")
-        self.assertEqual(pr_context.filter_body(body),
+        self.assertEqual(codex(body),
                          "Keep this.<details><summary>ℹ️ About Codex in GitHub</summary>Unclosed")
 
     def test_details_examples_in_markdown_code_survive_beside_real_boilerplate(self):
@@ -200,7 +209,7 @@ Keep the finding suffix.</details>'''
                 # Keep the real block before a possibly unclosed code fence.
                 body = f"Useful finding.\n{real}\n\n{sample}"
                 expected = f"Useful finding.\n\n\n{sample}"
-                self.assertEqual(pr_context.filter_body(body), expected)
+                self.assertEqual(codex(body), expected)
 
     def test_literal_details_inside_code_cannot_unbalance_surrounding_html(self):
         body = ("<details><summary>Reproduction</summary>\n"
@@ -208,15 +217,15 @@ Keep the finding suffix.</details>'''
                 "<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>\n"
                 "Keep this suffix.</details>")
         expected = body.replace("<details><summary>ℹ️ About Codex in GitHub</summary>Noise</details>", "")
-        self.assertEqual(pr_context.filter_body(body), expected)
+        self.assertEqual(codex(body), expected)
 
     def test_indented_code_examples_survive_without_masking_real_html_summaries(self):
         example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
         for indent in ("    ", "\t"):
             body = f"Reproduction:\n\n{indent}{example}\n\n{indent}Keep code.\n\nExplanation."
-            self.assertEqual(pr_context.filter_body(body), body)
+            self.assertEqual(codex(body), body)
         raw = "<details>\n    <summary>ℹ️ About Codex in GitHub</summary>Noise\n</details>"
-        self.assertEqual(pr_context.filter_body("Finding.\n" + raw), "Finding.")
+        self.assertEqual(codex("Finding.\n" + raw), "Finding.")
 
     def test_blockquoted_indented_examples_survive_blank_lines_and_nested_quotes(self):
         example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
@@ -224,18 +233,58 @@ Keep the finding suffix.</details>'''
             for indent in ("    ", "\t"):
                 body = (f"{quote}Reproduction:\n{quote}\n{quote}{indent}{example}\n"
                         f"{quote}\n{quote}{indent}Keep code.\n{quote}\n{quote}Explanation.")
-                self.assertEqual(pr_context.filter_body(body), body.strip())
+                self.assertEqual(codex(body), body.strip())
 
-    def test_requested_literal_exclusions_still_apply_inside_code_examples(self):
+    def test_only_exact_triggers_and_codex_summaries_are_dropped(self):
+        for author in (BOT, "reviewer", None):
+            with self.subTest(author=author):
+                self.assertIsNone(pr_context.filter_body("  @codex review\n", author))
         for body in ("Run `@codex review`", "Example:\n```text\n@codex review\n```",
-                     "Example:\n\n    ## Codex Review Summary"):
-            self.assertIsNone(pr_context.filter_body(body))
+                     "Example:\n\n    ## Codex Review Summary", "The `## Codex Review Summary` check"):
+            with self.subTest(body=body):
+                self.assertEqual(codex(body), body)
+
+    def test_human_comments_are_never_dropped_or_rewritten(self):
+        about = "<details><summary>ℹ️ About Codex in GitHub</summary>Quoted</details>"
+        for body in ("Blocking: auth check removed. Fix it, then @codex review again.",
+                     "Please post `@codex review` as a standalone comment.",
+                     "## Codex Review Summary\nThe bot's summary is wrong about X.",
+                     f"Quoted bot output:\n{about}\n<!-- codex-review-receipt:v1 -->"):
+            with self.subTest(body=body):
+                self.assertEqual(pr_context.filter_body(body, "reviewer"), body)
+
+    def test_diff_hunks_are_opt_in(self):
+        for include_hunks in (False, True):
+            fixture = Fixture()
+            with self.subTest(include_hunks=include_hunks), \
+                    patch.object(pr_context, "gh", side_effect=fixture.gh):
+                output = pr_context.fetch_context(pr_context.GitHub(URL), include_hunks=include_hunks)
+                hunks = [c["diff_hunk"] for c in output["comments"] if "diff_hunk" in c]
+                self.assertEqual(hunks, ["@@ -1 +1 @@\n-old\n+new"] if include_hunks else [])
+
+    def test_output_file_is_written_only_after_a_complete_fetch(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "context.json"
+            fixture = Fixture()
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with patch.object(pr_context, "gh", side_effect=fixture.gh), \
+                    contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(pr_context.main([URL, "--output", str(target)]), 0)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertEqual(json.loads(target.read_text())["pr"]["number"], 7)
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
+            fixture.raw["changed_files"] = 3001
+            with patch.object(pr_context, "gh", side_effect=fixture.gh), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(pr_context.main([URL, "--output", str(target)]), 1)
+            self.assertEqual(json.loads(target.read_text())["pr"]["number"], 7)
+            self.assertEqual(sorted(p.name for p in Path(folder).iterdir()), ["context.json"])
 
     def test_code_only_comment_keeps_significant_indentation_and_trailing_spaces(self):
         example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"
         for indent in ("    ", "\t"):
             body = f"{indent}{example}\n{indent}code  "
-            self.assertEqual(pr_context.filter_body(body), body)
+            self.assertEqual(codex(body), body)
 
     def test_check_run_total_and_endpoint_cap_cannot_silently_truncate(self):
         api = pr_context.GitHub(URL)

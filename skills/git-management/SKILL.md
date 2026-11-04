@@ -38,13 +38,17 @@ needs no empty PR; publishing or completing review does not authorize a merge.
 ## PR context
 
 ```sh
-python3 ~/.agents/skills/git-management/scripts/pr-context.py <PR_URL>
+python3 ~/.agents/skills/git-management/scripts/pr-context.py <PR_URL> --output <TEMP_FILE>
 ```
 
-Add `--diff` for code changes. Use `--no-filter` to check review requests and Codex
-completion receipts; the default output removes that boilerplate. The helper
-fetches all feedback pages and preserves reply IDs, review decisions, and thread
-state. Never assume the first 30 comments are complete. See the
+The JSON can exceed tool-output limits; write it to a temporary file and query it
+(for example with `jq`) rather than reading truncated terminal output. Add `--diff`
+for code changes and `--hunks` for inline-comment diff context. The default output
+drops standalone `@codex review` triggers and Codex's summary comment and strips
+About-Codex boilerplate from Codex comments; human comments and Codex findings are
+never dropped. Use `--no-filter` for Codex completion receipts. The helper fetches
+all feedback pages and preserves reply IDs, review decisions, and thread state.
+Never assume the first 30 comments are complete. See the
 [helper guide](../../docs/runbooks/utilities.md#pr-context) for output and failures.
 
 ## Production promotions

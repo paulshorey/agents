@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -50,9 +51,15 @@ def login(user):
     return (user or {}).get("login")
 
 
+REVIEW_TRIGGER = "@codex review"
+CODEX_BOTS = frozenset({"chatgpt-codex-connector[bot]", "chatgpt-codex-connector"})
 DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 CODEX_ABOUT = re.compile(
     r"<summary\b[^>]*>\s*ℹ️ About Codex in GitHub\s*</summary\s*>", re.IGNORECASE,
+)
+CODEX_SUMMARY = re.compile(
+    r"<!-- codex-pull-request-review-summary -->|^##[ \t]+Codex Review Summary[ \t]*$",
+    re.MULTILINE,
 )
 INLINE_CODE = re.compile(
     r"(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n).)*?(?<!`)\1(?!`)", re.DOTALL,
@@ -104,9 +111,20 @@ def mask_markdown_code(body):
     return "".join(masked)
 
 
-def filter_body(body):
-    """Strip only the marked boilerplate before applying whole-comment exclusions."""
+def filter_body(body, author=None):
+    """Drop exact review triggers; clean only Codex-authored boilerplate.
+
+    Human comments are returned unchanged, and Codex findings are never dropped,
+    even when they mention the trigger or quote Codex boilerplate.
+    """
+    if body.strip() == REVIEW_TRIGGER:
+        return None
+    if author not in CODEX_BOTS:
+        return body
     scan = mask_markdown_code(body)
+    # Codex's sticky summary is completion state, available with --no-filter.
+    if CODEX_SUMMARY.search(scan):
+        return None
     stack, removed = [], []
     for tag in DETAILS_TAG.finditer(scan):
         if not tag[0].startswith("</"):
@@ -124,9 +142,6 @@ def filter_body(body):
             pieces.append(body[cursor:start])
             cursor = end
     body = "".join([*pieces, body[cursor:]])
-    # The requested whole-comment exclusions are literal, including code examples.
-    if "## Codex Review Summary" in body or "@codex review" in body:
-        return None
     lines = body.replace("<!-- codex-review-receipt:v1 -->", "").splitlines(keepends=True)
     start, end = 0, len(lines)
     while start < end and not lines[start].strip():
@@ -208,7 +223,7 @@ class GitHub:
         return items, state
 
 
-def feedback(raw, kind):
+def feedback(raw, kind, include_hunks=False):
     item = {
         "kind": kind, "id": raw["id"], "author": login(raw.get("user")),
         "body": raw.get("body") or "", "url": raw.get("html_url"),
@@ -216,10 +231,11 @@ def feedback(raw, kind):
         "updated_at": raw.get("updated_at") or raw.get("submitted_at"),
     }
     if kind == "inline":
+        # Hunks repeat diff context per comment and dominate output size.
         item.update(select(
             raw, "path", "line", "start_line", "side", "start_side", "original_line",
-            "original_start_line", "diff_hunk", "in_reply_to_id", "commit_id",
-            "original_commit_id", "subject_type",
+            "original_start_line", *(["diff_hunk"] if include_hunks else []),
+            "in_reply_to_id", "commit_id", "original_commit_id", "subject_type",
         ))
         item["review_id"] = raw.get("pull_request_review_id")
     elif kind == "review":
@@ -255,7 +271,7 @@ def reactions(api, path):
 
 
 def review_requests(api, comments):
-    requests = [comment for comment in comments if (comment.get("body") or "").strip() == "@codex review"]
+    requests = [comment for comment in comments if (comment.get("body") or "").strip() == REVIEW_TRIGGER]
 
     def fetch_reactions(comment):
         return {
@@ -269,7 +285,7 @@ def review_requests(api, comments):
         return list(executor.map(fetch_reactions, requests))
 
 
-def fetch_context(api, include_diff=False, no_filter=False):
+def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False):
     raw = api.api(api.pull)
     head = raw["head"]["sha"]
     pr = select(
@@ -324,12 +340,12 @@ def fetch_context(api, include_diff=False, no_filter=False):
                            f"{api.prefix}/commits/{head}/statuses")]
 
     comments = ([feedback(c, "issue") for c in issue_comments]
-                + [feedback(c, "inline") for c in inline_comments]
+                + [feedback(c, "inline", include_hunks) for c in inline_comments]
                 + [feedback(r, "review") for r in raw_reviews if r.get("body")])
     filtering = {"enabled": not no_filter, "removed_comments": 0, "cleaned_comments": 0}
     kept = []
     for comment in comments:
-        body = comment["body"] if no_filter else filter_body(comment["body"])
+        body = comment["body"] if no_filter else filter_body(comment["body"], comment["author"])
         if body is None:
             filtering["removed_comments"] += 1
             continue
@@ -391,6 +407,9 @@ def main(argv=None):
     parser.add_argument("--repo", "-R", help="[HOST/]OWNER/REPO; otherwise use the current Git repository")
     parser.add_argument("--diff", action="store_true", help="include the full GitHub diff")
     parser.add_argument("--no-filter", action="store_true", help="retain all comment text and entries")
+    parser.add_argument("--hunks", action="store_true", help="include each inline comment's diff_hunk (large)")
+    parser.add_argument("--output", "-o", type=Path,
+                        help="write the JSON to this file instead of stdout; replaced only after a complete fetch")
     args = parser.parse_args(argv)
     view_args = ["pr", "view"]
     if args.pr:
@@ -399,13 +418,27 @@ def main(argv=None):
         view_args.extend(["--repo", args.repo])
     try:
         resolved = gh(*view_args, "--json", "url")
-        output = fetch_context(GitHub(resolved["url"]), args.diff, args.no_filter)
+        output = fetch_context(GitHub(resolved["url"]), args.diff, args.no_filter, args.hunks)
     except (FetchError, KeyError, TypeError, IndexError) as exc:
         message = str(exc) if isinstance(exc, FetchError) else "Unexpected GitHub response; snapshot is incomplete."
         print(f"pr-context: {message}", file=sys.stderr)
         return 1
     # One document only after every request succeeds; failed reads emit no partial JSON.
-    print(json.dumps(output, ensure_ascii=False, separators=(",", ":")))
+    text = json.dumps(output, ensure_ascii=False, separators=(",", ":"))
+    if not args.output:
+        print(text)
+        return 0
+    temporary = args.output.with_name(f".{args.output.name}.{os.getpid()}.tmp")
+    try:
+        temporary.touch(mode=0o600)
+        temporary.write_text(text + "\n", encoding="utf-8")
+        os.replace(temporary, args.output)
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        print(f"pr-context: could not write {args.output}: {exc.strerror or type(exc).__name__}",
+              file=sys.stderr)
+        return 1
+    print(f"pr-context: wrote {args.output}", file=sys.stderr)
     return 0
 
 

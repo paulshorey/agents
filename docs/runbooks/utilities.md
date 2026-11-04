@@ -110,14 +110,17 @@ Git supplies repository/branch context through `gh`; GitHub APIs supply hosted
 PR metadata and feedback.
 
 ```sh
-python3 ~/.agents/scripts/pr-context.py https://github.com/OWNER/REPO/pull/123
+python3 ~/.agents/scripts/pr-context.py https://github.com/OWNER/REPO/pull/123 --output "$TMPDIR/pr.json"
 python3 ~/.agents/scripts/pr-context.py 123 --repo OWNER/REPO --diff
-python3 ~/.agents/skills/git-management/scripts/pr-context.py 123 --no-filter
+python3 ~/.agents/skills/git-management/scripts/pr-context.py 123 --no-filter --hunks
 python3 ~/.agents/skills/pr-management/scripts/pr-context.py
 ```
 
 Omit the PR to select the current branch's PR. Use a URL or
-`--repo [HOST/]OWNER/REPO` for another repository/host. Output is one compact JSON document:
+`--repo [HOST/]OWNER/REPO` for another repository/host. Output is one compact JSON
+document on stdout, or in the `--output` file (mode 0600), which is replaced only
+after a complete fetch. Busy PRs easily exceed agent tool-output limits, so agents
+should write a file and query it rather than read truncated stdout. Fields:
 
 - `pr`: description, head/base SHAs, state, merge/review decisions, labels,
   assignees, and requested reviewers/teams.
@@ -125,7 +128,8 @@ Omit the PR to select the current branch's PR. Use a URL or
   GitHub diff. Use local `git diff`/`git show` for further code inspection.
 - `comments`: issue comments, inline comments/replies, and review bodies together,
   newest updated first. IDs, URLs, authors, review IDs, reply-parent IDs, and inline
-  code context remain available for individual responses.
+  paths/lines remain available for individual responses. `--hunks` adds each inline
+  comment's `diff_hunk`; it is omitted by default because it dominates output size.
 - `reviews`: decisions and reviewed commits, even when their text is filtered.
   `threads`: resolution/outdated state, root comment IDs, and visible comment IDs.
   Bodies appear only in `comments`, avoiding duplicated thread/review text.
@@ -149,17 +153,20 @@ When a default page contains 30 comments, check/request the next page unless the
 API explicitly reports none. Do not infer completeness from the first page or sort
 only that page.
 
-Filtering changes output only. First, a regex tag scan balances nested `<details>`
-blocks and removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`.
-Inline, fenced, and indented code examples (including blockquotes) are masked during that scan and preserved
-verbatim in the returned body.
-Other details blocks and code formatting are preserved. Then any comment body
-containing `## Codex Review Summary` or `@codex review` is omitted, regardless of
-author or whether that literal text is in prose or a code example. `--no-filter`
-returns excluded entries too. This order preserves useful review text when the excluded phrase appears
-only in the removed boilerplate. The Codex receipt HTML marker is also removed.
-Review decisions and thread metadata remain visible; filtered roots do not hide
-useful replies. No other bot/human findings are automatically discarded.
+Filtering changes output only. Any comment whose whole body is `@codex review`
+(ignoring surrounding whitespace) is omitted; `review_requests` still lists it.
+Comments by anyone other than the Codex bot (`chatgpt-codex-connector[bot]`) are
+otherwise returned unchanged, even when they mention the trigger or quote Codex
+boilerplate. For Codex-bot comments, the sticky summary (its
+`codex-pull-request-review-summary` marker or a `## Codex Review Summary` heading
+line) is omitted, and a regex tag scan balances nested `<details>` blocks and
+removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`. Inline,
+fenced, and indented code examples (including blockquotes) are masked during that
+scan and preserved verbatim, so a Codex finding that quotes boilerplate in code
+keeps it. The Codex receipt HTML marker is also removed. Codex findings are never
+dropped, even when they mention `@codex review`. `--no-filter` returns every entry
+unchanged. Review decisions and thread metadata remain visible; filtered roots do
+not hide useful replies.
 
 Failures exit nonzero without partial JSON. This includes access/rate-limit errors,
 incomplete file/commit counts, feedback-count/text changes, submitted-review additions

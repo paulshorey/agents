@@ -24,13 +24,18 @@ Verification dates describe historical observations, not current readiness.
   filtering and separates current six-link routing status from the older harness
   observations and remaining fresh-client verification plan.
 - Extended code protection to indented examples and rechecks submitted review
-  IDs, decisions, commits, and bodies before returning a snapshot. Literal
-  whole-comment exclusion rules remain unchanged, including inside code examples.
+  IDs, decisions, commits, and bodies before returning a snapshot.
 - Added request-specific reaction evidence (actor/content/time), blockquoted
   indented-code protection, and final issue/inline comment state checks so edits
   and reaction-only review completion are visible to the review loop.
 - Recheck thread disposition and reaction state before the final ref read, and
   preserve significant indentation when a comment contains only a code example.
+- Narrowed default filtering so it cannot hide feedback: only exact `@codex review`
+  triggers and the Codex bot's summary comment are dropped, and About boilerplate
+  is stripped only from Codex-bot comments. Human comments and Codex findings that
+  mention the trigger now remain. Inline `diff_hunk` context is opt-in (`--hunks`),
+  and `--output` writes the JSON to a file, since full context exceeded agent
+  tool-output limits (283 KB for PR #26, 76% hunks).
 
 ## 2026-11-02 — Shared PR context and feedback replies
 
