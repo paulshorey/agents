@@ -134,14 +134,16 @@ should write a file and query it rather than read truncated stdout. Fields:
   `threads`: resolution/outdated state, root comment IDs, and visible comment IDs.
   Bodies appear only in `comments`, avoiding duplicated thread/review text.
 - `checks`, `statuses`: check runs and commit statuses for the captured head.
-- `review_requests`: IDs, URLs, authors, timestamps, and fully paginated reaction
-  actors/content for standalone Codex trigger comments, even when their text is
-  filtered. Match the saved request/head record before using a Codex `+1` as
-  completion evidence; human reactions and reactions to older requests do not
-  establish review of the current head. Reaction reads use at most four workers.
-- `pr_reactions`: actors/content/timestamps on the PR itself. An existing PR
-  thumbs-up does not identify a reviewed commit or request; do not treat it alone
-  as current-head completion. Prefer an explicit head-linked receipt when ambiguous.
+- `codex_review`: Codex's latest machine-readable review state, parsed from the
+  `codex-review-state:v1` marker in its summary comment, with that comment's ID,
+  URL, and update time. `covers_head` is true only when the code review's
+  `commit_sha` is the captured head and its status is `completed`. A review
+  without findings posts no review object, so this is its only commit-linked
+  record. It is reported even though filtering drops the summary comment; `null`
+  means Codex has not posted one, and `state` is `null` if the marker is unreadable.
+- `pr_reactions`: actors/content/timestamps on the PR itself. Codex reacts `eyes`
+  while reviewing and `+1` when a review finds nothing, but a reaction does not
+  identify a reviewed commit; use `codex_review` or a review's `commit_id`.
 - `filtering`: counts of removed entries and cleaned bodies. `--no-filter` keeps
   the original comment text and entries in the same output schema.
 
@@ -153,11 +155,11 @@ When a default page contains 30 comments, check/request the next page unless the
 API explicitly reports none. Do not infer completeness from the first page or sort
 only that page.
 
-Filtering changes output only. Any comment whose whole body is `@codex review`
-(ignoring surrounding whitespace) is omitted; `review_requests` still lists it.
-Comments by anyone other than the Codex bot (`chatgpt-codex-connector[bot]`) are
-otherwise returned unchanged, even when they mention the trigger or quote Codex
-boilerplate. For Codex-bot comments, the sticky summary (its
+Filtering changes output only. A bare `@codex review` request comment (the whole
+body, ignoring surrounding whitespace) is omitted; Codex now reviews each push
+automatically, so these remain only on older PRs. Comments by anyone other than
+the Codex bot (`chatgpt-codex-connector[bot]`) are otherwise returned unchanged,
+even when they mention the request text or quote Codex boilerplate. For Codex-bot comments, the sticky summary (its
 `codex-pull-request-review-summary` marker or a `## Codex Review Summary` heading
 line) is omitted, and a regex tag scan balances nested `<details>` blocks and
 removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`. Inline,
@@ -181,7 +183,7 @@ seconds. Errors omit raw response bodies. The result is an observation, not an
 atomic snapshot; fetch again before replying, resolving threads, or merging.
 Issue/inline comment IDs, update times, and bodies and submitted-review state are
 read again before success, detecting edits that do not change comment counts.
-Thread IDs/resolution/outdated state and request/PR reactions are also rechecked;
+Thread IDs/resolution/outdated state and PR reactions are also rechecked;
 the final head/base/count read runs last. These guards reduce stale observations
 without providing a cross-endpoint GitHub transaction.
 The helper never posts, resolves, or deletes GitHub comments. Those actions follow
@@ -189,10 +191,10 @@ the task's authorization and the skills' requirement to reply to each addressed
 comment after validating and pushing its fix.
 
 The [Git management review loop](../../skills/git-management/references/review-loop.md)
-owns review requests, the 30-minute timeout, completion evidence for the current
-head, replies/resolution, and repetition after functional changes. The
-`pr-management` entrypoint routes to that same policy. Use `--no-filter` for
-request/completion evidence; it is intentionally absent from filtered output.
+owns the 30-minute check-back after each push, completion evidence for the
+current head, replies/resolution, and repetition after functional changes. The
+`pr-management` entrypoint routes to that same policy. `codex_review` carries the
+completion state that filtering removes with the summary comment.
 
 Validate changes with `python3 -m unittest discover -s tests -p test_pr_context.py -v`
 and a read-only fetch of an accessible PR. Run both symlink entrypoints and compare

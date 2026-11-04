@@ -86,11 +86,6 @@ class Fixture:
         self.assert_paginated(args)
         if "/issues/7/comments?" in path:
             items = self.issue
-        elif "/issues/comments/" in path and "/reactions?" in path:
-            return [[{"id": 9001, "content": "+1", "user": {"login": "chatgpt-codex-connector[bot]"},
-                      "created_at": "2026-01-01T00:00:01Z"}],
-                    [{"id": 9002, "content": "eyes", "user": {"login": "reviewer"},
-                      "created_at": "2026-01-01T00:00:00Z"}]]
         elif "/issues/7/reactions?" in path:
             return [[{"id": 9010, "content": "+1", "user": {"login": "chatgpt-codex-connector[bot]"},
                       "created_at": "2026-01-01T00:00:01Z"}]]
@@ -411,19 +406,47 @@ Keep the finding suffix.</details>'''
                 with self.assertRaisesRegex(pr_context.FetchError, "PR comment text changed"):
                     pr_context.fetch_context(pr_context.GitHub(URL))
 
-    def test_review_reaction_evidence_survives_filtered_request_comments(self):
+    @staticmethod
+    def state(sha, status="completed"):
+        code = {"commit_sha": sha, "has_any_findings": False, "status": status}
+        return f"<!-- codex-review-state:v1 {json.dumps({'code_review': code})} -->"
+
+    def test_codex_review_state_survives_filtered_summary(self):
         fixture = Fixture()
+        fixture.issue[1]["body"] = f"<!-- codex-pull-request-review-summary -->\n{self.state('abc')}\n## Codex Review Summary"
         with patch.object(pr_context, "gh", side_effect=fixture.gh):
             output = pr_context.fetch_context(pr_context.GitHub(URL))
-        self.assertFalse(any(c["kind"] == "issue" and c["id"] == 1 for c in output["comments"]))
-        request = output["review_requests"][0]
-        self.assertEqual(request["comment_id"], 1)
-        self.assertEqual(len(request["reactions"]), 2)
-        self.assertEqual(request["reactions"][0]["author"], "chatgpt-codex-connector[bot]")
-        self.assertEqual(request["reactions"][0]["content"], "+1")
-        self.assertEqual(request["reactions"][1]["author"], "reviewer")
-        self.assertEqual(output["pr_reactions"][0]["author"], "chatgpt-codex-connector[bot]")
+        visible = {c["id"] for c in output["comments"] if c["kind"] == "issue"}
+        self.assertFalse({1, 2} & visible)
+        self.assertEqual(output["codex_review"]["comment_id"], 2)
+        self.assertEqual(output["codex_review"]["state"]["code_review"]["commit_sha"], "abc")
+        self.assertTrue(output["codex_review"]["covers_head"])
+        self.assertNotIn("review_requests", output)
+        self.assertEqual(output["pr_reactions"][0]["author"], BOT)
         self.assertEqual(output["pr_reactions"][0]["content"], "+1")
+
+    def test_codex_review_covers_only_a_completed_review_of_the_head(self):
+        def comment(number, body, author=BOT, updated="2026-01-01T00:00:00Z"):
+            return {"id": number, "body": body, "user": {"login": author},
+                    "html_url": f"{URL}#issuecomment-{number}", "updated_at": updated}
+
+        self.assertIsNone(pr_context.codex_review([comment(1, "No state")], "abc"))
+        for body in (self.state("old"), self.state("abc", "in_progress")):
+            with self.subTest(body=body):
+                self.assertFalse(pr_context.codex_review([comment(1, body)], "abc")["covers_head"])
+        # Only Codex's own marker counts, never one quoted by people or in code examples.
+        for quoted in (comment(1, self.state("abc"), "reviewer"),
+                       comment(1, f"Example:\n```html\n{self.state('abc')}\n```"),
+                       comment(1, f"Example: `{self.state('abc')}`")):
+            with self.subTest(quoted=quoted["body"]):
+                self.assertIsNone(pr_context.codex_review([quoted], "abc"))
+        newest = pr_context.codex_review([
+            comment(1, self.state("abc"), updated="2026-01-01T00:00:02Z"),
+            comment(2, self.state("old"), updated="2026-01-01T00:00:01Z"),
+        ], "abc")
+        self.assertEqual((newest["comment_id"], newest["covers_head"]), (1, True))
+        broken = pr_context.codex_review([comment(1, "<!-- codex-review-state:v1 {oops} -->")], "abc")
+        self.assertEqual((broken["state"], broken["covers_head"]), (None, False))
 
     def test_resolved_or_outdated_thread_changes_invalidate_snapshot(self):
         for key in ("isResolved", "isOutdated", "id"):
@@ -445,24 +468,23 @@ Keep the finding suffix.</details>'''
                 with self.assertRaisesRegex(pr_context.FetchError, "PR review threads changed"):
                     pr_context.fetch_context(pr_context.GitHub(URL))
 
-    def test_request_or_pr_reaction_changes_invalidate_snapshot(self):
-        for endpoint in ("/issues/comments/1/reactions?per_page=100", "/issues/7/reactions?per_page=100"):
-            fixture = Fixture()
-            original = fixture.gh
-            reads = 0
+    def test_pr_reaction_changes_invalidate_snapshot(self):
+        fixture = Fixture()
+        original = fixture.gh
+        reads = 0
 
-            def changed(*args, **kwargs):
-                nonlocal reads
-                value = copy.deepcopy(original(*args, **kwargs))
-                if args[-1].endswith(endpoint):
-                    reads += 1
-                    if reads == 2:
-                        value[0] = []
-                return value
+        def changed(*args, **kwargs):
+            nonlocal reads
+            value = copy.deepcopy(original(*args, **kwargs))
+            if args[-1].endswith("/issues/7/reactions?per_page=100"):
+                reads += 1
+                if reads == 2:
+                    value[0] = []
+            return value
 
-            with self.subTest(endpoint=endpoint), patch.object(pr_context, "gh", side_effect=changed):
-                with self.assertRaisesRegex(pr_context.FetchError, "Review reactions changed"):
-                    pr_context.fetch_context(pr_context.GitHub(URL))
+        with patch.object(pr_context, "gh", side_effect=changed):
+            with self.assertRaisesRegex(pr_context.FetchError, "PR reactions changed"):
+                pr_context.fetch_context(pr_context.GitHub(URL))
 
     def test_partial_failure_has_no_stdout_and_does_not_echo_response_body(self):
         stdout, stderr = io.StringIO(), io.StringIO()

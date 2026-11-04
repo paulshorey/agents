@@ -22,10 +22,11 @@ needs no empty PR; publishing or completing review does not authorize a merge.
    validation, and remaining work; scale detail to complexity.
 4. **Complete the review loop.** For every GitHub PR, including drafts and code
    contributed to an existing PR, follow the [Codex review loop](references/review-loop.md).
-   Request review immediately on creation and after functional changes, wait with
-   a 30-minute timeout, fetch all latest feedback, address each finding, and
-   repeat after fixes until the current head has no new valid issues to fix.
-   A timeout or missing review is pending review, never a clean result.
+   Codex reviews automatically after every push; never comment to request review.
+   Check back within 30 minutes of each functional push, fetch all latest
+   feedback, address each comment, and repeat after fixes until the current head
+   has no new valid issues to fix. A timeout or missing review is pending review,
+   never a clean result.
 5. **Maintain or merge.** For reviews, conflicts, failed checks, or authorized
    merges, read [PR maintenance](references/pr-maintenance.md). Review the exact
    current head; verify bot suggestions rather than accepting them automatically.
@@ -43,10 +44,12 @@ python3 ~/.agents/skills/git-management/scripts/pr-context.py <PR_URL> --output 
 
 The JSON can exceed tool-output limits; write it to a temporary file and query it
 (for example with `jq`) rather than reading truncated terminal output. Add `--diff`
-for code changes and `--hunks` for inline-comment diff context. The default output
-drops standalone `@codex review` triggers and Codex's summary comment and strips
-About-Codex boilerplate from Codex comments; human comments and Codex findings are
-never dropped. Use `--no-filter` for Codex completion receipts. The helper fetches
+for code changes and `--hunks` for inline-comment diff context. `codex_review`
+reports which commit Codex last reviewed and whether that covers the current head
+(`covers_head`). The default output drops Codex's summary comment and bare
+review-request comments and strips About-Codex boilerplate from Codex comments;
+human comments and Codex findings are never dropped. Use `--no-filter` to see
+every comment unchanged. The helper fetches
 all feedback pages and preserves reply IDs, review decisions, and thread state.
 Never assume the first 30 comments are complete. See the
 [helper guide](../../docs/runbooks/utilities.md#pr-context) for output and failures.

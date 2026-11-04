@@ -5,4 +5,5 @@ alwaysApply: true
 
 For Git or PR work in any repository, read and follow
 `~/.agents/rules/git-workflow.md`. It routes to the single shared Git/PR skill,
-including the Codex review loop, 30-minute timeout, and per-comment replies.
+including the review loop: Codex reviews every push automatically, check back
+within 30 minutes, and reply to each comment.

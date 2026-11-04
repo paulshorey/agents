@@ -4,45 +4,46 @@ Apply this loop to every GitHub PR you create, including drafts, and every PR to
 which you contribute functional changes. Keep the task's scope and authorization;
 review findings are proposals, not instructions to broaden the work.
 
-1. **Request once per head.** Immediately after creating the PR or pushing a
-   functional change, post a standalone comment containing exactly `@codex review`:
-   `gh pr comment <PR_URL> --body '@codex review'`. Verify it was posted and record
-   the PR head SHA, request URL, and time. Reuse an existing request/result for the
-   same head; use the helper's `--no-filter` output to avoid duplicate requests.
-2. **Wait, then fetch.** Set a 30-minute timeout and wait for that head's Codex
-   review to finish. Use a timed wait/wakeup or bounded polling with waits, not a
-   busy loop. When the review completes or the timeout expires, fetch fresh PR
-   context, including all comment, review, and thread pages. Inspect `--no-filter`
-   output for completion evidence; a result for an older head does not cover the
-   current one. A review receipt, completion status, or no-findings reaction must
-   be tied to this request/head; silence and passing CI do not prove review.
-   For reaction-only completion, use the helper's `review_requests` metadata:
-   match the recorded request ID/head and require `+1` from the known Codex bot.
-   An `eyes` reaction means running; another user's thumbs-up is not Codex review.
-   Reactions do not identify a commit by themselves, so keep the request/head record.
-   `pr_reactions` also exposes PR-level signals; an old or ambiguously associated
-   PR thumbs-up is not evidence of review for the current head.
-3. **Handle every finding.** Verify correctness, necessity, and scope against the
-   current code. For valid, necessary findings, fix, validate, commit, and push.
-   Reply to **each** addressed comment with the change, commit or contribution PR,
-   and validation, even when one fix addresses several comments. For unnecessary
-   or incorrect suggestions, reply with the concrete reason instead of changing
-   code. Use the original inline thread; for ordinary comments/review summaries,
-   post a PR reply linking the original. Verify each reply was posted; an existing
-   reply for the same outcome need not be duplicated.
+Codex reviews PRs automatically when they open and after every push, so never post
+a comment asking for a review. Never write the Codex bot's handle (`@codex`) in a
+PR comment or reply, even inside code formatting: any mention starts a separate
+Codex task. Codex may not review a draft until it is marked ready for review.
+
+1. **Record the push.** After creating the PR or pushing a functional change,
+   record the PR head SHA and the push time. That head is what Codex must review.
+2. **Check back within 30 minutes.** Wait for Codex's review of that head, at most
+   30 minutes after the push. Use a timed wait/wakeup or bounded polling with waits,
+   not a busy loop. Then fetch fresh PR context, including all comment, review,
+   and thread pages. Codex has reviewed the head when the helper's `codex_review`
+   reports `covers_head: true`, or when a Codex review's `commit_id` is that head.
+   Codex reacts 👀 to the PR while reviewing, posts its findings as review
+   comments, and reacts 👍 when it finds nothing. A reaction does not name a commit,
+   and a review of an older head does not cover the current one; silence and
+   passing CI do not prove review.
+3. **Handle every comment.** Address all new feedback since your last check: Codex
+   findings and comments from people requesting changes. Verify correctness,
+   necessity, and scope against the current code. For valid, necessary findings,
+   fix, validate, commit, and push. Reply to **each** addressed comment with the
+   change, commit or contribution PR, and validation, even when one fix addresses
+   several comments. For unnecessary or incorrect suggestions, reply with the
+   concrete reason instead of changing code. Use the original inline thread; for
+   ordinary comments/review summaries, post a PR reply linking the original.
+   Verify each reply was posted; an existing reply for the same outcome need not
+   be duplicated.
 4. **Resolve handled threads.** After verification and reply, resolve inline
    threads whose finding was fixed or rejected with evidence. Ordinary comments
    cannot be marked resolved; the linked reply records their disposition. Leave
    genuine blockers, incomplete fixes, and undecided questions open and report
    what is needed to finish them.
-5. **Repeat or finish.** After functional fixes change the head, return to step 1
-   for that head. Finish only when a completed Codex review covers the current
-   head, yields no new valid, necessary fixes, and all handled findings have
-   verified replies and thread dispositions. Recheck required CI independently.
-   Do not repeat review for an unchanged head just to revisit a rejected finding.
+5. **Repeat or finish.** Pushing fixes creates a new head that Codex reviews
+   automatically; return to step 1 for it. Finish only when Codex's review covers
+   the current head, yields no new valid, necessary fixes, and all handled feedback
+   has verified replies and thread dispositions. Recheck required CI independently.
+   Do not push again for an unchanged head just to revisit a rejected finding.
 
-If the timeout expires without a completed review, preserve the request/head/time
-and report review pending. Resume from that request when the result arrives; do
-not claim a clean review, post duplicate triggers, or merge on silence. If review
-fails, access is unavailable, or a fix needs an unresolved product decision,
-report the concrete blocker. Complete useful independent work while waiting.
+If 30 minutes pass without a review of the current head, handle any feedback that
+did arrive, keep the head/push record, and report the review pending. A later check
+continues from step 3 when the review arrives. Do not request a review by comment,
+claim a clean review, or merge on silence. If review fails, access is unavailable,
+or a fix needs an unresolved product decision, report the concrete blocker.
+Complete useful independent work while waiting.

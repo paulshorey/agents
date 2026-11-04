@@ -12,8 +12,9 @@ Resolve uncertainty through inspection and research when possible. Use current a
 
 In every repository, read `~/.agents/skills/git-management/SKILL.md` before
 committing, pushing, creating a PR, contributing code to a PR, or maintaining PRs.
-It owns the shared Git/PR workflow and the required Codex review-and-fix loop,
-including the 30-minute review timeout and per-comment replies. `pr-management`
+It owns the shared Git/PR workflow and the required Codex review-and-fix loop:
+Codex reviews every push automatically, and you check back within 30 minutes and
+reply to each comment. `pr-management`
 is a compatibility entrypoint to that same workflow. Honor the current task's
 scope, explicit user instructions, repository protections, and release holds.
 

@@ -79,9 +79,9 @@ Those explicit links are declared in `config/links.json`.
 Git and PR work has one policy owner: [`git-management`](skills/git-management/SKILL.md).
 `pr-management` remains a compatibility entrypoint. Codex's global instructions
 and the managed Claude Code/Cursor user rules direct contributors to that skill
-in every project. The review loop requests Codex review, waits with a 30-minute
-timeout, replies to each finding, and repeats after functional fixes until the
-current head has no new valid issues to fix. See
+in every project. Codex reviews every push automatically; the review loop checks
+back within 30 minutes, replies to each finding, and repeats after functional
+fixes until the current head has no new valid issues to fix. See
 [global workflow installation](docs/runbooks/configuration.md#global-git-and-pr-routing).
 
 See the [native harness map and improvement plan](docs/agent-harnesses.md) for

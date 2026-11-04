@@ -2,7 +2,6 @@
 """Read a GitHub PR through gh, paginate its feedback, and emit compact JSON."""
 
 import argparse
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import json
 import os
@@ -59,6 +58,7 @@ DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 CODEX_ABOUT = re.compile(
     r"<summary\b[^>]*>\s*ℹ️ About Codex in GitHub\s*</summary\s*>", re.IGNORECASE,
 )
+CODEX_STATE = re.compile(r"<!-- codex-review-state:v1 (\{.*?\}) -->", re.DOTALL)
 CODEX_SUMMARY = re.compile(
     r"<!-- codex-pull-request-review-summary -->|^##[ \t]+Codex Review Summary[ \t]*$",
     re.MULTILINE,
@@ -114,7 +114,7 @@ def mask_markdown_code(body):
 
 
 def filter_body(body, author=None):
-    """Drop exact review triggers; clean only Codex-authored boilerplate.
+    """Drop bare review-request comments; clean only Codex-authored boilerplate.
 
     Human comments are returned unchanged, and Codex findings are never dropped,
     even when they mention the trigger or quote Codex boilerplate.
@@ -124,7 +124,7 @@ def filter_body(body, author=None):
     if author not in CODEX_BOTS:
         return body
     scan = mask_markdown_code(body)
-    # Codex's sticky summary is completion state, available with --no-filter.
+    # Codex's sticky summary is completion state, reported as codex_review.
     if CODEX_SUMMARY.search(scan):
         return None
     stack, removed = [], []
@@ -274,19 +274,36 @@ def reactions(api, path):
              "author": login(reaction.get("user"))} for reaction in api.pages(path)]
 
 
-def review_requests(api, comments):
-    requests = [comment for comment in comments if (comment.get("body") or "").strip() == REVIEW_TRIGGER]
+def codex_review(comments, head):
+    """Codex's latest machine-readable review state, from its summary comment.
 
-    def fetch_reactions(comment):
-        return {
-            "comment_id": comment["id"], "url": comment.get("html_url"),
-            "author": login(comment.get("user")), "created_at": comment.get("created_at"),
-            "reactions": reactions(api, f"{api.prefix}/issues/comments/{comment['id']}/reactions"),
-        }
-
-    # Requests are independent reads; bounded concurrency keeps old PRs practical.
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        return list(executor.map(fetch_reactions, requests))
+    A review without findings posts no review object, so this state is the only
+    record linking it to a commit. It is reported even when filtering hides the
+    summary comment. Markers quoted inside code examples are ignored.
+    """
+    latest = None
+    for comment in comments:
+        if login(comment.get("user")) not in CODEX_BOTS:
+            continue
+        body = comment.get("body") or ""
+        match = CODEX_STATE.search(mask_markdown_code(body))
+        if match and (latest is None
+                      or (comment.get("updated_at") or "") > (latest[0].get("updated_at") or "")):
+            latest = (comment, body[match.start(1):match.end(1)])
+    if latest is None:
+        return None
+    comment, text = latest
+    try:
+        state = json.loads(text)
+    except json.JSONDecodeError:
+        state = None
+    code = state.get("code_review") if isinstance(state, dict) else None
+    code = code if isinstance(code, dict) else {}
+    return {
+        "comment_id": comment["id"], "url": comment.get("html_url"),
+        "updated_at": comment.get("updated_at"), "state": state,
+        "covers_head": code.get("commit_sha") == head and code.get("status") == "completed",
+    }
 
 
 def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False):
@@ -381,7 +398,7 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
         "pr": pr, "commits": commits, "files": files, "checks": checks,
         "statuses": statuses, "reviews": reviews, "comments": kept,
         "threads": threads, "filtering": filtering,
-        "review_requests": review_requests(api, issue_comments),
+        "codex_review": codex_review(issue_comments, head),
         "pr_reactions": reactions(api, f"{api.prefix}/issues/{api.number}/reactions"),
     }
     if include_diff:
@@ -394,9 +411,8 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
     final_threads, _ = api.connection("reviewThreads", THREAD_FIELDS)
     if thread_state(final_threads) != initial_thread_state:
         raise FetchError("PR review threads changed during the fetch; rerun for current dispositions.")
-    if (review_requests(api, issue_comments) != output["review_requests"]
-            or reactions(api, f"{api.prefix}/issues/{api.number}/reactions") != output["pr_reactions"]):
-        raise FetchError("Review reactions changed during the fetch; rerun for current completion evidence.")
+    if reactions(api, f"{api.prefix}/issues/{api.number}/reactions") != output["pr_reactions"]:
+        raise FetchError("PR reactions changed during the fetch; rerun for current review status.")
     final = api.api(api.pull)
     if final["head"]["sha"] != head or final["base"]["sha"] != raw["base"]["sha"]:
         raise FetchError("PR head or base changed during the fetch; rerun before acting.")

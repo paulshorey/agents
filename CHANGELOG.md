@@ -10,9 +10,9 @@ Verification dates describe historical observations, not current readiness.
   conditional references and a short `pr-management` compatibility entrypoint.
   Existing invocations and both PR-context script symlinks remain available.
 - Added the loop for every created PR, including drafts, and functional PR
-  contributions: request once per head, wait with a 30-minute timeout, verify
-  current-head completion, handle/reply to each finding, resolve handled threads,
-  and repeat after functional fixes. Missing reviews stay pending.
+  contributions: record each pushed head, check back within 30 minutes for
+  Codex's automatic review of it, handle/reply to each comment, resolve handled
+  threads, and repeat after functional fixes. Missing reviews stay pending.
 - Routed Git/PR work globally through Codex instructions and two installer-managed
   Claude Code/Cursor user-rule files. The adapters point to the shared policy
   without replacing other rules. Targeted installer link selection avoids
@@ -41,6 +41,12 @@ Verification dates describe historical observations, not current readiness.
   installer restore rewrites a pre-existing symlink's target only when it is one
   of the two installer-rendered `local/` files, so edits to dotfiles-managed or
   other linked rules made after install are not rolled back.
+- Codex's GitHub integration now reviews every PR push automatically (configured
+  in Codex settings, outside this repository). The loop no longer posts
+  `@codex review` request comments and warns that any mention of the bot starts a
+  separate Codex task. The helper replaces request-reaction tracking
+  (`review_requests`) with `codex_review`, the commit Codex last reviewed parsed
+  from its summary comment, plus `covers_head` for the current head.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

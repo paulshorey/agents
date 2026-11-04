@@ -13,6 +13,6 @@ For broader architecture, product choices, or changes with material consequences
 explain the problem and recommend a concrete next step. Do not let
 incidental improvements displace the requested outcome.
 
-Use [Git management](../git-management/SKILL.md) for publishing and review requests.
+Use [Git management](../git-management/SKILL.md) for publishing and PR review.
 Improve the owning guide when observed friction reveals a concise, reusable correction;
 avoid adding generic advice or a rule for every one-off issue.

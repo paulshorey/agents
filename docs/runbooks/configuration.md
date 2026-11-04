@@ -64,11 +64,13 @@ and cloud agents with a different home need their own entrypoint or a new sessio
 A Codex override can replace its global file; client restrictions can also affect
 rule loading.
 
-The 30-minute timeout is a maximum wait for a completed review of the captured
-head, not a mandatory delay after completion. Record the request/head/time, inspect
-all feedback when completion or timeout occurs, and repeat after functional fixes.
-If review has not completed, report it pending. Use `pr-context.py --no-filter`
-for the completion receipt and request text deliberately hidden by normal output.
+Codex's GitHub integration reviews each PR when it opens and after every push, so
+the loop never posts review-request comments. The 30-minute limit is the longest
+wait for Codex's review of the pushed head, not a mandatory delay after it
+completes. Record the head and push time, handle all feedback when the review
+arrives or time runs out, and repeat after functional fixes. If no review has
+arrived, report it pending. `pr-context.py` reports the head Codex last reviewed
+in `codex_review`; automatic-review settings live in Codex, not this repository.
 
 Sources: [Codex global instructions](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
 [Claude Code user rules](https://code.claude.com/docs/en/memory#user-level-rules),
