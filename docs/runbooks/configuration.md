@@ -65,8 +65,10 @@ and cloud agents with a different home need their own entrypoint or a new sessio
 A Codex override can replace its global file; client restrictions can also affect
 rule loading.
 
-Codex's GitHub integration reviews each PR when it opens and after every push, so
-the loop never posts review-request comments. The 30-minute limit is the longest
+Codex's GitHub integration reviews each ready PR when it opens and after every
+push, so the loop never posts review-request comments. Agents open PRs ready for
+review and mark a draft ready after pushing to it; drafts are left for PRs the
+user parks to pause automatic review. The 30-minute limit is the longest
 wait for Codex's review of the pushed head, not a mandatory delay after it
 completes. Record the head and push time, handle all feedback when the review
 arrives or time runs out, and repeat after functional fixes. If no review has

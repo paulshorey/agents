@@ -9,10 +9,10 @@ Verification dates describe historical observations, not current readiness.
 - Consolidated Git publishing and PR maintenance under `git-management`, with
   conditional references and a short `pr-management` compatibility entrypoint.
   Existing invocations and both PR-context script symlinks remain available.
-- Added the loop for every created PR, including drafts, and functional PR
-  contributions: record each pushed head, check back within 30 minutes for
-  Codex's automatic review of it, handle/reply to each comment, resolve handled
-  threads, and repeat after functional fixes. Missing reviews stay pending.
+- Added the loop for every created PR and functional PR contributions: record
+  each pushed head, check back within 30 minutes for Codex's automatic review of
+  it, handle/reply to each comment, resolve handled threads, and repeat after
+  functional fixes. Missing reviews stay pending.
 - Routed Git/PR work globally through Codex instructions and two installer-managed
   Claude Code/Cursor user-rule files. The adapters point to the shared policy
   without replacing other rules. Targeted installer link selection avoids
@@ -53,6 +53,9 @@ Verification dates describe historical observations, not current readiness.
   installer-rendered files, so a pull that updates a tracked rule no longer blocks
   restore. Request comments were not reinstated as a fallback; a review that never
   starts is reported to the user as possibly disabled automatic review.
+- Agents now always open PRs ready for review, never as drafts, and mark a draft
+  ready after pushing to it, so every PR they create or update gets automatic
+  Codex review. Drafts are reserved for PRs the user parks to pause reviews.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

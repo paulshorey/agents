@@ -1,16 +1,20 @@
 # Codex review loop
 
-Apply this loop to every GitHub PR you create, including drafts, and every PR to
-which you contribute functional changes. Keep the task's scope and authorization;
-review findings are proposals, not instructions to broaden the work.
+Apply this loop to every GitHub PR you create and every PR to which you contribute
+functional changes. Keep the task's scope and authorization; review findings are
+proposals, not instructions to broaden the work.
 
-Codex reviews PRs automatically when they open and after every push, so never post
-a comment asking for a review. Never write the Codex bot's handle (`@codex`) in a
-PR comment or reply, even inside code formatting: any mention starts a separate
-Codex task. Codex may not review a draft until it is marked ready for review.
+Codex reviews ready PRs automatically when they open, when a draft is marked
+ready, and after every push, so never post a comment asking for a review. Never
+write the Codex bot's handle (`@codex`) in a PR comment or reply, even inside code
+formatting: any mention starts a separate Codex task. Keep every PR you create or
+push to ready for review: never open one as a draft, and if the PR is a draft,
+mark it ready with `gh pr ready <PR>` right after pushing, which also starts a
+review. The user converts PRs to drafts to park them and pause automatic review.
 
-1. **Record the push.** After creating the PR or pushing a functional change,
-   record the PR head SHA and the push time. That head is what Codex must review.
+1. **Record the push.** After creating the PR or pushing a functional change, and
+   marking a draft ready, record the PR head SHA and the time. That head is what
+   Codex must review.
 2. **Check back within 30 minutes.** Wait for Codex's review of that head, at most
    30 minutes after the push. Use a timed wait/wakeup or bounded polling with waits,
    not a busy loop. Then fetch fresh PR context, including all comment, review,
@@ -43,8 +47,9 @@ Codex task. Codex may not review a draft until it is marked ready for review.
 
 If 30 minutes pass without a review of the current head, handle any feedback that
 did arrive, keep the head/push record, and report the review pending. If Codex
-never started (no 👀 reaction or running status), tell the user automatic review
-may be off for that repository; they configure it in Codex. A later check
+never started (no 👀 reaction or running status), confirm the PR is not a draft,
+then tell the user automatic review may be off for that repository; they
+configure it in Codex. A later check
 continues from step 3 when the review arrives. Do not request a review by comment,
 claim a clean review, or merge on silence. If review fails, access is unavailable,
 or a fix needs an unresolved product decision, report the concrete blocker.

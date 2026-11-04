@@ -17,12 +17,15 @@ needs no empty PR; publishing or completing review does not authorize a merge.
    merged branch. Use an unmerged base only when required. Move task edits off
    `main` before committing; do not publish pre-existing work to clear a checkout.
 3. **Publish.** Run relevant checks, stage only task files, commit, push, and create
-   or update the task PR. Use a draft for unfinished or blocked work. Keep its
+   or update the task PR. Always open PRs ready for review, never as drafts (no
+   `--draft`), even for unfinished or blocked work; state what remains in the
+   body. After pushing to a draft PR, mark it ready with `gh pr ready <PR>`.
+   Drafts are for PRs the user parks to pause automatic review. Keep the PR
    title/body aligned with the final problem, behavior, material decisions,
    validation, and remaining work; scale detail to complexity.
-4. **Complete the review loop.** For every GitHub PR, including drafts and code
-   contributed to an existing PR, follow the [Codex review loop](references/review-loop.md).
-   Codex reviews automatically after every push; never comment to request review.
+4. **Complete the review loop.** For every GitHub PR you create or contribute code
+   to, follow the [Codex review loop](references/review-loop.md). Codex reviews
+   ready PRs automatically after every push; never comment to request review.
    Check back within 30 minutes of each functional push, fetch all latest
    feedback, address each comment, and repeat after fixes until the current head
    has no new valid issues to fix. A timeout or missing review is pending review,
