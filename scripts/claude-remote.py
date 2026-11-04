@@ -108,8 +108,11 @@ def run_child(command):
             child.send_signal(signum)
 
     try:
-        for sig in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        for sig in (signal.SIGTERM, signal.SIGHUP):
             previous[sig] = signal.signal(sig, forward)
+        # Ctrl+C already reaches Claude through the foreground process group.
+        # Forwarding it again could turn one keypress into a forced shutdown.
+        previous[signal.SIGINT] = signal.signal(signal.SIGINT, lambda _sig, _frame: None)
         child = subprocess.Popen(command)
         return child.wait()
     finally:
