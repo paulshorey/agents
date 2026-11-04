@@ -49,6 +49,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [twilio.sms-credentials](#twilio-sms-credentials) | credential | agents | ~/.agents/local/credentials/twilio-sms.env | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 | [twilio.sms-cli](#twilio-sms-cli) | tool | agents | bin/agents-sms | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 | [application.last30days-config](#application-last30days-config) | configuration | application | ~/.config/last30days/.env | [docs/runbooks/last30days.md](../docs/runbooks/last30days.md) |
+| [tool.claude-remote-shortcut](#tool-claude-remote-shortcut) | tool | agents | scripts/claude-remote.py | [docs/runbooks/claude-remote.md](../docs/runbooks/claude-remote.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -673,6 +674,24 @@ The engine keeps run caches beside this file and saves research under ~/Document
 
 [Update and recovery instructions](../docs/runbooks/last30days.md).
 
+<a id="tool-claude-remote-shortcut"></a>
+
+## tool.claude-remote-shortcut
+
+cclaude shell function that runs one Remote Control server per folder.
+
+Owner: **agents**.
+
+Location: `scripts/claude-remote.py`.
+
+~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.
+
+Server mode (the default) brings back the folder's previous sessions within the roughly four-hour restore window and creates a session for each new app chat. --continue and --session-id select one session within that window, not a way to bypass it. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.
+
+Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over.
+
+[Update and recovery instructions](../docs/runbooks/claude-remote.md).
+
 ## Utility files
 
 Derived from `bin/` and `scripts/`. See the utility runbook before executing a helper.
@@ -682,6 +701,7 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [bin/agents-sms](../bin/agents-sms)
 - [bin/cf](../bin/cf)
 - [bin/railway-mcp](../bin/railway-mcp)
+- [scripts/claude-remote.py](../scripts/claude-remote.py)
 - [scripts/hosting.py](../scripts/hosting.py)
 - [scripts/import-sms-profile.mjs](../scripts/import-sms-profile.mjs)
 - [scripts/install.py](../scripts/install.py)

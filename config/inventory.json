@@ -26,7 +26,7 @@
         "hosting.paul"
       ],
       "notes": [
-        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "Provider label: Agent DNS — all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
         "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
         "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
@@ -726,6 +726,19 @@
         "Paul granted browser-cookie consent in chat for X reads on that run and later runs. Set BROWSER_CONSENT=false or FROM_BROWSER=off in this file to revoke native browser and CDP reads.",
         "Optional source keys (SCRAPECREATORS_API_KEY, XAI_API_KEY, X_BEARER_TOKEN) belong here or in macOS Keychain items named last30days-<KEY>. The engine also reads process-environment keys such as PARALLEL_API_KEY and PERPLEXITY_API_KEY. Derive key names only; never print the file.",
         "The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed."
+      ]
+    },
+    {
+      "id": "tool.claude-remote-shortcut",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "cclaude shell function that runs one Remote Control server per folder.",
+      "runbook": "docs/runbooks/claude-remote.md",
+      "path": "scripts/claude-remote.py",
+      "notes": [
+        "~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.",
+        "Server mode (the default) brings back the folder's previous sessions within the roughly four-hour restore window and creates a session for each new app chat. --continue and --session-id select one session within that window, not a way to bypass it. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.",
+        "Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over."
       ]
     }
   ]

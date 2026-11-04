@@ -4,6 +4,29 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-04 — Guarded Claude Remote Control shortcut
+
+- Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating
+  to `scripts/claude-remote.py`. It runs Remote Control in server mode, which
+  brings back the sessions the folder's previous server was serving and creates a
+  session for each new chat from the Claude apps. `--continue` and `--session-id`
+  explicitly serve one session.
+- Added per-directory advisory locks and detection of servers started by the old
+  alias. Repeated invocations report the running server and saved link rather
+  than starting competitors. Claude retains terminal access and a scoped
+  caffeinate assertion. Verified with Claude Code 2.1.316: a restarted server and a
+  server started after a `--continue` run both reattached the same session.
+- Prefer a compatible CLI already installed on the machine when a terminal's
+  PATH selects an old version without resume support. No CLI update is performed.
+- Detect npm-installed servers as well as native ones, while excluding shell
+  wrappers and unrelated Node commands. Recognize global model and diagnostic
+  options before the Remote Control subcommand. Skip failed or timed-out version
+  probes when selecting a compatible installed CLI. Regression tests cover both fixes.
+- Corrected recovery guidance: single-session flags do not bypass the documented
+  roughly four-hour restore window; unarchiving requires Claude Code 2.1.228+.
+- Registered ownership and documented installation, reload, diagnostics, native
+  resume limits, and recovery. Authentication and provider permissions unchanged.
+
 ## 2026-11-03 — One Git/PR workflow and iterative Codex review
 
 - Consolidated Git publishing and PR maintenance under `git-management`, with
