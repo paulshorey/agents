@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 from urllib.parse import urlparse
 
 
@@ -52,6 +53,7 @@ def login(user):
 
 
 REVIEW_TRIGGER = "@codex review"
+CODEX_RECEIPT = re.compile(re.escape("<!-- codex-review-receipt:v1 -->"))
 CODEX_BOTS = frozenset({"chatgpt-codex-connector[bot]", "chatgpt-codex-connector"})
 DETAILS_TAG = re.compile(r"</?details\b[^>]*>", re.IGNORECASE)
 CODEX_ABOUT = re.compile(
@@ -136,13 +138,15 @@ def filter_body(body, author=None):
             summary_end = first_child.start() if first_child else tag.start()
             if CODEX_ABOUT.search(scan, content_start, summary_end):
                 removed.append((start, tag.end()))
+    # Markers inside code examples are masked in the scan and therefore kept.
+    removed.extend(marker.span() for marker in CODEX_RECEIPT.finditer(scan))
     cursor, pieces = 0, []
     for start, end in sorted(removed):
         if start >= cursor:
             pieces.append(body[cursor:start])
             cursor = end
     body = "".join([*pieces, body[cursor:]])
-    lines = body.replace("<!-- codex-review-receipt:v1 -->", "").splitlines(keepends=True)
+    lines = body.splitlines(keepends=True)
     start, end = 0, len(lines)
     while start < end and not lines[start].strip():
         start += 1
@@ -428,13 +432,18 @@ def main(argv=None):
     if not args.output:
         print(text)
         return 0
-    temporary = args.output.with_name(f".{args.output.name}.{os.getpid()}.tmp")
+    temporary = None
     try:
-        temporary.touch(mode=0o600)
-        temporary.write_text(text + "\n", encoding="utf-8")
+        # mkstemp creates a new 0600 file exclusively; it never follows a planted path.
+        descriptor, name = tempfile.mkstemp(
+            prefix=f".{args.output.name}.", suffix=".tmp", dir=args.output.parent)
+        temporary = Path(name)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text + "\n")
         os.replace(temporary, args.output)
     except OSError as exc:
-        temporary.unlink(missing_ok=True)
+        if temporary:
+            temporary.unlink(missing_ok=True)
         print(f"pr-context: could not write {args.output}: {exc.strerror or type(exc).__name__}",
               file=sys.stderr)
         return 1

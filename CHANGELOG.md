@@ -36,6 +36,10 @@ Verification dates describe historical observations, not current readiness.
   mention the trigger now remain. Inline `diff_hunk` context is opt-in (`--hunks`),
   and `--output` writes the JSON to a file, since full context exceeded agent
   tool-output limits (283 KB for PR #26, 76% hunks).
+- Addressed Codex review of that change: `--output` uses an exclusively created
+  temporary file, receipt markers inside code examples are preserved, and
+  installer restore no longer rewrites a pre-existing symlink's target outside
+  `local/`, so dotfiles-managed rule edits made after install are not rolled back.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

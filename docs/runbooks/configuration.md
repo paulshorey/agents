@@ -121,7 +121,10 @@ Restore refuses to overwrite destinations whose link changed after installation.
 New backups also retain private installed-state snapshots and refuse to overwrite
 later file edits even when the symlink still matches. Older backups predate this
 content guard; inspect and preserve newer local edits before restoring those.
-Backup restoration does not recover a
+A destination that was already a symlink is recreated as that symlink. Restore
+rewrites its target's saved bytes only when the target is inside `local/` (which
+install re-renders); other targets, such as dotfiles-managed rules, keep their
+current contents. Backup restoration does not recover a
 revoked provider token. Keep encrypted secret backups separately or use provider
 replacement procedures. Update inventory records when configuration locations,
 ownership, credentials, consumers, or update/recovery procedures change; update

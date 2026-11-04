@@ -167,6 +167,10 @@ Reviews are triggered by "@codex review".
         self.assertIn("@codex review", codex(body + "\nRe-run with @codex review."))
         self.assertIsNone(codex("Useful preamble\n## Codex Review Summary\nSummary"))
         self.assertIsNone(codex("<!-- codex-pull-request-review-summary -->\nStatus table"))
+        for example in ("Finding: `<!-- codex-review-receipt:v1 -->`",
+                        "Finding:\n```html\n<!-- codex-review-receipt:v1 -->\n```"):
+            with self.subTest(example=example):
+                self.assertEqual(codex(example), example)
 
     def test_substantive_markdown_and_unrelated_details_are_unchanged(self):
         body = "Finding\n\n```python\nx = '''a\n\n\nb'''\n```\n<details>Keep @codex address that feedback</details>"
@@ -279,6 +283,21 @@ Keep the finding suffix.</details>'''
                 self.assertEqual(pr_context.main([URL, "--output", str(target)]), 1)
             self.assertEqual(json.loads(target.read_text())["pr"]["number"], 7)
             self.assertEqual(sorted(p.name for p in Path(folder).iterdir()), ["context.json"])
+
+    def test_output_never_writes_through_a_planted_temporary_path(self):
+        with tempfile.TemporaryDirectory() as folder:
+            victim = Path(folder) / "victim.txt"
+            victim.write_text("keep")
+            target = Path(folder) / "context.json"
+            # The previous predictable name; the helper must not follow it.
+            planted = Path(folder) / f".context.json.{pr_context.os.getpid()}.tmp"
+            planted.symlink_to(victim)
+            with patch.object(pr_context, "gh", side_effect=Fixture().gh), \
+                    contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(pr_context.main([URL, "--output", str(target)]), 0)
+            self.assertEqual(victim.read_text(), "keep")
+            self.assertTrue(planted.is_symlink())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o600)
 
     def test_code_only_comment_keeps_significant_indentation_and_trailing_spaces(self):
         example = "<details><summary>ℹ️ About Codex in GitHub</summary>Example</details>"

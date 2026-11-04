@@ -163,7 +163,9 @@ line) is omitted, and a regex tag scan balances nested `<details>` blocks and
 removes only the block owning `<summary>ℹ️ About Codex in GitHub</summary>`. Inline,
 fenced, and indented code examples (including blockquotes) are masked during that
 scan and preserved verbatim, so a Codex finding that quotes boilerplate in code
-keeps it. The Codex receipt HTML marker is also removed. Codex findings are never
+keeps it. The Codex receipt HTML marker is also removed outside code. The
+`--output` file is written through an exclusively created temporary file in the
+destination directory, so planted paths are never followed. Codex findings are never
 dropped, even when they mention `@codex review`. `--no-filter` returns every entry
 unchanged. Review decisions and thread metadata remain visible; filtered roots do
 not hide useful replies.

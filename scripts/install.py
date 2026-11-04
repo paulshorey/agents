@@ -252,6 +252,8 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
 
 def restore(backup):
     records = json.loads((backup / 'manifest.json').read_text())
+    # Backups live in <root>/local/install-backups/<time>; install rewrites only local/ files.
+    local = backup.resolve().parent.parent
     for record in records:
         target = Path(record['target'])
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
@@ -263,12 +265,11 @@ def restore(backup):
         target.unlink()
         if 'symlink' in record:
             if 'file' in record:
-                resolved = Path(record['source'])
-                if Path(record['symlink']).is_absolute():
-                    resolved = Path(record['symlink'])
-                else:
-                    resolved = target.parent / record['symlink']
-                atomic_write(resolved.resolve(), (backup / record['file']).read_text())
+                resolved = (target.parent / record['symlink']).resolve()
+                # Other link targets (for example dotfiles) were never written by
+                # install; rewriting them would roll back edits made since.
+                if resolved.is_relative_to(local):
+                    atomic_write(resolved, (backup / record['file']).read_text())
             target.symlink_to(record['symlink'])
         elif 'file' in record:
             shutil.copy2(backup / record['file'], target)
