@@ -96,6 +96,26 @@ def claude_args(args, path, previously_started=False):
     return base
 
 
+def select_claude(candidates=None):
+    if candidates is None:
+        candidates = [shutil.which("claude"), str(Path.home() / ".local/bin/claude"),
+                      "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
+    seen = set()
+    for candidate in candidates:
+        if not candidate or not os.access(candidate, os.X_OK):
+            continue
+        resolved = str(Path(candidate).resolve())
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        version = subprocess.run([candidate, "--version"], capture_output=True,
+                                 text=True, timeout=10)
+        match = re.match(r"^(\d+)\.(\d+)\.(\d+)\b", version.stdout.strip())
+        if version.returncode == 0 and match and tuple(map(int, match.groups())) >= (2, 1, 200):
+            return candidate
+    raise RuntimeError("No compatible Claude CLI found. Remote Control resume requires Claude Code 2.1.200 or later.")
+
+
 def run_child(command):
     # Keep the Mac awake for exactly this invocation. No detached server or
     # automatic restart: Claude keeps the real terminal's stdin/stdout/stderr.
@@ -133,7 +153,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     cwd = Path.cwd().resolve()
     path = pointer_path(cwd)
-    for tool in ("claude", "caffeinate", "lsof", "ps"):
+    for tool in ("caffeinate", "lsof", "ps"):
         if not shutil.which(tool):
             raise RuntimeError(f"Required command is unavailable: {tool}")
 
@@ -162,6 +182,9 @@ def main(argv=None):
             return 0
         lock.seek(0)
         command = claude_args(args, path, previously_started=bool(lock.read()))
+        executable = select_claude()
+        if executable != shutil.which("claude"):
+            print(f"Using compatible Claude CLI: {executable}", flush=True)
         # Native Claude may clear an invalid/expired pointer on a failed resume.
         # Remember the attempt so a second retry cannot silently create a new
         # conversation merely because that record disappeared.
@@ -171,7 +194,7 @@ def main(argv=None):
         lock.flush()
         print("Resuming saved Remote Control session." if "--continue" in command or args.session_id
               else "Starting same-dir Remote Control server.", flush=True)
-        result = run_child([shutil.which("claude"), *command])
+        result = run_child([executable, *command])
         if result:
             print("Remote Control exited with an error; no replacement session was created.\n"
                   "Retry cclaude --verbose for diagnostics, or use --session-id with the wanted session URL.\n"

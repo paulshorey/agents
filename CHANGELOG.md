@@ -13,6 +13,8 @@ Verification dates describe historical observations, not current readiness.
   alias. Repeated invocations report the running server and saved link rather
   than starting competitors. Claude retains terminal access and a scoped
   caffeinate assertion; failures never silently create a replacement session.
+- Prefer a compatible CLI already installed on the machine when a terminal's
+  PATH selects an old version without resume support. No CLI update is performed.
 - Registered ownership and documented installation, reload, diagnostics, native
   resume limits, and recovery. Authentication and provider permissions unchanged.
 

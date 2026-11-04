@@ -34,6 +34,9 @@ class RemoteTests(unittest.TestCase):
         self.fake("lsof", "pass")
         self.fake("caffeinate", "import time; time.sleep(60)")
         self.fake("claude", """import json, os, sys, time
+if sys.argv[1:] == ['--version']:
+    print('2.1.316 (Claude Code)')
+    sys.exit(0)
 with open(os.environ['TEST_CALLS'], 'a') as output:
     output.write(json.dumps(sys.argv[1:]) + '\\n')
 time.sleep(float(os.environ['TEST_WAIT']))
@@ -186,6 +189,14 @@ else:
         self.assertEqual(self.run_cli()[0], 0)
         self.assertIn("--continue", self.invocations()[0])
         self.assertEqual(path.read_text(), "invalid json")
+
+    def test_existing_compatible_install_is_used_when_path_version_is_old(self):
+        self.fake("claude-old", "print('2.1.83 (Claude Code)')")
+        newer = str(self.bin / "claude")
+        self.assertEqual(REMOTE.select_claude([str(self.bin / "claude-old"), newer]), newer)
+        self.assertEqual(self.invocations(), [])
+        with self.assertRaisesRegex(RuntimeError, "2.1.200"):
+            REMOTE.select_claude([str(self.bin / "claude-old")])
 
 
 if __name__ == "__main__":

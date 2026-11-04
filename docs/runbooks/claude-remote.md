@@ -20,6 +20,12 @@ No full installer apply is necessary for this external file. Check the existing
 managed links with `python3 scripts/install.py`; unrelated reported drift is a
 separate maintenance task, not permission to overwrite settings.
 
+The helper prefers the `claude` on PATH when it is version 2.1.200 or later.
+If it is too old or unavailable, it checks existing installations at
+`~/.local/bin/claude`, `/opt/homebrew/bin/claude`, and `/usr/local/bin/claude`,
+printing the selected fallback. It never installs or updates Claude. This avoids
+terminal-specific PATH differences selecting a CLI without resume support.
+
 ## Commands
 
 ```sh
