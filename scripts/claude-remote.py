@@ -73,7 +73,26 @@ def is_remote_command(command):
             return False
     elif program not in ("claude", "claude.exe"):
         return False
-    return len(words) > 1 and words[1] in ("remote-control", "rc")
+    # Remote Control permits diagnostic/model options before its subcommand.
+    # Consume their actual arity: an option value named remote-control is not
+    # a subcommand, and print/prompt options must not be treated as servers.
+    index = 1
+    while index < len(words):
+        option, equals, value = words[index].partition("=")
+        if words[index] == "--verbose" or option in ("--debug", "-d"):
+            index += 1
+        elif option in ("--model", "--debug-file"):
+            if equals:
+                if not value:
+                    return False
+                index += 1
+            else:
+                if index + 1 >= len(words) or words[index + 1].startswith("-"):
+                    return False
+                index += 2
+        else:
+            return words[index] in ("remote-control", "rc")
+    return False
 
 
 def active_servers(cwd):

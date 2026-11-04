@@ -67,8 +67,9 @@ The helper also checks same-user native and npm-installed Remote Control process
 and their CWD with `ps`/`lsof`, including launches from the old alias. It identifies
 the Claude command or npm CLI script rather than requiring the process executable
 to be named `claude` (npm can run it through Node). If one exists, it prints
-its PID and the saved link rather than starting a competitor. This reuses the
-browser connection, not the other terminal's UI. Stop the original terminal with
+its PID and the saved link rather than starting a competitor. Supported global
+model and diagnostic options before the subcommand are recognized as well.
+This reuses the browser connection, not the other terminal's UI. Stop the original terminal with
 Ctrl+C before moving ownership to another terminal. A live process is not proof
 that its web connection is healthy. Launches that bypass this helper cannot be
 serialized by its lock.

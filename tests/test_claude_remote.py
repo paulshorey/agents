@@ -206,9 +206,31 @@ else:
             'node -e "claude remote-control"',
             'claude -p "explain remote-control"',
             'claude --name remote-control',
+            'claude --model remote-control',
+            'claude --debug-file remote-control',
+            'claude --verbose -p remote-control',
+            'claude --model sonnet -p remote-control',
+            'claude --model= remote-control',
+            'claude --model --verbose remote-control',
         ):
             with self.subTest(command=command):
                 self.assertFalse(REMOTE.is_remote_command(command))
+
+    def test_servers_with_global_options_block_launch(self):
+        for invocation in (
+            'claude --verbose remote-control',
+            'claude --model sonnet remote-control',
+            'claude --model=sonnet --verbose rc',
+            'claude --verbose --debug=api --debug-file /tmp/debug.log --model sonnet remote-control',
+            'node /usr/local/bin/claude --verbose --model sonnet remote-control',
+        ):
+            with self.subTest(invocation=invocation):
+                self.fake('ps', f"print({f'{os.getuid()} 12345 {invocation}'!r})")
+                self.fake('lsof', f"print('p12345\\nn{self.cwd.resolve()}')")
+                code, out, err = self.run_cli()
+                self.assertEqual(code, 0, err)
+                self.assertIn('PID 12345', out)
+                self.assertEqual(self.invocations(), [])
 
     def test_bad_session_id_and_invalid_pointer_fail_safely(self):
         self.assertEqual(self.run_cli("--session-id", "not-a-session")[0], 1)
