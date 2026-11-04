@@ -727,6 +727,19 @@
         "Optional source keys (SCRAPECREATORS_API_KEY, XAI_API_KEY, X_BEARER_TOKEN) belong here or in macOS Keychain items named last30days-<KEY>. The engine also reads process-environment keys such as PARALLEL_API_KEY and PERPLEXITY_API_KEY. Derive key names only; never print the file.",
         "The engine keeps run caches beside this file and saves research under ~/Documents/Last30Days. Setup installed yt-dlp with Homebrew; the Digg, arXiv, and Techmeme CLIs need Go and were not installed."
       ]
+    },
+    {
+      "id": "tool.claude-remote-shortcut",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "cclaude shell function with guarded Remote Control session resumption.",
+      "runbook": "docs/runbooks/claude-remote.md",
+      "path": "scripts/claude-remote.py",
+      "notes": [
+        "~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.",
+        "Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude). The helper reads the current directory record without modifying it. Native --continue and --session-id control resumption.",
+        "Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server is reported instead of taken over; no automatic retry creates a replacement conversation."
+      ]
     }
   ]
 }

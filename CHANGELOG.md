@@ -4,6 +4,18 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-04 — Guarded Claude Remote Control shortcut
+
+- Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating
+  to `scripts/claude-remote.py`. Saved sessions use native `--continue`; explicit
+  session IDs/URLs and same-dir server mode remain available.
+- Added per-directory advisory locks and detection of servers started by the old
+  alias. Repeated invocations report the running server and saved link rather
+  than starting competitors. Claude retains terminal access and a scoped
+  caffeinate assertion; failures never silently create a replacement session.
+- Registered ownership and documented installation, reload, diagnostics, native
+  resume limits, and recovery. Authentication and provider permissions unchanged.
+
 ## 2026-11-03 — One Git/PR workflow and iterative Codex review
 
 - Consolidated Git publishing and PR maintenance under `git-management`, with
