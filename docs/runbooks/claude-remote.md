@@ -29,39 +29,36 @@ terminal-specific PATH differences selecting a CLI without resume support.
 ## Commands
 
 ```sh
-cclaude                        # Resume the saved conversation, if a record exists
+cclaude                        # Server mode: bring back sessions, accept new chats
+cclaude --worktree             # Server mode with a git worktree per new session
+cclaude --continue             # Serve only the last recorded session
+cclaude --session-id SESSION_URL_OR_ID   # Serve only that session
 cclaude --status               # Inspect without launching Claude
-cclaude --session-id SESSION_URL_OR_ID
 cclaude --verbose              # Include native session diagnostics/log locations
-cclaude --server               # Explicitly use same-dir multi-session server mode
 cclaude --help
 ```
 
-The default uses `claude remote-control --continue` when the current folder has
-a bridge pointer or the helper has previously attempted a launch. With no
-directly located record on the first invocation, it starts the original
-same-dir server mode, which can create a conversation. For paths whose encoded
-project key exceeds 200 characters, it always tries native `--continue` rather
-than guessing Claude's hashed key. Native Claude owns record validity, expiration,
-worktree lookup, account access, and unarchiving. A failed resume stops with the
-original error; it never falls back to creating a conversation. If the wrapper
-cannot locate a record but another worktree has one, invoke
-`claude remote-control --continue` directly or use `cclaude --session-id`.
+The default (`--server` is an alias) runs `claude remote-control --spawn same-dir`.
+That server brings back every session the folder's previous server was serving,
+for about four hours after it stopped, including a session last served by
+`--continue`. It also creates a session for each new chat started with **+** or
+**New** in the Claude desktop or mobile app, or at claude.ai/code, so those chats
+appear as their own threads on every device. `--worktree` gives each new session
+its own git worktree; the pre-created session stays in the current folder.
 
-`--continue` and `--session-id` resume **one** conversation and exit when it ends.
-They cannot be combined with `--spawn`, `--capacity`, or pre-creation flags.
-`--server` preserves the original `--spawn same-dir` behavior and native restoration
-of the environment's sessions; it is not a guarantee of a fresh environment.
-The helper retains the user's `bypassPermissions` choice in both modes.
+`--continue` and `--session-id` serve **one** session and exit when it ends. New
+chats sent to that folder cannot create sessions, so they land in the served
+thread. Use them only to bring back a session older than the restore window, or
+an archived one; both unarchive it. They cannot be combined with `--spawn`,
+`--capacity`, or pre-creation flags. The helper retains the user's
+`bypassPermissions` choice in every mode.
 
-Concurrent wrapper invocations use an OS advisory lock keyed by the physical
-current directory, including when reached through a symlink. Locks are stored
-owner-only under `~/.agents/local/claude-remote/`, contain no launch environment,
-and release when the wrapper exits. Lock files remain intentionally and retain
-only a `resume` marker after a launch attempt. If Claude deletes an expired or
-invalid pointer, this marker makes later retries keep trying `--continue`
-instead of creating a replacement conversation. Use `--server` explicitly to
-allow server mode again. Do not unlink lock files while a wrapper might run.
+Run at most one Remote Control process per folder. Stopping one while another
+runs in the same directory can archive its sessions. Concurrent wrapper
+invocations use an OS advisory lock keyed by the physical current directory,
+including when reached through a symlink. Locks are stored owner-only under
+`~/.agents/local/claude-remote/`, contain no launch environment, and release when
+the wrapper exits. Do not unlink lock files while a wrapper might run.
 
 The helper also checks same-user native Remote Control processes and their CWD
 with `ps`/`lsof`, including launches from the old alias. If one exists, it prints
@@ -99,7 +96,10 @@ idle system sleep, not child-process crashes or provider rejection.
   `claude auth status` privately, confirm the intended account/subscription and
   organization policy, and consult official Remote Control troubleshooting.
   Do not log out, change account grants, or replace credentials automatically.
-- To select an older disconnected browser conversation, pass its full URL to
+- New chats landing in an existing thread means the folder's server runs with
+  `--continue` or `--session-id`. Stop it with Ctrl+C and run `cclaude`; the
+  served session comes back in server mode.
+- To bring back a session older than the restore window, pass its full URL to
   `--session-id`. Do not infer the desired conversation from the web list order.
 
 ## Validation

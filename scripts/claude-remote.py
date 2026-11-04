@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Resume Claude Remote Control without launching competing servers (macOS)."""
+"""Run one Claude Remote Control server per folder (macOS).
+
+The server brings back the sessions the folder's previous server was serving and
+creates a new session for each new chat started from the Claude apps or claude.ai.
+"""
 
 import argparse
 import fcntl
@@ -74,21 +78,21 @@ def active_servers(cwd):
     return found
 
 
-def claude_args(args, path, previously_started=False):
+def claude_args(args):
     base = ["remote-control", "--permission-mode", "bypassPermissions"]
-    if args.server:
-        base += ["--spawn", "same-dir"]
-    elif args.session_id:
+    if args.session_id:
         session = args.session_id.removeprefix("https://claude.ai/code/").split("?", 1)[0]
         if not re.fullmatch(r"session_[A-Za-z0-9]+", session):
             raise ValueError("--session-id needs a session_ ID or its claude.ai/code URL.")
         base += ["--session-id", session]
-    elif previously_started or path is None or path.exists():
-        # Do not guess whether a saved record is expired or valid. Claude owns
-        # validation, worktree lookup, unarchiving and reconnection.
+    elif args.continue_one:
+        # Single-session mode: serves only the recorded session; new chats
+        # started from the apps cannot create sessions in this mode.
         base += ["--continue"]
     else:
-        base += ["--spawn", "same-dir"]
+        # Server mode restores every session the folder's previous server was
+        # serving (about four hours) and spawns a session for each new chat.
+        base += ["--spawn", "worktree" if args.worktree else "same-dir"]
     if args.verbose:
         base.append("--verbose")
     if args.name:
@@ -145,8 +149,11 @@ def run_child(command):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument("--server", action="store_true", help="Use same-dir multi-session server mode (may create sessions).")
-    mode.add_argument("--session-id", help="Resume one specific session ID or claude.ai/code session URL.")
+    mode.add_argument("--server", action="store_true", help="Server mode (the default): restore sessions and accept new chats.")
+    mode.add_argument("--worktree", action="store_true", help="Server mode with a git worktree for each new chat's session.")
+    mode.add_argument("--continue", dest="continue_one", action="store_true",
+                      help="Serve only the last recorded session; new chats cannot create sessions.")
+    mode.add_argument("--session-id", help="Serve only one specific session ID or claude.ai/code session URL.")
     parser.add_argument("--status", action="store_true", help="Show local server and saved-session status without starting anything.")
     parser.add_argument("--verbose", "-v", action="store_true", help="Show native session diagnostics, including child log locations.")
     parser.add_argument("--name", help="Name passed through to Claude Remote Control.")
@@ -180,25 +187,19 @@ def main(argv=None):
             print("Saved record present." if path and path.exists() else "No directly located saved record.", flush=True)
             show_link(read_pointer(path))
             return 0
-        lock.seek(0)
-        command = claude_args(args, path, previously_started=bool(lock.read()))
+        command = claude_args(args)
         executable = select_claude()
         if executable != shutil.which("claude"):
             print(f"Using compatible Claude CLI: {executable}", flush=True)
-        # Native Claude may clear an invalid/expired pointer on a failed resume.
-        # Remember the attempt so a second retry cannot silently create a new
-        # conversation merely because that record disappeared.
-        lock.seek(0)
-        lock.truncate()
-        lock.write("resume\n")
-        lock.flush()
-        print("Resuming saved Remote Control session." if "--continue" in command or args.session_id
-              else "Starting same-dir Remote Control server.", flush=True)
+        if args.continue_one or args.session_id:
+            print("Serving one saved session; new chats from the apps cannot create sessions here.", flush=True)
+        else:
+            print("Starting the Remote Control server: sessions from this folder's last server come back\n"
+                  "(if it stopped within about four hours), and each new chat gets its own session.", flush=True)
         result = run_child([executable, *command])
         if result:
-            print("Remote Control exited with an error; no replacement session was created.\n"
-                  "Retry cclaude --verbose for diagnostics, or use --session-id with the wanted session URL.\n"
-                  "If Claude says the saved session expired, use cclaude --server to start server mode explicitly.",
+            print("Remote Control exited with an error. Retry cclaude --verbose for diagnostics,\n"
+                  "or use --session-id with a session URL to bring back one older session.",
                   file=sys.stderr)
         return result if result >= 0 else 128 - result
 

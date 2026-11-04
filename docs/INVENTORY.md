@@ -678,7 +678,7 @@ The engine keeps run caches beside this file and saves research under ~/Document
 
 ## tool.claude-remote-shortcut
 
-cclaude shell function with guarded Remote Control session resumption.
+cclaude shell function that runs one Remote Control server per folder.
 
 Owner: **agents**.
 
@@ -686,9 +686,9 @@ Location: `scripts/claude-remote.py`.
 
 ~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.
 
-Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude). The helper reads the current directory record without modifying it. Native --continue and --session-id control resumption.
+Server mode (the default) brings back the folder's previous sessions and creates a session for each new app chat. --continue and --session-id serve one session. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.
 
-Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server is reported instead of taken over; no automatic retry creates a replacement conversation.
+Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over.
 
 [Update and recovery instructions](../docs/runbooks/claude-remote.md).
 

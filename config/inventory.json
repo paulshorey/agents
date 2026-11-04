@@ -26,7 +26,7 @@
         "hosting.paul"
       ],
       "notes": [
-        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "Provider label: Agent DNS — all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
         "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
         "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
@@ -732,13 +732,13 @@
       "id": "tool.claude-remote-shortcut",
       "kind": "tool",
       "owner": "agents",
-      "description": "cclaude shell function with guarded Remote Control session resumption.",
+      "description": "cclaude shell function that runs one Remote Control server per folder.",
       "runbook": "docs/runbooks/claude-remote.md",
       "path": "scripts/claude-remote.py",
       "notes": [
         "~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.",
-        "Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude). The helper reads the current directory record without modifying it. Native --continue and --session-id control resumption.",
-        "Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server is reported instead of taken over; no automatic retry creates a replacement conversation."
+        "Server mode (the default) brings back the folder's previous sessions and creates a session for each new app chat. --continue and --session-id serve one session. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.",
+        "Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over."
       ]
     }
   ]

@@ -76,44 +76,46 @@ sys.exit(int(os.environ['TEST_EXIT']))
     def invocations(self):
         return [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
 
-    def test_first_start_and_saved_resume_use_compatible_flags(self):
+    def test_default_is_server_mode_with_or_without_a_saved_record(self):
         self.assertEqual(self.run_cli()[0], 0)
         self.saved_record()
         self.assertEqual(self.run_cli()[0], 0)
-        first, resumed = self.invocations()
-        self.assertIn("--spawn", first)
-        self.assertIn("--continue", resumed)
-        self.assertNotIn("--spawn", resumed)
-        self.assertEqual(resumed[-2:], ["bypassPermissions", "--continue"])
+        self.assertEqual(self.run_cli("--server")[0], 0)
+        for invocation in self.invocations():
+            self.assertEqual(invocation, ["remote-control", "--permission-mode", "bypassPermissions",
+                                          "--spawn", "same-dir"])
 
-    def test_failed_resume_never_creates_a_replacement(self):
+    def test_worktree_server_mode(self):
+        self.assertEqual(self.run_cli("--worktree")[0], 0)
+        self.assertEqual(self.invocations()[0][-2:], ["--spawn", "worktree"])
+
+    def test_failed_server_start_does_not_switch_later_runs_to_single_session(self):
         self.saved_record()
         self.env["TEST_EXIT"] = "7"
         code, _, err = self.run_cli()
         self.assertEqual(code, 7)
-        self.assertIn("no replacement session was created", err)
-        self.assertEqual(len(self.invocations()), 1)
-        self.assertIn("--continue", self.invocations()[0])
-
-    def test_pointer_deleted_by_native_failure_does_not_make_next_retry_create(self):
-        path = self.saved_record()
-        self.env["TEST_EXIT"] = "7"
-        self.assertEqual(self.run_cli()[0], 7)
-        path.unlink()  # Native Claude clears invalid/expired pointer records.
-        self.assertEqual(self.run_cli()[0], 7)
-        self.assertEqual(len(self.invocations()), 2)
+        self.assertIn("cclaude --verbose", err)
+        self.env["TEST_EXIT"] = "0"
+        self.assertEqual(self.run_cli()[0], 0)
         for invocation in self.invocations():
-            self.assertIn("--continue", invocation)
+            self.assertIn("--spawn", invocation)
+            self.assertNotIn("--continue", invocation)
+
+    def test_single_session_modes_are_explicit(self):
+        self.saved_record()
+        self.assertEqual(self.run_cli("--continue")[0], 0)
+        self.assertEqual(self.run_cli("--session-id", "https://claude.ai/code/session_exact123?from=cli")[0], 0)
+        resumed, exact = self.invocations()
+        self.assertEqual(resumed[-1], "--continue")
+        self.assertEqual(exact[-2:], ["--session-id", "session_exact123"])
+        for invocation in (resumed, exact):
             self.assertNotIn("--spawn", invocation)
 
-    def test_exact_url_and_explicit_server(self):
-        self.saved_record()
-        self.assertEqual(self.run_cli("--session-id", "https://claude.ai/code/session_exact123?from=cli")[0], 0)
-        self.assertEqual(self.run_cli("--server")[0], 0)
-        exact, server = self.invocations()
-        self.assertEqual(exact[-2:], ["--session-id", "session_exact123"])
-        self.assertNotIn("--spawn", exact)
-        self.assertIn("--spawn", server)
+    def test_modes_are_mutually_exclusive(self):
+        code, _, err = self.run_cli("--continue", "--worktree")
+        self.assertEqual(code, 2)
+        self.assertIn("not allowed with", err)
+        self.assertEqual(self.invocations(), [])
 
     def test_status_does_not_start_claude(self):
         self.saved_record()
@@ -187,7 +189,7 @@ else:
         path = self.saved_record()
         path.write_text("invalid json")
         self.assertEqual(self.run_cli()[0], 0)
-        self.assertIn("--continue", self.invocations()[0])
+        self.assertEqual(self.invocations()[0][-2:], ["--spawn", "same-dir"])
         self.assertEqual(path.read_text(), "invalid json")
 
     def test_existing_compatible_install_is_used_when_path_version_is_old(self):
