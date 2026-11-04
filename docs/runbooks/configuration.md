@@ -122,8 +122,9 @@ New backups also retain private installed-state snapshots and refuse to overwrit
 later file edits even when the symlink still matches. Older backups predate this
 content guard; inspect and preserve newer local edits before restoring those.
 A destination that was already a symlink is recreated as that symlink. Restore
-rewrites its target's saved bytes only when the target is inside `local/` (which
-install re-renders); other targets, such as dotfiles-managed rules, keep their
+rewrites its target's saved bytes only when the target is one of the two files
+install re-renders, `local/codex/config.toml` or `local/shell/zprofile`; other
+targets, such as dotfiles-managed rules or other `local/` files, keep their
 current contents. Backup restoration does not recover a
 revoked provider token. Keep encrypted secret backups separately or use provider
 replacement procedures. Update inventory records when configuration locations,

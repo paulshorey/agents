@@ -328,16 +328,18 @@ class ManagedDefaultsTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     install.install(root, home, apply=True, only_links=selected)
 
-    def test_restore_rewrites_only_local_symlink_targets(self):
+    def test_restore_rewrites_only_installer_rendered_symlink_targets(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = Path(folder) / 'agents', Path(folder) / 'home'
             (root / 'config').mkdir(parents=True)
             (root / 'rules').mkdir()
             (root / 'rules/git-workflow.md').write_text('managed rule\n')
+            (root / 'rules/git-workflow.mdc').write_text('managed cursor rule\n')
             (root / 'config/codex.defaults.toml').write_text('model = "chosen-model"\n')
             (root / 'config/mcp.json').write_text('{"mcpServers":{}}')
             (root / 'config/links.json').write_text(json.dumps({'links': [
                 {'source': 'rules/git-workflow.md', 'target': '~/.claude/rules/git-workflow.md', 'kind': 'text'},
+                {'source': 'rules/git-workflow.mdc', 'target': '~/.cursor/rules/git-workflow.mdc', 'kind': 'text'},
                 {'source': 'local/codex/config.toml', 'target': '~/.codex/config.toml', 'kind': 'codex'},
                 {'source': 'local/shell/zprofile', 'target': '~/.zprofile', 'kind': 'shell'}]}))
             # A dotfiles-managed rule link: install never writes its target.
@@ -347,6 +349,13 @@ class ManagedDefaultsTests(unittest.TestCase):
             rule = home / '.claude/rules/git-workflow.md'
             rule.parent.mkdir(parents=True)
             rule.symlink_to(dotfile)
+            # A rule link into another ignored local/ file: also never written by install.
+            local_rule = root / 'local/personal/cursor-rule.mdc'
+            local_rule.parent.mkdir(parents=True)
+            local_rule.write_text('local v1\n')
+            cursor_rule = home / '.cursor/rules/git-workflow.mdc'
+            cursor_rule.parent.mkdir(parents=True)
+            cursor_rule.symlink_to(local_rule)
             # A Codex link already inside local/: install rewrites those bytes.
             local_config = root / 'local/codex/config.toml'
             local_config.parent.mkdir(parents=True)
@@ -356,9 +365,12 @@ class ManagedDefaultsTests(unittest.TestCase):
             installed = install.install(root, home, apply=True)
             self.assertIn('chosen-model', local_config.read_text())
             dotfile.write_text('dotfiles v2 edited after install\n')
+            local_rule.write_text('local v2 edited after install\n')
             install.restore(Path(installed['backup']))
             self.assertEqual(os.readlink(rule), str(dotfile))
             self.assertEqual(dotfile.read_text(), 'dotfiles v2 edited after install\n')
+            self.assertEqual(os.readlink(cursor_rule), str(local_rule))
+            self.assertEqual(local_rule.read_text(), 'local v2 edited after install\n')
             self.assertEqual(local_config.read_text(), 'model = "original"\n')
 
     def test_restore_refuses_newer_application_edits_before_changing_any_link(self):

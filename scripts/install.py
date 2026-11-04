@@ -15,6 +15,8 @@ import tomllib
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
+# The only files install re-renders; restore rewrites bytes for these alone.
+CODEX_RENDERED, SHELL_RENDERED = 'local/codex/config.toml', 'local/shell/zprofile'
 DEFAULT_KEYS = {'model', 'model_reasoning_effort', 'model_verbosity',
                 'model_reasoning_summary', 'web_search', 'service_tier'}
 
@@ -172,14 +174,14 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
         codex_target = home / '.codex/config.toml'
         current = codex_target.read_text() if codex_target.exists() else ''
         desired = render_codex(render_defaults(current, load_defaults(root)), servers, root)
-        codex_source = root / 'local/codex/config.toml'
+        codex_source = root / CODEX_RENDERED
         if current != desired or not codex_source.exists() or codex_source.read_text() != desired:
             problems.append('Codex managed preferences or MCP sections need rendering')
         shell_target = home / '.zprofile'
         shell_current = shell_target.read_text() if shell_target.exists() else ''
         shell_hook = '[ -f "$HOME/.agents/config/env.sh" ] && . "$HOME/.agents/config/env.sh"'
         shell_desired = shell_current if shell_hook in shell_current else shell_current.rstrip() + '\n\n# Managed agent tool PATH (credentials are selected per task).\n' + shell_hook + '\n'
-        shell_source = root / 'local/shell/zprofile'
+        shell_source = root / SHELL_RENDERED
         if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
             problems.append('Shell tool PATH hook needs rendering')
     for link in definitions:
@@ -252,8 +254,9 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
 
 def restore(backup):
     records = json.loads((backup / 'manifest.json').read_text())
-    # Backups live in <root>/local/install-backups/<time>; install rewrites only local/ files.
-    local = backup.resolve().parent.parent
+    # Backups live in <root>/local/install-backups/<time>.
+    root = backup.resolve().parents[2]
+    rendered = {(root / path).resolve() for path in (CODEX_RENDERED, SHELL_RENDERED)}
     for record in records:
         target = Path(record['target'])
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
@@ -266,9 +269,9 @@ def restore(backup):
         if 'symlink' in record:
             if 'file' in record:
                 resolved = (target.parent / record['symlink']).resolve()
-                # Other link targets (for example dotfiles) were never written by
-                # install; rewriting them would roll back edits made since.
-                if resolved.is_relative_to(local):
+                # Other link targets (dotfiles, other local/ files) were never written
+                # by install; rewriting them would roll back edits made since.
+                if resolved in rendered:
                     atomic_write(resolved, (backup / record['file']).read_text())
             target.symlink_to(record['symlink'])
         elif 'file' in record:
