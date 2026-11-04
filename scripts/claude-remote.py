@@ -12,6 +12,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -47,21 +48,45 @@ def show_link(pointer):
         print(f"https://claude.ai/code?environment={environment}", flush=True)
 
 
+def is_remote_command(command):
+    """Recognize a Claude invocation, not a shell or unrelated Node program."""
+    try:
+        # ps renders argv as text, so quotes in later user-supplied arguments
+        # must not affect identification of the executable and subcommand.
+        words = shlex.split(command)
+    except ValueError:
+        words = command.split()
+    if not words:
+        return False
+    program = Path(words[0]).name
+    if program in ("node", "nodejs", "bun"):
+        # npm's shebang runs Node, with either the claude shim or the package's
+        # cli.js as its script. Do not match arbitrary scripts mentioning Claude.
+        words = words[1:]
+        while words and words[0].startswith("--") and "=" in words[0]:
+            words = words[1:]
+        if not words:
+            return False
+        script = Path(words[0])
+        if script.name not in ("claude", "claude.exe") and script.parts[-3:] != (
+                "@anthropic-ai", "claude-code", "cli.js"):
+            return False
+    elif program not in ("claude", "claude.exe"):
+        return False
+    return len(words) > 1 and words[1] in ("remote-control", "rc")
+
+
 def active_servers(cwd):
     """Find old-alias servers as well as servers started through this wrapper."""
-    rows = subprocess.check_output(["ps", "-axo", "uid=,pid=,args="], text=True)
+    rows = subprocess.check_output(["ps", "-wwaxo", "uid=,pid=,args="], text=True)
     found = []
     for row in rows.splitlines():
         fields = row.split(None, 2)
         if len(fields) != 3 or fields[0] != str(os.getuid()):
             continue
-        if not re.search(r" (?:remote-control|rc)(?: |$)", fields[2]):
+        if not is_remote_command(fields[2]):
             continue
         pid = int(fields[1])
-        executable = subprocess.run(["ps", "-p", str(pid), "-o", "comm="],
-                                    text=True, capture_output=True).stdout.strip()
-        if Path(executable).name not in ("claude", "claude.exe"):
-            continue
         probe = subprocess.run(["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
                                text=True, capture_output=True)
         directories = [line[1:] for line in probe.stdout.splitlines() if line.startswith("n")]
@@ -112,8 +137,12 @@ def select_claude(candidates=None):
         if resolved in seen:
             continue
         seen.add(resolved)
-        version = subprocess.run([candidate, "--version"], capture_output=True,
-                                 text=True, timeout=10)
+        try:
+            version = subprocess.run([candidate, "--version"], capture_output=True,
+                                     text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired):
+            # One broken installation must not hide a working fallback.
+            continue
         match = re.match(r"^(\d+)\.(\d+)\.(\d+)\b", version.stdout.strip())
         if version.returncode == 0 and match and tuple(map(int, match.groups())) >= (2, 1, 200):
             return candidate
@@ -199,7 +228,8 @@ def main(argv=None):
         result = run_child([executable, *command])
         if result:
             print("Remote Control exited with an error. Retry cclaude --verbose for diagnostics,\n"
-                  "or use --session-id with a session URL to bring back one older session.",
+                  "then retry within the roughly four-hour restore window.\n"
+                  "After that window, run cclaude to start a new session.",
                   file=sys.stderr)
         return result if result >= 0 else 128 - result
 

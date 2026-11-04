@@ -149,7 +149,7 @@ sys.exit(int(os.environ['TEST_EXIT']))
     def test_old_alias_server_blocks_launch(self):
         self.saved_record()
         self.fake("ps", f"""import sys
-if '-axo' in sys.argv:
+if '-wwaxo' in sys.argv:
     print('{os.getuid()} 12345 claude remote-control --spawn same-dir')
 else:
     print('/opt/bin/claude')
@@ -162,7 +162,7 @@ else:
 
     def test_other_folder_and_shell_command_do_not_block(self):
         self.fake("ps", f"""import sys
-if '-axo' in sys.argv:
+if '-wwaxo' in sys.argv:
     print('{os.getuid()} 12345 claude remote-control --spawn same-dir')
     print('{os.getuid()} 12346 zsh -c claude remote-control')
 else:
@@ -174,7 +174,7 @@ else:
 
     def test_uninspectable_live_server_does_not_allow_duplicate(self):
         self.fake("ps", f"""import sys
-if '-axo' in sys.argv:
+if '-wwaxo' in sys.argv:
     print('{os.getuid()} {os.getpid()} claude remote-control')
 else:
     print('/opt/bin/claude')
@@ -183,6 +183,32 @@ else:
         self.assertEqual(code, 1)
         self.assertIn("Cannot verify working directory", err)
         self.assertEqual(self.invocations(), [])
+
+    def test_npm_server_blocks_launch(self):
+        for invocation in (
+            'node /usr/local/lib/node_modules/@anthropic-ai/claude-code/cli.js remote-control --continue',
+            '/opt/homebrew/bin/node /usr/local/bin/claude rc',
+            'node --max-old-space-size=8192 /usr/local/bin/claude remote-control',
+            'claude remote-control --name "Bob\'s project"',
+        ):
+            with self.subTest(invocation=invocation):
+                self.fake('ps', f"print({f'{os.getuid()} 12345 {invocation}'!r})")
+                self.fake('lsof', f"print('p12345\\nn{self.cwd.resolve()}')")
+                code, out, err = self.run_cli()
+                self.assertEqual(code, 0, err)
+                self.assertIn('PID 12345', out)
+                self.assertEqual(self.invocations(), [])
+
+    def test_unrelated_commands_do_not_count_as_servers(self):
+        for command in (
+            'zsh -c "claude remote-control"',
+            'node /tmp/unrelated.js remote-control',
+            'node -e "claude remote-control"',
+            'claude -p "explain remote-control"',
+            'claude --name remote-control',
+        ):
+            with self.subTest(command=command):
+                self.assertFalse(REMOTE.is_remote_command(command))
 
     def test_bad_session_id_and_invalid_pointer_fail_safely(self):
         self.assertEqual(self.run_cli("--session-id", "not-a-session")[0], 1)
@@ -199,6 +225,26 @@ else:
         self.assertEqual(self.invocations(), [])
         with self.assertRaisesRegex(RuntimeError, "2.1.200"):
             REMOTE.select_claude([str(self.bin / "claude-old")])
+
+    def test_unlaunchable_install_does_not_hide_compatible_fallback(self):
+        broken = self.bin / 'claude-broken'
+        broken.write_text('#!/nonexistent/claude-test-interpreter\n')
+        broken.chmod(0o700)
+        newer = str(self.bin / 'claude')
+        self.assertEqual(REMOTE.select_claude([str(broken), newer]), newer)
+        with self.assertRaisesRegex(RuntimeError, 'No compatible Claude CLI'):
+            REMOTE.select_claude([str(broken)])
+
+    def test_timed_out_probe_does_not_hide_compatible_fallback(self):
+        candidates = [str(self.bin / 'claude'), str(self.bin / 'second-claude')]
+        self.fake('second-claude', "print('2.1.316 (Claude Code)')")
+        with patch.object(REMOTE.subprocess, 'run', side_effect=[
+            subprocess.TimeoutExpired([candidates[0], '--version'], 10),
+            subprocess.CompletedProcess([], 0, '2.1.316 (Claude Code)\\n', ''),
+        ]) as probe:
+            self.assertEqual(REMOTE.select_claude(candidates), candidates[1])
+        self.assertEqual([call.args[0] for call in probe.call_args_list],
+                         [[candidate, '--version'] for candidate in candidates])
 
 
 if __name__ == "__main__":

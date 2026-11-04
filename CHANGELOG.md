@@ -18,6 +18,11 @@ Verification dates describe historical observations, not current readiness.
   server started after a `--continue` run both reattached the same session.
 - Prefer a compatible CLI already installed on the machine when a terminal's
   PATH selects an old version without resume support. No CLI update is performed.
+- Detect npm-installed servers as well as native ones, while excluding shell
+  wrappers and unrelated Node commands. Skip failed or timed-out version probes
+  when selecting a compatible installed CLI. Regression tests cover both fixes.
+- Corrected recovery guidance: single-session flags do not bypass the documented
+  roughly four-hour restore window; unarchiving requires Claude Code 2.1.228+.
 - Registered ownership and documented installation, reload, diagnostics, native
   resume limits, and recovery. Authentication and provider permissions unchanged.
 

@@ -686,7 +686,7 @@ Location: `scripts/claude-remote.py`.
 
 ~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.
 
-Server mode (the default) brings back the folder's previous sessions and creates a session for each new app chat. --continue and --session-id serve one session. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.
+Server mode (the default) brings back the folder's previous sessions within the roughly four-hour restore window and creates a session for each new app chat. --continue and --session-id select one session within that window, not a way to bypass it. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.
 
 Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over.
 

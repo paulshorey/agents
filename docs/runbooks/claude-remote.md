@@ -25,6 +25,8 @@ If it is too old or unavailable, it checks existing installations at
 `~/.local/bin/claude`, `/opt/homebrew/bin/claude`, and `/usr/local/bin/claude`,
 printing the selected fallback. It never installs or updates Claude. This avoids
 terminal-specific PATH differences selecting a CLI without resume support.
+An installation that cannot execute or whose version probe times out is skipped
+so the remaining installed candidates can still be tried.
 
 ## Commands
 
@@ -48,8 +50,9 @@ its own git worktree; the pre-created session stays in the current folder.
 
 `--continue` and `--session-id` serve **one** session and exit when it ends. New
 chats sent to that folder cannot create sessions, so they land in the served
-thread. Use them only to bring back a session older than the restore window, or
-an archived one; both unarchive it. They cannot be combined with `--spawn`,
+thread. Use them to select one session within the roughly four-hour restore
+window. On Claude Code 2.1.228 or later they can also unarchive a session; this
+does not establish recovery beyond that window. They cannot be combined with `--spawn`,
 `--capacity`, or pre-creation flags. The helper retains the user's
 `bypassPermissions` choice in every mode.
 
@@ -60,8 +63,10 @@ including when reached through a symlink. Locks are stored owner-only under
 `~/.agents/local/claude-remote/`, contain no launch environment, and release when
 the wrapper exits. Do not unlink lock files while a wrapper might run.
 
-The helper also checks same-user native Remote Control processes and their CWD
-with `ps`/`lsof`, including launches from the old alias. If one exists, it prints
+The helper also checks same-user native and npm-installed Remote Control processes
+and their CWD with `ps`/`lsof`, including launches from the old alias. It identifies
+the Claude command or npm CLI script rather than requiring the process executable
+to be named `claude` (npm can run it through Node). If one exists, it prints
 its PID and the saved link rather than starting a competitor. This reuses the
 browser connection, not the other terminal's UI. Stop the original terminal with
 Ctrl+C before moving ownership to another terminal. A live process is not proof
@@ -99,8 +104,10 @@ idle system sleep, not child-process crashes or provider rejection.
 - New chats landing in an existing thread means the folder's server runs with
   `--continue` or `--session-id`. Stop it with Ctrl+C and run `cclaude`; the
   served session comes back in server mode.
-- To bring back a session older than the restore window, pass its full URL to
+- To select one session within the restore window, pass its full URL to
   `--session-id`. Do not infer the desired conversation from the web list order.
+  After the roughly four-hour window, run `cclaude` to start a new session;
+  neither `--continue` nor `--session-id` is a documented way around that limit.
 
 ## Validation
 
