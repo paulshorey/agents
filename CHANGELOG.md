@@ -56,6 +56,11 @@ Verification dates describe historical observations, not current readiness.
 - Agents now always open PRs ready for review, never as drafts, and mark a draft
   ready after pushing to it, so every PR they create or update gets automatic
   Codex review. Drafts are reserved for PRs the user parks to pause reviews.
+- Addressed Codex's review of that change: installation refuses to replace an
+  existing text destination (such as a user's own rule file) whose content
+  differs from its source, status history at GitHub's 1,000-entry limit fails
+  rather than risk omitting a context, and Enterprise PR URLs keep custom ports.
+  Readying a parked draft that an agent pushes to remains intended.
 
 ## 2026-11-02 — Shared PR context and feedback replies
 

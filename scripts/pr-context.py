@@ -161,7 +161,12 @@ class GitHub:
         match = re.fullmatch(r"/([^/]+)/([^/]+)/pull/(\d+)/?", parsed.path)
         if parsed.scheme != "https" or not parsed.hostname or not match:
             raise FetchError("gh returned an unrecognized PR URL.")
-        self.host = parsed.hostname
+        try:
+            port = parsed.port
+        except ValueError:
+            raise FetchError("gh returned an unrecognized PR URL.") from None
+        # gh selects Enterprise hosts by host[:port]; dropping a custom port targets another host.
+        self.host = parsed.hostname if port is None else f"{parsed.hostname}:{port}"
         self.owner, self.repo, number = match.groups()
         self.number = int(number)
         self.prefix = f"repos/{self.owner}/{self.repo}"
@@ -358,8 +363,12 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
                          f"{api.prefix}/commits/{head}/check-runs?filter=latest", "check_runs")]
     # The statuses endpoint returns every update; keep each context's newest state
     # so an earlier pending/failure is never mistaken for the current result.
-    history = sorted(api.pages(f"{api.prefix}/commits/{head}/statuses"), reverse=True,
-                     key=lambda s: (s.get("updated_at") or s.get("created_at") or "", s.get("id") or 0))
+    history = api.pages(f"{api.prefix}/commits/{head}/statuses")
+    # GitHub caps a ref's status history at 1,000; a truncated list could omit a context.
+    if len(history) >= 1000:
+        raise FetchError("Commit-status API limit reached; inspect statuses directly before claiming completeness.")
+    history.sort(reverse=True,
+                 key=lambda s: (s.get("updated_at") or s.get("created_at") or "", s.get("id") or 0))
     latest = {}
     for status in history:
         latest.setdefault(status.get("context"), status)

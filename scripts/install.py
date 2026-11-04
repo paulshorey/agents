@@ -197,6 +197,10 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
                 raise ValueError(f'Link destination is not writable: {parent}. No configuration changed.')
         if link['kind'] not in ('codex', 'shell') and not source.exists():
             raise ValueError(f'Missing managed source: {source}')
+        if link['kind'] == 'text' and target.exists() and target.resolve() != source.resolve():
+            # Replacing a different rule file would silently stop its instructions applying.
+            if target.read_bytes() != source.read_bytes():
+                raise ValueError(f'{target} has other content. Merge it into {source} or move it before installing.')
         if link['kind'] == 'json' and target.exists():
             # Merge existing nonempty config only after it is explicitly migrated.
             raw = target.read_text().strip()

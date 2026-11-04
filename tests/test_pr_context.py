@@ -488,6 +488,28 @@ Keep the finding suffix.</details>'''
         self.assertEqual([(s["id"], s["state"]) for s in deploy], [(902, "success")])
         self.assertEqual(len(output["statuses"]), 102)
 
+    def test_status_history_at_the_api_limit_fails(self):
+        fixture = Fixture()
+        original = fixture.gh
+
+        def capped(*args, **kwargs):
+            value = original(*args, **kwargs)
+            if args[-1].endswith("/statuses?per_page=100"):
+                return [[{"id": i, "context": "noisy", "state": "pending"} for i in range(p, p + 100)]
+                        for p in range(0, 1000, 100)]
+            return value
+
+        with patch.object(pr_context, "gh", side_effect=capped):
+            with self.assertRaisesRegex(pr_context.FetchError, "Commit-status API limit"):
+                pr_context.fetch_context(pr_context.GitHub(URL))
+
+    def test_enterprise_host_keeps_custom_port(self):
+        self.assertEqual(pr_context.GitHub("https://github.example.com:8443/org/repo/pull/7").host,
+                         "github.example.com:8443")
+        self.assertEqual(pr_context.GitHub(URL).host, "github.com")
+        with self.assertRaises(pr_context.FetchError):
+            pr_context.GitHub("https://github.example.com:99999/org/repo/pull/7")
+
     def test_pr_reaction_changes_invalidate_snapshot(self):
         fixture = Fixture()
         original = fixture.gh

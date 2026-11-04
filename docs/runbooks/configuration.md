@@ -93,6 +93,9 @@ installs the links declared in `config/links.json`. If an application replaces a
 link while saving, the check reports it. The installer can adopt current application
 settings and restore the link without silently replacing unrelated settings.
 Cursor JSON with other definitions needs an explicit merge before installation.
+Likewise, an existing text destination such as `~/.codex/AGENTS.md` or a Git/PR
+rule file whose content differs from its source is refused; merge it into the
+source or move it first, so installation never silently deactivates instructions.
 
 ## Plugin and authentication state
 

@@ -354,19 +354,46 @@ class ManagedDefaultsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 install.install(root, home, apply=True, only_links=['~/.cursor/mcp.json'])
 
+    def test_existing_rule_with_other_content_is_never_replaced(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, home = self.rule_root(folder)
+            selected = ['~/.claude/rules/git-workflow.md', '~/.cursor/rules/git-workflow.mdc']
+            rule = home / '.claude/rules/git-workflow.md'
+            rule.parent.mkdir(parents=True)
+            rule.write_text('My own Git rule.\n')
+            dotfile = home / 'dotfiles/rule.mdc'
+            dotfile.parent.mkdir(parents=True)
+            dotfile.write_text('My Cursor rule.\n')
+            cursor = home / '.cursor/rules/git-workflow.mdc'
+            cursor.parent.mkdir(parents=True)
+            cursor.symlink_to(dotfile)
+            for apply in (False, True):
+                with self.subTest(apply=apply), self.assertRaisesRegex(ValueError, 'has other content'):
+                    install.install(root, home, apply=apply, only_links=selected)
+            self.assertFalse(rule.is_symlink())
+            self.assertEqual(rule.read_text(), 'My own Git rule.\n')
+            self.assertEqual(os.readlink(cursor), str(dotfile))
+            self.assertFalse((root / 'local/install-backups').exists())
+            # Identical content carries no instructions that linking would deactivate.
+            rule.write_text((root / 'rules/git-workflow.md').read_text())
+            installed = install.install(root, home, apply=True, only_links=selected[:1])
+            self.assertEqual(installed['status'], 'installed')
+            self.assertTrue(rule.is_symlink())
+
     def test_restore_is_not_blocked_by_tracked_source_updates(self):
         with tempfile.TemporaryDirectory() as folder:
             root, home = self.rule_root(folder)
             rule = home / '.claude/rules/git-workflow.md'
             rule.parent.mkdir(parents=True)
-            rule.write_text('my original rule\n')
+            original = (root / 'rules/git-workflow.md').read_text()
+            rule.write_text(original)
             installed = install.install(root, home, apply=True, only_links=['~/.claude/rules/git-workflow.md'])
             self.assertTrue(rule.is_symlink())
             # A pull or branch switch updates the tracked source behind the link.
             (root / 'rules/git-workflow.md').write_text('updated by git pull\n')
             install.restore(Path(installed['backup']))
             self.assertFalse(rule.is_symlink())
-            self.assertEqual(rule.read_text(), 'my original rule\n')
+            self.assertEqual(rule.read_text(), original)
             self.assertEqual((root / 'rules/git-workflow.md').read_text(), 'updated by git pull\n')
 
     def test_restore_rewrites_only_installer_rendered_symlink_targets(self):
@@ -386,14 +413,14 @@ class ManagedDefaultsTests(unittest.TestCase):
             # A dotfiles-managed rule link: install never writes its target.
             dotfile = home / 'dotfiles/git-workflow.md'
             dotfile.parent.mkdir(parents=True)
-            dotfile.write_text('dotfiles v1\n')
+            dotfile.write_text('managed rule\n')
             rule = home / '.claude/rules/git-workflow.md'
             rule.parent.mkdir(parents=True)
             rule.symlink_to(dotfile)
             # A rule link into another ignored local/ file: also never written by install.
             local_rule = root / 'local/personal/cursor-rule.mdc'
             local_rule.parent.mkdir(parents=True)
-            local_rule.write_text('local v1\n')
+            local_rule.write_text('managed cursor rule\n')
             cursor_rule = home / '.cursor/rules/git-workflow.mdc'
             cursor_rule.parent.mkdir(parents=True)
             cursor_rule.symlink_to(local_rule)
