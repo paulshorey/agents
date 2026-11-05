@@ -34,6 +34,10 @@ Verification dates describe historical observations, not current readiness.
   verifies and stores the new URL. The tool adds guardrails against mistakes: the
   role check refuses an owner or app URL, each query runs in a read-only transaction
   in the same session, and timeouts cancel the statement on the server.
+- Follow-up (#34): role setup also refuses `TRIGGER`, `MAINTAIN`, configuration
+  parameter privileges and PUBLIC large-object `UPDATE`, and the per-query check
+  treats them as write access; recovery steps are in `docs/runbooks/databases.md`.
+  Rotation keeps `sslrootcert` with `sslmode=require`.
 - An earlier revision of this change audited PostgreSQL catalogs for every way a role
   could be misconfigured; it was cut back because a role created by this script on a
   fresh database cannot have those grants, and the audit kept growing.

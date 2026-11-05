@@ -49,6 +49,21 @@ SESSION_OPTIONS = '-c default_transaction_read_only=on -c statement_timeout=30s 
 GUARD_MARK = 'AGENTS_SQL_GUARD '
 # One psql session: check the role, set :agents_sql_safe, report on stderr.
 GUARD_SCRIPT = r"""SET search_path TO pg_catalog, pg_temp;
+-- Privileges that only newer servers know are checked only there.
+SELECT CASE WHEN current_setting('server_version_num')::int >= 170000 THEN 'on' ELSE 'off' END AS agents_sql_v17,
+  CASE WHEN current_setting('server_version_num')::int >= 150000 THEN 'on' ELSE 'off' END AS agents_sql_v15 \gset
+\if :agents_sql_v17
+SELECT EXISTS(SELECT 1 FROM pg_class c WHERE c.relkind IN ('r', 'p', 'm', 'v', 'f')
+  AND has_table_privilege(c.oid, 'MAINTAIN'))::text AS agents_sql_maintain \gset
+\else
+SELECT 'false' AS agents_sql_maintain \gset
+\endif
+\if :agents_sql_v15
+SELECT EXISTS(SELECT 1 FROM pg_parameter_acl p, aclexplode(p.paracl) a
+  WHERE a.grantee IN ((SELECT oid FROM pg_roles WHERE rolname = current_user), 0))::text AS agents_sql_parameters \gset
+\else
+SELECT 'false' AS agents_sql_parameters \gset
+\endif
 SELECT g.safe AS agents_sql_safe,
   concat_ws('|', g.safe, g.elevated::text, g.member::text, g.owns::text, g.writes::text, g.creates::text,
     g.usr, g.version) AS agents_sql_guard
@@ -65,9 +80,15 @@ FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.cr
     EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
         AND ((c.relkind IN ('r', 'p', 'v', 'm', 'f')
-            AND (has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+            AND (has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER')
               OR has_any_column_privilege(c.oid, 'INSERT, UPDATE')))
-          OR (c.relkind = 'S' AND has_sequence_privilege(c.oid, 'USAGE, UPDATE')))) AS writes,  -- USAGE allows nextval
+          OR (c.relkind = 'S' AND has_sequence_privilege(c.oid, 'USAGE, UPDATE'))))  -- USAGE allows nextval
+      -- MAINTAIN (17+), configuration parameters such as ALTER SYSTEM (15+) and
+      -- large-object UPDATE act outside the read-only transaction.
+      OR :'agents_sql_maintain' = 'true' OR :'agents_sql_parameters' = 'true'
+      OR EXISTS(SELECT 1 FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
+        WHERE a.grantee IN (r.oid, 0) AND a.privilege_type = 'UPDATE')
+      OR current_setting('lo_compat_privileges')::bool AS writes,
     (has_database_privilege(current_database(), 'CREATE')
       OR EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
         AND has_schema_privilege(n.oid, 'CREATE'))) AS creates,
@@ -77,7 +98,8 @@ FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.cr
 """
 PROBLEMS = ('is not the dedicated agent_readonly login, or has elevated role attributes',
             'is a member of other roles', 'owns database objects',
-            'can write to tables or sequences', 'can create objects')
+            'can write (tables, sequences, MAINTAIN, configuration parameters or large objects)',
+            'can create objects')
 PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
 
 
@@ -416,7 +438,8 @@ def command_prepare(args):
             current = urllib.parse.parse_qs(urllib.parse.urlsplit(connection_url(entry, hosting)).query)
         except (SqlError, ValueError):
             current = {}
-        if current.get('sslmode', [''])[0] in ('verify-ca', 'verify-full') and current.get('sslrootcert'):
+        # libpq also verifies the server with `require` when sslrootcert is set.
+        if current.get('sslmode', [''])[0] in STRONG_SSL_MODES and current.get('sslrootcert'):
             query = '?' + urllib.parse.urlencode({'sslmode': current['sslmode'][0],
                                                   'sslrootcert': current['sslrootcert'][0]})
         url = f"postgresql://agent_readonly:{password}@{host}:{entry['port']}/{urllib.parse.quote(entry['database'])}{query}"

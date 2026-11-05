@@ -229,11 +229,12 @@ class PrepareTests(unittest.TestCase):
     def test_prepare_keeps_a_pinned_server_certificate(self):
         root = Path(self.directory.name) / 'root.crt'
         root.write_text('fixture')
-        current = url(sslmode='verify-full', sslrootcert=str(root))
-        code, _ = self.run_main(['prepare', 'fixture'], connection_url=current)
-        self.assertEqual(code, 0)
-        env = sql.libpq_environment(pending_url(self.directory.name), TARGET)
-        self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), ('verify-full', str(root)))
+        for mode in ('verify-full', 'require'):
+            current = url(sslmode=mode, sslrootcert=str(root))
+            code, _ = self.run_main(['prepare', 'fixture'], connection_url=current)
+            self.assertEqual(code, 0)
+            env = sql.libpq_environment(pending_url(self.directory.name), TARGET)
+            self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), (mode, str(root)))
 
     def test_concurrent_prepare_runs_keep_password_and_verifier_paired(self):
         with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, '_hosting', return_value=FakeHosting), \
@@ -381,6 +382,10 @@ class LiveRoleTests(unittest.TestCase):
     def env(self, connection):
         return sql.libpq_environment(connection, self.target)
 
+    @classmethod
+    def server_version(cls):
+        return int(admin_psql('-At', '-c', 'SHOW server_version_num').stdout.strip())
+
     def granted(self, grant, undo):
         """Temporarily give agent_readonly an extra privilege it must never hold."""
         self.admin(grant)
@@ -403,6 +408,8 @@ class LiveRoleTests(unittest.TestCase):
         schema = 'agent_probe_s_' + os.urandom(3).hex()
         cases = [('GRANT INSERT ON public.users TO agent_readonly', 'REVOKE INSERT ON public.users FROM agent_readonly',
                   'can write'),
+                 ('GRANT TRIGGER ON public.users TO agent_readonly', 'REVOKE TRIGGER ON public.users FROM agent_readonly',
+                  'can write'),
                  ('GRANT UPDATE (email) ON public.users TO agent_readonly',
                   'REVOKE UPDATE (email) ON public.users FROM agent_readonly', 'can write'),
                  ('CREATE SEQUENCE IF NOT EXISTS public.agent_probe_seq; GRANT USAGE ON public.agent_probe_seq TO agent_readonly',
@@ -413,6 +420,18 @@ class LiveRoleTests(unittest.TestCase):
                   'create'),
                  (f'CREATE ROLE {safe} NOLOGIN; GRANT {safe} TO agent_readonly; ALTER ROLE agent_readonly SET role = {safe}',
                   f'ALTER ROLE agent_readonly RESET role; DROP ROLE {safe}', 'agent_readonly login')]
+        cases.append(("SELECT lo_from_bytea(434343, 'blob'); GRANT UPDATE ON LARGE OBJECT 434343 TO agent_readonly",
+                      'SELECT lo_unlink(434343)', 'can write'))
+        version = self.server_version()
+        if version >= 170000:
+            cases.append(('GRANT MAINTAIN ON public.users TO agent_readonly',
+                          'REVOKE MAINTAIN ON public.users FROM agent_readonly', 'can write'))
+            cases.append(('CREATE VIEW public.agent_probe_mview AS SELECT id FROM public.users; '
+                          'GRANT MAINTAIN ON public.agent_probe_mview TO agent_readonly',
+                          'DROP VIEW public.agent_probe_mview', 'can write'))
+        if version >= 150000:
+            cases.append(('GRANT ALTER SYSTEM ON PARAMETER work_mem TO agent_readonly',
+                          'REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM agent_readonly', 'can write'))
         for grant, undo, message in cases:
             with self.subTest(grant=grant):
                 self.admin(grant)
@@ -506,6 +525,12 @@ class LiveRoleTests(unittest.TestCase):
                  (f'CREATE SCHEMA {schema}; CREATE TABLE {schema}.notes (id int); '
                   f'GRANT USAGE ON SCHEMA {schema} TO PUBLIC; GRANT SELECT ON {schema}.notes TO PUBLIC',
                   f'DROP SCHEMA {schema} CASCADE', 'outside public'),
+                 ('GRANT TRIGGER ON public.users TO PUBLIC', 'REVOKE TRIGGER ON public.users FROM PUBLIC', 'TRIGGER or MAINTAIN'),
+                 ('CREATE VIEW public.agent_probe_tview AS SELECT id FROM public.users; '
+                  'GRANT TRIGGER ON public.agent_probe_tview TO PUBLIC', 'DROP VIEW public.agent_probe_tview',
+                  'TRIGGER or MAINTAIN'),
+                 ("SELECT lo_from_bytea(424242, 'blob'); GRANT UPDATE ON LARGE OBJECT 424242 TO PUBLIC",
+                  'SELECT lo_unlink(424242)', 'large objects'),
                  ('CREATE FUNCTION public.agent_probe_definer() RETURNS text LANGUAGE sql SECURITY DEFINER '
                   'AS $$ SELECT password FROM public.users LIMIT 1 $$',
                   'DROP FUNCTION public.agent_probe_definer()', 'SECURITY DEFINER'),
@@ -513,6 +538,16 @@ class LiveRoleTests(unittest.TestCase):
                   'DROP TABLE public.agent_probe_child', 'inheritance'),
                  ('GRANT CREATE ON SCHEMA public TO PUBLIC', 'REVOKE CREATE ON SCHEMA public FROM PUBLIC', 'PUBLIC can create'),
                  ]
+        version = self.server_version()
+        if version >= 170000:
+            cases.append(('GRANT MAINTAIN ON public.users TO PUBLIC', 'REVOKE MAINTAIN ON public.users FROM PUBLIC',
+                          'TRIGGER or MAINTAIN'))
+            cases.append(('CREATE VIEW public.agent_probe_mview2 AS SELECT id FROM public.users; '
+                          'GRANT MAINTAIN ON public.agent_probe_mview2 TO PUBLIC',
+                          'DROP VIEW public.agent_probe_mview2', 'TRIGGER or MAINTAIN'))
+        if version >= 150000:
+            cases.append(('GRANT ALTER SYSTEM ON PARAMETER work_mem TO PUBLIC',
+                          'REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM PUBLIC', 'configuration parameter'))
         for change, undo, message in cases:
             with self.subTest(change=change):
                 self.admin(change)

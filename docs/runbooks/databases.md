@@ -45,7 +45,15 @@ Agents (Claude Code, Codex, Cursor) query deployed databases with
    without changing anything if PUBLIC can create in schema `public` (PostgreSQL 14
    default) or a secret table has parent or child tables. It finishes by verifying
    that the role cannot read withheld tables or columns, any view, or anything outside
-   `public`, and cannot run `SECURITY DEFINER` functions; otherwise it rolls back. Endpoints and service IDs are
+   `public`; cannot run `SECURITY DEFINER` functions; holds no `TRIGGER` or `MAINTAIN`
+   (PostgreSQL 17+) on any relation and no configuration-parameter privilege such as
+   `ALTER SYSTEM` (15+); and that no large object grants `UPDATE` to PUBLIC
+   (`lo_compat_privileges` off). Otherwise it rolls back, password included, and
+   names what to fix: revoke the reported grant from PUBLIC or the role (for
+   example `REVOKE TRIGGER ON tbl FROM PUBLIC;`, `REVOKE ALTER SYSTEM ON PARAMETER
+   name FROM PUBLIC;`, `REVOKE UPDATE ON LARGE OBJECT oid FROM PUBLIC;`), then
+   re-run the prepared file. The per-query role check catches the same write
+   privileges if they are granted later. Endpoints and service IDs are
    in the project's private runbook (LivX: `~/git/livx/docs/database-migrations.md`).
 3. `~/.agents/bin/agents-sql activate TARGET` checks the new role, stores the URL and
    deletes both files. If the check fails, nothing changes.
