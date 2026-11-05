@@ -170,7 +170,7 @@ def load_searches(path):
                     or not isinstance(queries, list) or not queries
                     or not all(isinstance(q, str) and q.strip() for q in queries)):
                 raise ValueError("each search needs an objective and nonempty search_queries")
-            if not isinstance(item.get("advanced_settings") or {}, dict):
+            if item.get("advanced_settings") is not None and not isinstance(item["advanced_settings"], dict):
                 raise ValueError("advanced_settings must be an object or null")
         return searches
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
@@ -217,7 +217,7 @@ def cmd_extract(args):
         return 2
     settings = {"full_content": {"max_chars_per_result": args.max_chars} if args.max_chars else True}
     if args.fresh:
-        settings["fetch_policy"] = {"max_age_seconds": 600}
+        settings["fetch_policy"] = {"max_age_seconds": 600, "disable_cache_fallback": True}
     batches = [args.urls[i:i + EXTRACT_BATCH] for i in range(0, len(args.urls), EXTRACT_BATCH)]
     pages, errors = [], []
     for batch in batches:
@@ -304,6 +304,11 @@ def wait_for_result(key, run_id, wait, base, force=False):
             return (3 if code in (401, 403) else 4), {
                 "run_id": run_id, "error": failure.info,
                 "message": f"The run may still finish; resume with: deep result {run_id} --wait SECONDS"}
+        run = result.get("run") or {}
+        if run.get("status") != "completed":
+            return 4, {"run": run, "error": {"type": f"run_{run.get('status') or 'unknown'}",
+                                             "message": f"Task run ended as {run.get('status')}; no report was produced",
+                                             "detail": run.get("error")}}
         try:
             return 0, summarize(result, save_result(base, result, force))
         except Failure as failure:
@@ -331,7 +336,17 @@ def cmd_deep(args):
             if args.previous_interaction_id:
                 body["previous_interaction_id"] = args.previous_interaction_id
             # Do not retry creation: a lost response may still have created a billed run.
-            run = request(key, "POST", "/v1/tasks/runs", body, retry=False)[1]
+            try:
+                run = request(key, "POST", "/v1/tasks/runs", body, retry=False)[1]
+            except Failure as failure:
+                if failure.info.get("status") is None or failure.info["status"] >= 500:
+                    emit({"error": {**failure.info, "type": "creation_ambiguous",
+                                    "message": "The run may have been created and billed, but its ID was lost "
+                                    f"({failure.info.get('message')}). Do not retry or fall back automatically; "
+                                    "check runs at platform.parallel.ai and ask the user."}})
+                    print("parallel.py error: deep run creation is ambiguous; do not retry", file=sys.stderr)
+                    return 4
+                raise
             print(json.dumps({"created": {k: run.get(k) for k in ("run_id", "interaction_id", "status", "processor")}}),
                   file=sys.stderr)
             if not args.wait:

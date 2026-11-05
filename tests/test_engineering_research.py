@@ -131,9 +131,10 @@ class ParallelClientTest(unittest.TestCase):
         self.assertEqual(out["errors"][0]["url"], "https://b.test")
 
     def test_deep_run_does_not_retry_creation(self):
-        code, _, bodies, _ = run(["deep", "run", "question"], [http_error(503)])
+        code, out, bodies, _ = run(["deep", "run", "question"], [http_error(503)])
         self.assertEqual(code, 4)
         self.assertEqual(len(bodies), 1)
+        self.assertEqual(out["error"]["type"], "creation_ambiguous")
         self.assertEqual(bodies[0][1]["task_spec"], {"output_schema": {"type": "text"}})
 
     def test_deep_result_saves_report(self):
@@ -171,7 +172,8 @@ class ParallelClientTest(unittest.TestCase):
         base = os.path.join(self.tmp.name, "report")
         with open(base + ".md", "w") as file:
             file.write("old")
-        result = {"run": {"run_id": "trun_1"}, "output": {"type": "text", "content": "new", "basis": []}}
+        result = {"run": {"run_id": "trun_1", "status": "completed"},
+                  "output": {"type": "text", "content": "new", "basis": []}}
         code, _, _, _ = run(["deep", "result", "trun_1", "--out", base, "--force"], [ok(result)])
         self.assertEqual(code, 0)
         with open(base + ".md") as file:
@@ -257,6 +259,32 @@ class ParallelClientTest(unittest.TestCase):
         self.assertEqual(code, 4)
         self.assertEqual(request.call_count, 2)
         self.assertIn("deep result trun_1", document["message"])
+
+    def test_deep_run_definitive_rejection_is_not_ambiguous(self):
+        code, out, _, _ = run(["deep", "run", "question", "--processor", "nope"], [http_error(403, "bad processor")])
+        self.assertEqual(code, 3)
+        self.assertNotEqual(out["error"].get("type"), "creation_ambiguous")
+
+    def test_falsey_advanced_settings_are_invalid(self):
+        for value in (False, [], "", 0):
+            with open(self.searches, "w") as file:
+                json.dump({"searches": [{"objective": "A", "search_queries": ["a"], "advanced_settings": value}]}, file)
+            code, out, bodies, _ = run(["search", self.searches], [])
+            self.assertEqual((code, out["error"]["type"], bodies), (2, "invalid_input", []))
+
+    def test_unsuccessful_task_run_is_a_failure(self):
+        base = os.path.join(self.tmp.name, "report")
+        result = {"run": {"run_id": "trun_1", "status": "failed", "error": {"message": "x"}}, "output": None}
+        code, out, _, _ = run(["deep", "result", "trun_1", "--out", base], [ok(result)])
+        self.assertEqual(code, 4)
+        self.assertEqual(out["error"]["type"], "run_failed")
+        self.assertFalse(os.path.exists(base + ".json"))
+
+    def test_fresh_extract_disables_stale_fallback(self):
+        response = {"results": [], "errors": []}
+        _, _, bodies, _ = run(["extract", "https://a.test", "--fresh", "--out", self.tmp.name + "/p"], [ok(response)])
+        self.assertEqual(bodies[0][1]["advanced_settings"]["fetch_policy"],
+                         {"max_age_seconds": 600, "disable_cache_fallback": True})
 
 
 if __name__ == "__main__":
