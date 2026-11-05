@@ -45,8 +45,12 @@ def readiness(context):
         reasons.append('PR is not open')
     if pr.get('draft'):
         reasons.append('PR is a draft')
-    if pr.get('mergeable') is False or pr.get('mergeable_state') == 'dirty':
+    if pr.get('mergeable') is None:
+        reasons.append('GitHub is still computing mergeability')
+    elif pr.get('mergeable') is not True or pr.get('mergeable_state') == 'dirty':
         reasons.append('merge conflicts with the base branch')
+    if pr.get('reviewDecision') == 'CHANGES_REQUESTED':
+        reasons.append('a reviewer requested changes')
     review = context.get('codex_review') or {}
     if not review.get('covers_head'):
         reasons.append(f'waiting for Codex review of {head[:7]}')
@@ -63,6 +67,25 @@ def readiness(context):
     for status in context.get('statuses', []):
         if status.get('context') != CONTEXT and status.get('state') != 'success':
             reasons.append(f"status {status.get('context')} is {status.get('state')}")
+    return reasons
+
+
+def recheck(api, context):
+    """Reread the head, checks and statuses just before posting success: the
+    snapshot reads them partway through a longer fetch."""
+    head = context['pr']['head']['sha']
+    if api.api(api.pull)['head']['sha'] != head:
+        return ['the PR head changed']
+    reasons = []
+    for check in api.pages(f'{api.prefix}/commits/{head}/check-runs?filter=latest', 'check_runs'):
+        if check.get('status') != 'completed' or check.get('conclusion') not in GOOD_CHECKS:
+            reasons.append(f"check {check.get('name')} is {check.get('conclusion') or check.get('status')}")
+    latest = {}
+    for status in sorted(api.pages(f'{api.prefix}/commits/{head}/statuses'),
+                         key=lambda s: (s.get('updated_at') or '', s.get('id') or 0)):
+        latest[status.get('context')] = status.get('state')
+    reasons += [f'status {name} is {state}' for name, state in latest.items()
+                if name != CONTEXT and state != 'success']
     return reasons
 
 
@@ -107,14 +130,15 @@ def main(argv=None):
         if args.action == 'ready':
             context = pr_context.fetch_context(api)
             sha, url = context['pr']['head']['sha'], context['pr']['url']
-            reasons = readiness(context)
+            reasons = readiness(context) or recheck(api, context)
             if reasons:
                 if 'PR is not open' not in reasons:
                     set_status(api, sha, 'pending', 'Not ready: ' + '; '.join(reasons), url)
                 print('pr-ready: not ready: ' + '; '.join(reasons), file=sys.stderr)
                 return 1
             note = f'; {args.note}' if args.note.strip() else ''
-            set_status(api, sha, 'success', f'Ready to merge: Codex clean on {sha[:7]}{note}', url)
+            base = context['pr']['base']['sha'][:7]
+            set_status(api, sha, 'success', f'Ready to merge: Codex clean on {sha[:7]} (base {base}){note}', url)
             print(f'pr-ready: {sha[:7]} marked ready to merge')
             return 0
         pull = api.api(api.pull)
@@ -128,9 +152,17 @@ def main(argv=None):
             set_status(api, sha, 'failure', 'Needs your decision: ' + args.message, url)
         print(f'pr-ready: {sha[:7]} marked {args.action}')
         return 0
-    except (pr_context.FetchError, KeyError, TypeError, IndexError) as exc:
-        message = str(exc) if isinstance(exc, pr_context.FetchError) else 'Unexpected GitHub response.'
+    except pr_context.FetchError as exc:
+        message = str(exc)
+        if args.action != 'status' and ('HTTP 403' in message or 'HTTP 404' in message):
+            # Statuses need push access to the base repository (e.g. a fork PR).
+            print(f'pr-ready: cannot set {CONTEXT} here ({message}); report readiness in the PR '
+                  'conversation instead', file=sys.stderr)
+            return 3
         print(f'pr-ready: {message}', file=sys.stderr)
+        return 1
+    except (KeyError, TypeError, IndexError):
+        print('pr-ready: Unexpected GitHub response.', file=sys.stderr)
         return 1
 
 

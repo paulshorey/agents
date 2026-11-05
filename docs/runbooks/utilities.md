@@ -243,9 +243,13 @@ python3 ~/.agents/scripts/pr-ready.py ready 123 --note "182 tests pass"        #
 python3 ~/.agents/scripts/pr-ready.py status 123
 ```
 
-`ready` succeeds only when the PR is open, not a draft, free of conflicts, Codex's
-review of the head is clean, no review thread is unresolved, and every other check
-and status passes; otherwise it marks the head pending with the unmet conditions.
+`ready` succeeds only when the PR is open, not a draft, GitHub has confirmed it is
+mergeable, no reviewer has requested changes, Codex's review of the head is clean,
+no review thread is unresolved, and every other check and status passes (reread
+just before posting); otherwise it marks the head pending with the unmet
+conditions. The success description names the base commit it was checked against.
+Exit code 3 means the account cannot create statuses on that repository (for
+example a fork PR); agents then report readiness in a PR comment.
 A new push leaves the new head without the status. On `paulshorey/agents`, `main`
 branch protection requires `agent/ready` (see the
 [configuration runbook](configuration.md#github-branch-protection)), so GitHub

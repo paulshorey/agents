@@ -13,7 +13,7 @@ HEAD = 'a' * 40
 URL = 'https://github.com/example/project/pull/7'
 READY = {
     'pr': {'state': 'open', 'merged': False, 'draft': False, 'mergeable': True, 'mergeable_state': 'clean',
-           'url': URL, 'head': {'sha': HEAD}},
+           'url': URL, 'head': {'sha': HEAD}, 'base': {'sha': 'b' * 40}, 'reviewDecision': None},
     'codex_review': {'covers_head': True, 'outcome': 'clean'},
     'threads': [{'isResolved': True}],
     'checks': [{'name': 'validate', 'status': 'completed', 'conclusion': 'success'}],
@@ -41,6 +41,8 @@ class ReadinessTests(unittest.TestCase):
             (changed(pr__state='closed'), 'not open'),
             (changed(pr__draft=True), 'draft'),
             (changed(pr__mergeable_state='dirty'), 'conflicts'),
+            (changed(pr__mergeable=None), 'still computing mergeability'),
+            (changed(pr__reviewDecision='CHANGES_REQUESTED'), 'requested changes'),
             (changed(codex_review={'covers_head': False, 'outcome': 'clean'}), 'waiting for Codex review of aaaaaaa'),
             (changed(codex_review=None), 'waiting for Codex review'),
             (changed(codex_review={'covers_head': True, 'outcome': 'findings'}), 'is findings'),
@@ -62,13 +64,16 @@ class ReadinessTests(unittest.TestCase):
 class FakeApi:
     host, prefix, pull = 'github.com', 'repos/example/project', 'repos/example/project/pulls/7'
 
-    def __init__(self, state='open'):
-        self.state = state
+    def __init__(self, state='open', head=HEAD, checks=None):
+        self.state, self.head = state, head
+        self.checks = checks if checks is not None else [{'name': 'validate', 'status': 'completed', 'conclusion': 'success'}]
 
     def api(self, path):
-        return {'state': self.state, 'head': {'sha': HEAD}, 'html_url': URL}
+        return {'state': self.state, 'head': {'sha': self.head}, 'html_url': URL}
 
-    def pages(self, path):
+    def pages(self, path, key=None):
+        if key == 'check_runs':
+            return self.checks
         return [{'context': 'agent/ready', 'state': 'pending', 'description': 'old', 'updated_at': '1', 'id': 1},
                 {'context': 'agent/ready', 'state': 'success', 'description': 'new', 'updated_at': '2', 'id': 2}]
 
@@ -90,7 +95,26 @@ class CommandTests(unittest.TestCase):
         self.assertIn(f'repos/example/project/statuses/{HEAD}', posted[0])
         self.assertEqual(fields[0]['state'], 'success')
         self.assertEqual(fields[0]['context'], 'agent/ready')
-        self.assertEqual(fields[0]['description'], 'Ready to merge: Codex clean on aaaaaaa; 182 tests pass')
+        self.assertEqual(fields[0]['description'], 'Ready to merge: Codex clean on aaaaaaa (base bbbbbbb); 182 tests pass')
+
+    def test_ready_rechecks_before_posting(self):
+        rerun = FakeApi(checks=[{'name': 'validate', 'status': 'in_progress'}])
+        code, fields, _, _ = self.run_main(['ready', '7'], api=rerun)
+        self.assertEqual((code, fields[0]['state']), (1, 'pending'))
+        self.assertIn('validate is in_progress', fields[0]['description'])
+        code, fields, _, _ = self.run_main(['ready', '7'], api=FakeApi(head='c' * 40))
+        self.assertEqual(code, 1)
+        self.assertIn('head changed', fields[0]['description'])
+
+    def test_reports_missing_status_permission_distinctly(self):
+        def refuse(*args):
+            raise pr_ready.pr_context.FetchError('gh api failed (exit 1; HTTP 403).')
+        with patch.object(pr_ready, 'resolve', return_value=FakeApi()), \
+                patch.object(pr_ready.pr_context, 'fetch_context', return_value=copy.deepcopy(READY)), \
+                patch.object(pr_ready.pr_context, 'gh', side_effect=refuse), \
+                patch('sys.stderr', new_callable=io.StringIO) as err:
+            self.assertEqual(pr_ready.main(['ready', '7']), 3)
+        self.assertIn('PR conversation', err.getvalue())
 
     def test_ready_refuses_and_marks_pending_when_unmet(self):
         code, fields, _, output = self.run_main(['ready', '7'], context=changed(threads=[{'isResolved': False}]))

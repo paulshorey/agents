@@ -95,8 +95,13 @@ on `paulshorey/agents` `main`, GitHub disables merging until it passes, so a PR
 cannot be merged while you are still fixing it. A new push leaves the new head
 without the status, which reads as not ready until you verify again. `ready`
 requires an open, non-draft, conflict-free PR, a clean Codex review of the head,
-no unresolved threads, and passing checks and statuses. Never set success by any
-other means.
+no unresolved threads or requested changes, and passing checks and statuses, and
+it rereads checks and statuses just before posting. Never set success by any other
+means. If it exits 3, you cannot create statuses on that repository (for example a
+fork PR without push access upstream): post the readiness result as a PR comment
+instead and tell the user. The status belongs to the head commit only; on
+repositories that don't require branches to be up to date, a later base change
+does not reset it.
 
 ## Posting replies and resolving threads
 
