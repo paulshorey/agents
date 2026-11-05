@@ -105,6 +105,15 @@ class RegistryTests(unittest.TestCase):
             path.write_text(json.dumps({'schema_version': 1, 'targets': {'t': {**TARGET, 'other_databases': ['postgres']}}}))
             self.assertIn('t', sql.load_targets(path))
 
+    def test_rejects_unknown_target_keys(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'databases.json'
+            path.write_text(json.dumps({'schema_version': 1, 'targets': {
+                't': {**TARGET, 'withold': {'users': ['password']}}}}))
+            path.chmod(0o600)
+            with self.assertRaises(sql.SqlError):
+                sql.load_targets(path)
+
     def test_accepts_schema_qualified_withheld_relations(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'databases.json'
@@ -790,6 +799,37 @@ class LiveRoleTests(unittest.TestCase):
                                 text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('shadowed', result.stderr)
+
+    def test_refuses_a_login_that_runs_as_another_role(self):
+        safe = 'agent_probe_safe_' + os.urandom(3).hex()
+        self.admin(f'CREATE ROLE {safe} NOLOGIN')
+        self.addCleanup(self.admin, f'DROP ROLE IF EXISTS {safe}')
+        role = self.scratch_role(f'GRANT INSERT ON public.users TO {{role}}; GRANT {safe} TO {{role}}; '
+                                 f'ALTER ROLE {{role}} SET role = {safe};')
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(role))
+        self.assertIn('different role than the login', str(raised.exception))
+
+    def test_role_sql_clears_persistent_role_settings(self):
+        self.admin('ALTER ROLE agent_readonly SET work_mem = 1234')
+        self.assertEqual(self.run_role_sql().returncode, 0)
+        settings = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c',
+                                   "SELECT array_to_string(setconfig, ',') FROM pg_db_role_setting "
+                                   "WHERE setrole = 'agent_readonly'::regrole"], capture_output=True, text=True).stdout
+        self.assertNotIn('work_mem', settings)
+        self.assertIn('default_transaction_read_only=on', settings)
+
+    def test_refuses_types_with_unlisted_compiled_support_functions(self):
+        name = 'agent_probe_t_' + os.urandom(3).hex()
+        self.admin(f"CREATE TYPE public.{name}; "
+                   f"CREATE FUNCTION public.{name}_in(cstring) RETURNS public.{name} LANGUAGE internal IMMUTABLE STRICT AS 'textin'; "
+                   f"CREATE FUNCTION public.{name}_out(public.{name}) RETURNS cstring LANGUAGE internal IMMUTABLE STRICT AS 'textout'; "
+                   f"CREATE TYPE public.{name} (INPUT = public.{name}_in, OUTPUT = public.{name}_out, LIKE = text); "
+                   f"REVOKE EXECUTE ON FUNCTION public.{name}_in(cstring), public.{name}_out(public.{name}) FROM PUBLIC")
+        self.addCleanup(self.admin, f'DROP TYPE public.{name} CASCADE')
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn(f'{name}_in', str(raised.exception))
 
     def test_refused_role_never_runs_the_query_in_the_same_session(self):
         role = self.scratch_role('GRANT INSERT ON public.users TO {role};')

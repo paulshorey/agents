@@ -46,6 +46,8 @@ RELATION = re.compile(r'^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*$')  # table or 
 # Full routine identity as regprocedure prints it with search_path pinned to pg_catalog,
 # e.g. public.digest(text,text). Overloads must each be listed.
 ROUTINE = re.compile(r'^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\([a-z0-9_ ,.\[\]]*\)$')
+TARGET_KEYS = {'description', 'profile', 'variable', 'host', 'port', 'database', 'docs',
+               'withheld', 'allowed_routines', 'other_databases'}
 DATABASE_NAME = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
 GUARD_MARK = 'AGENTS_SQL_GUARD '
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
@@ -68,7 +70,10 @@ ROUTINE_IDENTITY = r"(n.nspname||'.'||p.proname||substring(p.oid::regprocedure::
 # table, column, sequence, server or large-object level is caught. Ownership
 # comes from pg_shdepend, which records owners of every object type.
 GUARD_SQL = rf"""
-SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication)::text AS elevated,
+SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication
+    -- A persistent `SET role` would make the checks audit a role other than the login,
+    -- which `SET ROLE NONE` restores; only the authenticated role itself is accepted.
+    OR session_user <> current_user)::text AS elevated,
   EXISTS(SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass
     AND d.refobjid=r.oid AND d.deptype='o')::text AS owns,
   (EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
@@ -116,7 +121,12 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
         -- routine there is never a core built-in, whatever its schema or extension.
         OR (l.lanname IN ('c', 'internal') AND (n.nspname<>'pg_catalog' OR p.oid >= 16384)
           AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[]))))
-      AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+      -- A type's support functions run whenever its values are read or cast, even
+      -- without EXECUTE on them (CREATE TYPE documents this as an implicit grant).
+      AND (has_function_privilege(current_user, p.oid, 'EXECUTE')
+        OR p.oid IN (SELECT unnest(ARRAY[t.typinput, t.typoutput, t.typreceive, t.typsend, t.typmodin,
+            t.typmodout, t.typanalyze, t.typsubscript]::oid[]) FROM pg_type t
+          UNION SELECT unnest(ARRAY[rg.rngcanonical, rg.rngsubdiff]::oid[]) FROM pg_range rg))
     ORDER BY 1 LIMIT 5) routines), '') AS routines,
   -- Roles are cluster-wide and PUBLIC may connect to every database by default; the
   -- other databases' grants are not audited here, so each must be listed by the target.
@@ -162,6 +172,8 @@ def load_targets(path=None):
         for name, target in data['targets'].items():
             if (not TARGET_NAME.fullmatch(name) or not isinstance(target, dict)
                     or not {'description', 'profile', 'variable', 'host', 'port', 'database'} <= set(target)
+                    # An unknown key is usually a misspelled safeguard (withold), which must fail closed.
+                    or set(target) - TARGET_KEYS
                     or not all(isinstance(target[k], str) and target[k] for k in ('description', 'host', 'database'))
                     or not isinstance(target['profile'], str) or not isinstance(target['variable'], str)
                     or not re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', target['profile'])
@@ -412,7 +424,7 @@ def guard_result(stderr):
     (safe, elevated, owns, writes, creates, memberships, grantable, routines, others,
      maintain, parameter, exposed, missing, user, version) = fields
     problems = [label for label, flag in (
-        ('has elevated role attributes', elevated), ('owns database objects', owns),
+        ('has elevated role attributes or runs as a different role than the login', elevated), ('owns database objects', owns),
         ('can write to tables, columns, sequences, foreign servers or large objects', writes),
         ('can create objects or foreign servers', creates),
         ('holds grant options or default privileges on future objects', grantable),
@@ -707,7 +719,7 @@ def command_prepare(args):
         _write_private(setup, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', scram_verifier(password)))
         _write_private(pending, url + '\n')
     print(f'Prepared a new password for {args.target}; the current credential stays active until you activate it.\n'
-          f'As a superuser or CREATEROLE role, run the prepared setup (it contains a password verifier; keep it private):\n'
+          f'As a superuser (Railway: the postgres user), run the prepared setup (it contains a password verifier; keep it private):\n'
           f'  pbcopy < {setup}   # then paste into the database SQL console, or: psql OWNER_URL -f {setup}\n'
           f'Then run: agents-sql activate {args.target}  (verifies the new role, stores it, deletes both files).')
     return 0

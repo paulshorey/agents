@@ -65,7 +65,13 @@ correct rather than adding more client-side rules.
   effective privileges, so a column grant or `pg_read_all_data` is refused. Keys are
   `table` (schema `public`) or `schema.table`. A withheld relation or column that does
   not exist fails closed, so update the list when a migration renames one.
-  Any role membership is refused.
+  Any role membership is refused. A target with an unknown key is refused, so a
+  misspelled safeguard such as `withold` fails instead of silently checking nothing.
+- The check audits the login role itself: a session whose current role differs from
+  the authenticated one (a persistent `SET role` setting) is refused, and the role
+  SQL clears the role's persistent settings. Compiled support functions of any type
+  or range count as executable even without `EXECUTE`, because reading or casting a
+  value of that type calls them.
 - The URL is passed to `psql` through libpq environment variables only, with inherited
   `PG*`/`DATABASE_URL` settings dropped. SQL containing a backslash is rejected, so
   psql meta-commands (`\!`, `\o |cmd`, `\copy ... program`) cannot start a local
@@ -117,9 +123,10 @@ correct rather than adding more client-side rules.
    Roles are cluster-wide: if this database shares a cluster with another registered
    target, prepare once and store that password for the other target with `set-url`.
 2. Run that prepared copy of [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
-   (one transaction; it covers schema `public`) as a superuser or a role with
-   `CREATEROLE` (database ownership cannot create or alter roles; Railway's
-   `postgres` user is a superuser): `pbcopy < FILE`
+   (one transaction; it covers schema `public`) as a superuser (Railway's `postgres`
+   user is one). It creates a role and changes grants on objects other roles own,
+   including a `pg_catalog` function, which neither database ownership nor
+   `CREATEROLE` allows. It also clears the role's persistent settings: `pbcopy < FILE`
    and paste into the hosting provider's SQL console for that database (Railway:
    Postgres service → **Data** tab), or `psql OWNER_URL -f FILE`. It must run as a
    superuser or a member of every role that created default privileges naming

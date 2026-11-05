@@ -1,6 +1,7 @@
 -- Create a dedicated read-only login for AI agents. Run once per database as a
--- superuser or a role with CREATEROLE (Railway's `postgres` user is a superuser;
--- owning the database is not enough to create or alter roles), for example in
+-- superuser (Railway's `postgres` user is one): it creates a role and changes
+-- grants on objects other roles own, including a pg_catalog function, which neither
+-- database ownership nor CREATEROLE allows. Run it, for example, in
 -- Railway's Postgres "Data" tab or with psql using that database's DATABASE_PUBLIC_URL.
 --
 -- Do not edit this template: `agents-sql prepare TARGET` keeps a new connection URL
@@ -33,8 +34,8 @@ BEGIN
   IF secret !~ '^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$' THEN
     RAISE EXCEPTION 'Set agents.readonly_verifier to the SCRAM-SHA-256 verifier from agents-sql prepare (run its prepared role SQL file, never a cleartext password)';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
-    RAISE EXCEPTION 'Run this as a superuser or a role with CREATEROLE (on PostgreSQL 16+ also with ADMIN OPTION on an existing agent_readonly). Database ownership alone cannot create or alter roles.';
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND rolsuper) THEN
+    RAISE EXCEPTION 'Run this as a superuser (Railway: the postgres user). It creates a role and changes grants on objects other roles own, which neither database ownership nor CREATEROLE allows.';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_readonly') THEN
     CREATE ROLE agent_readonly LOGIN;
@@ -42,6 +43,10 @@ BEGIN
   EXECUTE format('ALTER ROLE agent_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION '
     'NOBYPASSRLS CONNECTION LIMIT 5 PASSWORD %L', secret);
 END $$;
+-- Clear every persistent setting (a stale `SET role` would make the login act as
+-- another role) before setting the ones this role needs.
+ALTER ROLE agent_readonly RESET ALL;
+DO $$ BEGIN EXECUTE format('ALTER ROLE agent_readonly IN DATABASE %I RESET ALL', current_database()); END $$;
 ALTER ROLE agent_readonly SET default_transaction_read_only = on;
 ALTER ROLE agent_readonly SET statement_timeout = '30s';
 ALTER ROLE agent_readonly SET idle_in_transaction_session_timeout = '60s';
