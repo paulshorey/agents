@@ -26,6 +26,8 @@ create anything, and the session defaults to read-only with a 30s statement time
 - Prefer aggregates and counts. Select only the columns you need, add `LIMIT`, and
   do not paste personal data (emails, names, phone numbers) into chat, PRs, issues
   or logs unless the user asked for those specific records.
+- SQL may not contain backslashes (psql meta-commands are disabled); use `chr(92)`
+  for a literal backslash. Connections use TLS (`sslmode=require` or stronger).
 - Never print, echo or store a connection URL, password or token. Credentials,
   session tokens, invitation codes and voucher QR tokens are not readable by the role.
 - Writes, migrations, backfills and role changes are out of scope. Follow the

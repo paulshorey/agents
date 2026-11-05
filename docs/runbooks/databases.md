@@ -25,12 +25,24 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - `agents-sql` refuses a stored URL whose host, port or database differs from the
   target, and refuses any role that is elevated, owns or can create objects, has
   non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
+- Each target's `withheld` list (tables or columns) must be unreadable; the tool
+  checks effective privileges, so a column grant or `pg_read_all_data` is refused.
+  Any role membership is refused.
 - The URL is passed to `psql` through libpq environment variables only, with inherited
-  `PG*`/`DATABASE_URL` settings dropped. Nothing prints it.
+  `PG*`/`DATABASE_URL` settings dropped. SQL containing a backslash is rejected, so
+  psql meta-commands (`\!`, `\o |cmd`, `\copy ... program`) cannot start a local
+  program that inherits the password. Use `chr(92)` for a literal backslash.
+- Deployed connections must use `sslmode=require` (the default when omitted),
+  `verify-ca` or `verify-full`; the latter two need `sslrootcert`. Railway's public TCP
+  proxy serves a self-signed certificate, so `require` (encrypted, server not
+  authenticated) is the practical baseline there; pin the exported root CA with
+  `verify-ca` for authentication. Weaker modes are accepted only for loopback hosts.
 
 ## Owner setup (once per database)
 
-1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`.
+1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`. Roles are
+   cluster-wide: if this database shares a cluster with another registered target,
+   reuse that role's password (or update every affected URL together).
 2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
    as the database owner with that password substituted: in the hosting provider's
    SQL console for that database (Railway: Postgres service → **Data** tab), or with

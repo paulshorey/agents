@@ -26,6 +26,29 @@ TARGET = {'description': 'Fixture', 'profile': 'postgres.fixture', 'variable': '
           'host': 'db.example.test', 'port': 6543, 'database': 'railway'}
 
 
+def url(host='db.example.test', port=6543, database='railway', user='agent_readonly', secret=None, **query):
+    """Build fixture URLs at runtime so no credential-shaped literal is committed."""
+    secret = secret if secret is not None else 'x' + os.urandom(6).hex()
+    netloc = f'{urllib.parse.quote(user)}:{urllib.parse.quote(secret, safe="")}@{host}:{port}' if user else f'{host}:{port}'
+    return urllib.parse.urlunsplit(('postgresql', netloc, '/' + database, urllib.parse.urlencode(query), ''))
+
+
+class FakeHosting:
+    class HostingError(Exception):
+        pass
+
+    profiles = {'postgres.fixture': {'provider': 'postgres', 'path': '~/x', 'variables': ['FIXTURE_DATABASE_URL']},
+                'railway.workspace': {'provider': 'railway', 'path': '~/y', 'variables': ['RAILWAY_API_TOKEN']}}
+
+    @classmethod
+    def credential_profiles(cls):
+        return cls.profiles
+
+    @staticmethod
+    def profile_environment(profile, base=None, variables=None):
+        return {}
+
+
 class RegistryTests(unittest.TestCase):
     def test_example_registry_is_valid_and_has_no_real_endpoints(self):
         targets = sql.load_targets(sql.EXAMPLE_REGISTRY)
@@ -46,12 +69,13 @@ class RegistryTests(unittest.TestCase):
     def test_rejects_malformed_registry(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'databases.json'
-            path.write_text(json.dumps({'schema_version': 1, 'targets': {'Bad Name': TARGET}}))
-            with self.assertRaises(sql.SqlError):
-                sql.load_targets(path)
-            path.write_text(json.dumps({'schema_version': 1, 'targets': {'ok': {**TARGET, 'port': 'x'}}}))
-            with self.assertRaises(sql.SqlError):
-                sql.load_targets(path)
+            for targets in [{'Bad Name': TARGET}, {'ok': {**TARGET, 'port': 'x'}},
+                            {'ok': {**TARGET, 'withheld': {'users; drop': '*'}}},
+                            {'ok': {**TARGET, 'withheld': {'users': ["pass'word"]}}},
+                            {'ok': {**TARGET, 'profile': '/tmp/creds.env'}}]:
+                path.write_text(json.dumps({'schema_version': 1, 'targets': targets}))
+                with self.assertRaises(sql.SqlError, msg=targets):
+                    sql.load_targets(path)
 
     def test_unknown_target(self):
         with self.assertRaises(sql.SqlError):
@@ -60,34 +84,75 @@ class RegistryTests(unittest.TestCase):
 
 class ConnectionTests(unittest.TestCase):
     def test_builds_libpq_environment_without_inherited_database_settings(self):
-        url = 'postgresql://agent_readonly:p%40ss@db.example.test:6543/railway?sslmode=require'
+        secret = 'p@' + os.urandom(4).hex()
         with patch.dict(os.environ, {'PGHOST': 'evil', 'DATABASE_URL': 'postgres://other', 'PATH': '/bin'}):
-            env = sql.libpq_environment(url, TARGET)
+            env = sql.libpq_environment(url(secret=secret, sslmode='require'), TARGET)
         self.assertEqual(env['PGHOST'], 'db.example.test')
-        self.assertEqual(env['PGPASSWORD'], 'p@ss')
+        self.assertEqual(env['PGPASSWORD'], secret)
         self.assertEqual(env['PGSSLMODE'], 'require')
         self.assertIn('default_transaction_read_only=on', env['PGOPTIONS'])
         self.assertNotIn('DATABASE_URL', env)
 
+    def test_deployed_connections_require_tls(self):
+        self.assertEqual(sql.libpq_environment(url(), TARGET)['PGSSLMODE'], 'require')
+        for mode in ['disable', 'allow', 'prefer']:
+            with self.assertRaises(sql.SqlError, msg=mode):
+                sql.libpq_environment(url(sslmode=mode), TARGET)
+        with self.assertRaises(sql.SqlError):
+            sql.libpq_environment(url(sslmode='verify-full'), TARGET)
+        with tempfile.NamedTemporaryFile() as cert:
+            env = sql.libpq_environment(url(sslmode='verify-ca', sslrootcert=cert.name), TARGET)
+            self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), ('verify-ca', cert.name))
+        local = {**TARGET, 'host': '127.0.0.1'}
+        self.assertEqual(sql.libpq_environment(url(host='127.0.0.1', sslmode='disable'), local)['PGSSLMODE'], 'disable')
+
     def test_rejects_connections_that_do_not_match_the_target(self):
-        for url in ['postgresql://u:p@other.test:6543/railway', 'postgresql://u:p@db.example.test:5432/railway',
-                    'postgresql://u:p@db.example.test:6543/other', 'mysql://u:p@db.example.test:6543/railway',
-                    'postgresql://u@db.example.test:6543/railway',
-                    'postgresql://u:p@db.example.test:6543/railway?host=elsewhere']:
-            with self.assertRaises(sql.SqlError, msg=url):
-                sql.libpq_environment(url, TARGET)
+        for candidate in [url(host='other.test'), url(port=5432), url(database='other'),
+                          url().replace('postgresql', 'mysql', 1), url(user=None),
+                          url(host='elsewhere'), url() + '&host=elsewhere', url(options='-c x=y')]:
+            with self.assertRaises(sql.SqlError, msg=candidate):
+                sql.libpq_environment(candidate, TARGET)
 
     def test_missing_credential_explains_the_owner_step(self):
-        class Hosting:
-            class HostingError(Exception):
-                pass
-
-            @staticmethod
-            def profile_environment(profile, base=None, variables=None):
-                return {}
         with self.assertRaises(sql.SqlError) as raised:
-            sql.connection_url(TARGET, Hosting)
+            sql.connection_url(TARGET, FakeHosting)
         self.assertIn('set-url', str(raised.exception))
+
+    def test_credentials_only_come_from_declared_postgres_profile_variables(self):
+        for entry in [{**TARGET, 'profile': 'railway.workspace', 'variable': 'RAILWAY_API_TOKEN'},
+                      {**TARGET, 'variable': 'OTHER_URL'}, {**TARGET, 'profile': 'postgres.missing'}]:
+            with self.assertRaises(sql.SqlError, msg=entry):
+                sql.check_profile(entry, FakeHosting)
+        sql.check_profile(TARGET, FakeHosting)
+
+    def test_set_url_refuses_an_unrelated_credential_before_connecting_or_writing(self):
+        entry = {**TARGET, 'profile': 'railway.workspace', 'variable': 'RAILWAY_API_TOKEN'}
+        with patch.object(sql, 'target', return_value=entry), patch.object(sql, '_hosting', return_value=FakeHosting), \
+                patch.object(sql, 'guard') as guard, patch.object(sql, 'write_profile_value') as write, \
+                patch('sys.stdin', io.StringIO(url() + '\n')), patch('sys.stderr', new_callable=io.StringIO):
+            self.assertEqual(sql.main(['set-url', 'fixture']), 2)
+        guard.assert_not_called()
+        write.assert_not_called()
+
+
+class MetaCommandTests(unittest.TestCase):
+    def test_rejects_any_backslash_before_connecting(self):
+        for text in ['SELECT 1; \\! env', '\\o |cat', "SELECT '\\'", '\\copy t to program \'env\'', '   ']:
+            with self.assertRaises(sql.SqlError, msg=text):
+                sql.checked_sql(text)
+        self.assertEqual(sql.checked_sql('SELECT chr(92)'), 'SELECT chr(92)')
+
+    def test_query_command_never_starts_psql_for_meta_commands(self):
+        with tempfile.TemporaryDirectory() as directory:
+            script = Path(directory) / 'q.sql'
+            script.write_text('SELECT 1;\n\\! env\n')
+            for args in [['-c', '\\! env'], ['-f', str(script)]]:
+                with patch.object(sql, 'target', return_value=TARGET), \
+                        patch.object(sql, 'connection_url') as connection, \
+                        patch.object(sql.subprocess, 'run') as run, patch('sys.stderr', new_callable=io.StringIO):
+                    self.assertEqual(sql.main(['query', 'fixture', *args]), 2)
+                connection.assert_not_called()
+                run.assert_not_called()
 
 
 class CredentialFileTests(unittest.TestCase):
@@ -110,6 +175,8 @@ class CredentialFileTests(unittest.TestCase):
 
 
 ADMIN_URL = os.environ.get('AGENTS_SQL_TEST_ADMIN_URL')
+WITHHELD = {'users': ['password', 'api_token'], 'user_auth_tokens': '*', 'missing_table': '*',
+            'users_missing': ['token']}
 
 
 @unittest.skipUnless(ADMIN_URL and shutil.which('psql'), 'set AGENTS_SQL_TEST_ADMIN_URL to a disposable localhost database')
@@ -121,35 +188,65 @@ class LiveRoleTests(unittest.TestCase):
         parts = urllib.parse.urlsplit(ADMIN_URL)
         if parts.hostname not in ('127.0.0.1', 'localhost'):
             raise unittest.SkipTest('live role tests only run against localhost')
+        cls.parts = parts
         cls.target = {**TARGET, 'host': parts.hostname, 'port': parts.port or 5432,
-                      'database': parts.path.lstrip('/')}
+                      'database': parts.path.lstrip('/'), 'withheld': WITHHELD}
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
-        cls.password = 'fixture-' + os.urandom(8).hex()
-        fixture = """
+        cls.secret = 'fixture' + os.urandom(8).hex()
+        cls.admin("""
           CREATE TABLE IF NOT EXISTS public.users (id bigint PRIMARY KEY, email text, password text, api_token text);
           CREATE TABLE IF NOT EXISTS public.user_auth_tokens (id bigint PRIMARY KEY, token text);
           INSERT INTO public.users VALUES (1, 'member@example.invalid', 'hash', 'tok') ON CONFLICT DO NOTHING;
-        """
-        subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL, '-c', fixture], check=True,
-                       capture_output=True)
+        """)
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
-                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', cls.password), text=True,
+                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', cls.secret), text=True,
                        check=True, capture_output=True)
-        cls.readonly_url = urllib.parse.urlunsplit(
-            ('postgresql', f'agent_readonly:{cls.password}@{parts.hostname}:{parts.port or 5432}',
-             parts.path, '', ''))
+        cls.readonly_url = cls.role_url('agent_readonly', cls.secret)
 
-    def env(self, url):
-        return sql.libpq_environment(url, self.target)
+    @classmethod
+    def admin(cls, statement):
+        subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL, '-c', statement], check=True,
+                       capture_output=True)
+
+    @classmethod
+    def role_url(cls, user, secret):
+        return url(host=cls.parts.hostname, port=cls.parts.port or 5432, database=cls.parts.path.lstrip('/'),
+                   user=user, secret=secret, sslmode='disable')
+
+    def env(self, connection):
+        return sql.libpq_environment(connection, self.target)
+
+    def scratch_role(self, grants):
+        name = 'agent_probe_' + os.urandom(3).hex()
+        secret = 'probe' + os.urandom(6).hex()
+        self.admin(f"CREATE ROLE {name} LOGIN PASSWORD '{secret}'; GRANT USAGE ON SCHEMA public TO {name}; {grants.format(role=name)}")
+        self.addCleanup(self.admin, f'DROP OWNED BY {name}; DROP ROLE {name}')
+        return self.role_url(name, secret)
 
     def test_verifies_the_read_only_role_and_refuses_the_owner(self):
-        verified = sql.guard(self.env(self.readonly_url))
-        self.assertEqual(verified['user'], 'agent_readonly')
-        owner = urllib.parse.urlsplit(ADMIN_URL)
-        owner_url = urllib.parse.urlunsplit(('postgresql', f'{owner.username}:{owner.password or "x"}@{owner.hostname}:{owner.port or 5432}', owner.path, '', ''))
+        self.assertEqual(sql.guard(self.env(self.readonly_url), WITHHELD)['user'], 'agent_readonly')
+        owner = self.role_url(self.parts.username, urllib.parse.unquote(self.parts.password or 'x'))
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(owner_url))
+            sql.guard(self.env(owner))
         self.assertIn('Refusing to run', str(raised.exception))
+
+    def test_refuses_column_level_write_grants(self):
+        role = self.scratch_role('GRANT SELECT (id, email) ON public.users TO {role}; GRANT UPDATE (email) ON public.users TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('write', str(raised.exception))
+
+    def test_refuses_inherited_read_all_data(self):
+        role = self.scratch_role('GRANT pg_read_all_data TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role), WITHHELD)
+        self.assertIn('pg_read_all_data', str(raised.exception))
+
+    def test_refuses_a_role_that_can_read_withheld_secrets(self):
+        role = self.scratch_role('GRANT SELECT ON public.users TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role), WITHHELD)
+        self.assertIn('users.password', str(raised.exception))
 
     def test_reads_allowed_columns_but_never_writes_or_reads_secrets(self):
         env = self.env(self.readonly_url)
@@ -163,16 +260,14 @@ class LiveRoleTests(unittest.TestCase):
             self.assertNotEqual(denied.returncode, 0, statement)
 
     def test_query_command_runs_sql_through_the_guard(self):
-        with tempfile.TemporaryDirectory() as directory:
-            creds = Path(directory) / 'db.env'
-            with patch.object(sql, 'target', return_value=self.target), \
-                    patch.object(sql, 'connection_url', return_value=self.readonly_url), \
-                    patch('sys.stdout', new_callable=io.StringIO):
-                self.assertEqual(sql.main(['check', 'fixture']), 0)
-            with patch.object(sql, 'target', return_value=self.target), \
-                    patch.object(sql, 'connection_url', return_value=self.readonly_url):
-                self.assertEqual(sql.main(['query', 'fixture', '-c', 'SELECT count(*) FROM public.users']), 0)
-            self.assertFalse(creds.exists())
+        with patch.object(sql, 'target', return_value=self.target), \
+                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
+                patch('sys.stdout', new_callable=io.StringIO):
+            self.assertEqual(sql.main(['check', 'fixture']), 0)
+        with patch.object(sql, 'target', return_value=self.target), \
+                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
+                patch('sys.stderr', new_callable=io.StringIO):
+            self.assertEqual(sql.main(['query', 'fixture', '-c', 'SELECT count(*) FROM public.users']), 0)
 
 
 if __name__ == '__main__':

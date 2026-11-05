@@ -5,6 +5,13 @@
 -- Replace REPLACE_WITH_GENERATED_PASSWORD with a new random password (for example
 -- from `openssl rand -base64 32 | tr -d '/+='`). Never reuse the owner password.
 -- Re-running is safe: it updates the password and grants.
+--
+-- Roles are cluster-wide. If two registered databases share one PostgreSQL
+-- cluster, they share this role and password: reuse the existing password (or
+-- update every affected stored URL together) instead of generating a new one.
+-- On Railway each Postgres service is its own cluster.
+-- Keep the withheld tables/columns below in sync with the target's `withheld`
+-- list in local/databases.json; agents-sql refuses a role that can read them.
 
 DO $$
 BEGIN
