@@ -88,22 +88,15 @@ DECLARE
   secret_columns jsonb := '{"users": ["password", "api_token"], "device_push_tokens": ["token"],
     "membership_offers": ["code"], "get_deals": ["qr_token"]}';
   t text;
+  col text;
   rel regclass;
   cols text;
+  found text;
 BEGIN
   FOR t IN SELECT unnest(secret_tables) UNION SELECT jsonb_object_keys(secret_columns) LOOP
     rel := to_regclass(format('public.%I', t));
     CONTINUE WHEN rel IS NULL;
-    -- A PUBLIC grant or a parent/child table would still expose the secrets.
-    IF has_any_column_privilege('public', rel, 'SELECT') THEN
-      RAISE EXCEPTION 'PUBLIC can read %, which holds secrets; revoke that grant and re-run.', rel;
-    END IF;
-    -- Views run with their owner's privileges, so a PUBLIC-readable view over it leaks too.
-    IF EXISTS (SELECT 1 FROM pg_depend d JOIN pg_rewrite w ON d.classid = 'pg_rewrite'::regclass AND d.objid = w.oid
-        WHERE d.refclassid = 'pg_class'::regclass AND d.refobjid = rel AND w.ev_class <> rel
-          AND has_any_column_privilege('public', w.ev_class, 'SELECT')) THEN
-      RAISE EXCEPTION 'A view over % is readable by PUBLIC; revoke that grant and re-run.', rel;
-    END IF;
+    -- Child or parent tables carry the same rows without these restrictions.
     IF EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = rel OR inhparent = rel) THEN
       RAISE EXCEPTION '% has inheritance or partition relatives; extend this script to withhold its secrets there.', rel;
     END IF;
@@ -126,6 +119,39 @@ BEGIN
       EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);
     END IF;
   END LOOP;
+
+  -- Verify the end state as agent_readonly sees it (direct, PUBLIC and inherited
+  -- grants). Any failure rolls back the whole script, password included.
+  FOREACH t IN ARRAY secret_tables LOOP
+    rel := to_regclass(format('public.%I', t));
+    IF rel IS NOT NULL AND has_any_column_privilege('agent_readonly', rel, 'SELECT') THEN
+      RAISE EXCEPTION 'agent_readonly can still read % (a grant to PUBLIC?); revoke it and re-run.', rel;
+    END IF;
+  END LOOP;
+  FOR t, col IN SELECT k, jsonb_array_elements_text(secret_columns -> k) FROM jsonb_object_keys(secret_columns) k LOOP
+    rel := to_regclass(format('public.%I', t));
+    IF rel IS NOT NULL AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = rel AND a.attname = col AND NOT a.attisdropped)
+        AND has_column_privilege('agent_readonly', rel, col, 'SELECT') THEN
+      RAISE EXCEPTION 'agent_readonly can still read %.% (a grant to PUBLIC?); revoke it and re-run.', rel, col;
+    END IF;
+  END LOOP;
+  -- Only base tables in public: views run with their owner's privileges and could
+  -- expose withheld columns, and other schemas are out of scope.
+  SELECT string_agg(c.oid::regclass::text, ', ') INTO found FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast|temp_|toast_temp_)'
+      AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND (n.nspname <> 'public' OR c.relkind IN ('v', 'm', 'f'))
+      AND has_schema_privilege('agent_readonly', n.oid, 'USAGE')
+      AND has_any_column_privilege('agent_readonly', c.oid, 'SELECT');
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'agent_readonly can read views or relations outside public: % (grants to PUBLIC?); revoke them and re-run.', found;
+  END IF;
+  -- SECURITY DEFINER functions run with their owner's privileges and could return secrets.
+  SELECT string_agg(p.oid::regprocedure::text, ', ') INTO found FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+      AND has_function_privilege('agent_readonly', p.oid, 'EXECUTE');
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'agent_readonly can run SECURITY DEFINER functions: %; revoke EXECUTE from PUBLIC on them and re-run.', found;
+  END IF;
 END $$;
 
 COMMIT;

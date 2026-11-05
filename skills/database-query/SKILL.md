@@ -23,9 +23,9 @@ production can't be confused, and the connection URL is never printed.
 - Prefer aggregates and counts; select only the columns you need and add `LIMIT`.
   Select personal data (emails, names, phone numbers, addresses) only when the user
   asked for those records, and never paste it into PRs, issues or logs.
-- Queries run in a read-only transaction and are cancelled after `--timeout`
-  seconds (default 120). Unqualified names resolve in schema `public`. SQL may not
-  contain backslashes; use `chr(92)` for one.
+- Queries run in a read-only transaction and are cancelled on the server after
+  `--timeout` seconds (default 120, at most 3600). Unqualified names resolve in
+  schema `public`. SQL may not contain backslashes; use `chr(92)` for one.
 - Credential and token columns are not readable; a `permission denied` error on them
   is expected.
 - Use only `agents-sql`: never read the credential file, connect with `psql`

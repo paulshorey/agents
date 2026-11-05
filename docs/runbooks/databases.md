@@ -23,8 +23,9 @@ Agents (Claude Code, Codex, Cursor) query deployed databases with
   checks the role and runs the SQL only if the role is not elevated, not a member of
   other roles, owns nothing and cannot write or create objects. That catches an owner
   or app URL stored by mistake. The SQL then runs in a read-only transaction with
-  `search_path` set to `public`, and is cancelled on the server after `--timeout`
-  seconds. The role also has a 30 s statement timeout and a 5-connection limit.
+  `search_path` set to `public`, with the server statement timeout set to `--timeout`
+  seconds (default 120), and is cancelled on the server if it runs over. Outside the
+  tool the role has a 30 s statement timeout and a 5-connection limit.
 
 | Profile | File | Variables |
 | --- | --- | --- |
@@ -42,7 +43,9 @@ Agents (Claude Code, Codex, Cursor) query deployed databases with
    `psql 'host=HOST port=PORT dbname=DB user=postgres sslmode=require' -f FILE`, which
    prompts for the password (never put the owner URL on the command line). It stops
    without changing anything if PUBLIC can create in schema `public` (PostgreSQL 14
-   default) or read a secret table, or if a secret table has parent or child tables. Endpoints and service IDs are
+   default) or a secret table has parent or child tables. It finishes by verifying
+   that the role cannot read withheld tables or columns, any view, or anything outside
+   `public`, and cannot run `SECURITY DEFINER` functions; otherwise it rolls back. Endpoints and service IDs are
    in the project's private runbook (LivX: `~/git/livx/docs/database-migrations.md`).
 3. `~/.agents/bin/agents-sql activate TARGET` checks the new role, stores the URL and
    deletes both files. If the check fails, nothing changes.
@@ -75,7 +78,10 @@ step 2 only with explicit authorization for that database.
   aggregates. To restrict it later, add those columns to the role SQL's withheld
   lists, or grant an audited view instead of the table.
 - The tool's SQL rules are guardrails, not a sandbox: any program running as this
-  user can read the credential file. Keep it mode 600.
+  user can read the credential file. Keep it mode 600. Like any login, the role can
+  create temporary tables and large objects (also by ending the tool's transaction in
+  the submitted SQL); it cannot read withheld data or change application data.
+- Each target needs its own credential variable; two targets sharing one is refused.
 
 ## Validation
 

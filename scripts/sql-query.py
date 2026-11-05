@@ -113,6 +113,10 @@ def load_targets(path=None):
                     or not re.fullmatch(r'[A-Z][A-Z0-9_]*', entry['variable'])
                     or not isinstance(entry['port'], int) or not 1 <= entry['port'] <= 65535):
                 raise ValueError()
+        # One dotenv variable holds one URL, so two targets cannot share it.
+        slots = [(entry['profile'], entry['variable']) for entry in data['targets'].values()]
+        if len(slots) != len(set(slots)):
+            raise ValueError()
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         raise SqlError(f'Database target registry is malformed; inspect {path}') from None
     return data['targets']
@@ -272,7 +276,7 @@ def query_script(text):
 
 def summary(name, entry, verified):
     return (f"target={name} host={entry['host']} port={entry['port']} database={entry['database']} "
-            f"role={verified['user']} server={verified['server_version']} read_only=verified")
+            f"role={verified['user']} server={verified['server_version']} role_check=passed")
 
 
 def command_targets(args):
@@ -308,6 +312,8 @@ def command_query(args):
         text = sys.stdin.read()
     script = query_script(text)
     env = libpq_environment(connection_url(entry), entry)
+    # The server-side limit matches --timeout (the role's 30 s is only a default).
+    env['PGOPTIONS'] = SESSION_OPTIONS.replace('statement_timeout=30s', f'statement_timeout={args.timeout}s')
     result = run_session(env, script, ['--csv'] if args.csv else [], capture_stdout=False, timeout=args.timeout)
     verified, problems, rest = guard_result(result.stderr)
     if problems:
@@ -443,13 +449,24 @@ def command_activate(args):
         try:
             verified = guard(libpq_environment(url, entry))
         except SqlError as error:
-            raise SqlError(f'{error} The new password is not active; run the prepared role SQL as a superuser, '
-                           f'then activate again. The current credential is unchanged.') from None
+            if str(error).startswith('Refusing'):
+                raise SqlError(f'{error} The new password works, so the prepared SQL has run, but the role failed '
+                               f'the check: fix the reported grants, then activate again. The stored URL was not '
+                               f'changed and its old password no longer works.') from None
+            raise SqlError(f'{error} If the new password was rejected, run the prepared role SQL as a superuser, '
+                           f'then activate again. The stored URL was not changed.') from None
         _replace_assignment(credentials, entry['variable'], url)
         for path in (pending, setup):
             path.unlink(missing_ok=True)
     print('Activated. ' + summary(args.target, entry, verified))
     return 0
+
+
+def positive_int(value):
+    number = int(value)
+    if not 1 <= number <= 3600:
+        raise argparse.ArgumentTypeError('must be 1-3600 seconds')
+    return number
 
 
 def main(argv=None):
@@ -463,7 +480,7 @@ def main(argv=None):
     source.add_argument('-c', '--command')
     source.add_argument('-f', '--file')
     query.add_argument('--csv', action='store_true')
-    query.add_argument('--timeout', type=int, default=120,
+    query.add_argument('--timeout', type=positive_int, default=120,
                        help='Seconds before the statement is cancelled on the server (default 120)')
     sub.add_parser('prepare', help='Generate a pending password and write the role SQL privately').add_argument('target')
     sub.add_parser('activate', help='Verify the pending password from prepare and store it').add_argument('target')
