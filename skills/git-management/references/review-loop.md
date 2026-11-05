@@ -29,13 +29,16 @@ review. The user converts PRs to drafts to park them and pause automatic review.
 3. **Handle every comment.** Address all new feedback since your last check: Codex
    findings and comments from people requesting changes. Verify correctness,
    necessity, and scope against the current code. For valid, necessary findings,
-   fix, validate, commit, and push. Reply to **each** addressed comment with the
-   change, commit or contribution PR, and validation, even when one fix addresses
-   several comments. For unnecessary or incorrect suggestions, reply with the
-   concrete reason instead of changing code. Use the original inline thread; for
-   ordinary comments/review summaries, post a PR reply linking the original.
-   Verify each reply was posted; an existing reply for the same outcome need not
-   be duplicated.
+   fix, validate, commit, and push. Just before pushing, recheck that the PR is
+   still open (`pr.state`, `pr.merged`); the user may merge while you work. If it
+   was merged or closed, put the fixes on a new branch from the updated base, open
+   a new PR, and link it in the replies. Reply to **each** addressed comment with
+   the change, commit or contribution PR, and validation, even when one fix
+   addresses several comments. For unnecessary or incorrect suggestions, reply with
+   the concrete reason instead of changing code. Use the original inline thread;
+   for ordinary comments/review summaries, post a PR reply linking the original.
+   Verify each reply was posted; an existing reply for the same outcome need not be
+   duplicated.
 4. **Resolve handled threads.** After verification and reply, resolve inline
    threads whose finding was fixed or rejected with evidence. Ordinary comments
    cannot be marked resolved; the linked reply records their disposition. Leave
