@@ -279,12 +279,25 @@ def reactions(api, path):
              "author": login(reaction.get("user"))} for reaction in api.pages(path)]
 
 
-def codex_review(comments, head):
+CODEX_COMPLETED_AT = re.compile(r'<relative-time datetime="([^"]+)"')
+CLEAN_NOTE = re.compile(r"<!-- codex-clean-review-note:v1 ([0-9a-f]+) -->")
+
+
+def codex_findings(sha, inline_comments):
+    """Codex's top-level inline findings posted against one reviewed commit."""
+    return sum(1 for c in inline_comments
+               if login(c.get("user")) in CODEX_BOTS and not c.get("in_reply_to_id")
+               and sha and (c.get("original_commit_id") or c.get("commit_id")) == sha)
+
+
+def codex_review(comments, head, inline_comments=()):
     """Codex's latest machine-readable review state, from its summary comment.
 
     A review without findings posts no review object, so this state is the only
-    record linking it to a commit. It is reported even when filtering hides the
-    summary comment. Markers quoted inside code examples are ignored.
+    record linking it to a commit. Codex edits one summary comment in place, so
+    GitHub shows it at its original time; `summary` says so in plain words. It is
+    reported even when filtering hides the summary comment. Markers quoted inside
+    code examples are ignored.
     """
     latest = None
     for comment in comments:
@@ -304,11 +317,48 @@ def codex_review(comments, head):
         state = None
     code = state.get("code_review") if isinstance(state, dict) else None
     code = code if isinstance(code, dict) else {}
-    return {
+    sha, status = code.get("commit_sha"), code.get("status")
+    covers = sha == head and status == "completed"
+    created, updated = comment.get("created_at"), comment.get("updated_at")
+    completed = CODEX_COMPLETED_AT.search(comment.get("body") or "")
+    completed_at = completed[1] if completed else updated
+    findings = codex_findings(sha, inline_comments)
+    if not sha or not status:
+        outcome = "unknown"
+    elif status != "completed":
+        outcome = status
+    else:
+        outcome = "findings" if findings else "clean"
+    edited = bool(created and updated and created != updated)
+    short = (sha or "?")[:7]
+    if outcome == "clean":
+        summary = f"Codex completed a review of {short} at {completed_at} and posted no new findings."
+    elif outcome == "findings":
+        summary = f"Codex completed a review of {short} at {completed_at} and posted {findings} inline finding(s)."
+    else:
+        summary = f"Codex review of {short} is {outcome} (summary updated {updated})."
+    if edited:
+        summary += (f" This is recorded only by editing Codex's summary comment, created {created};"
+                    " GitHub shows it at that original time, not as a new comment.")
+    if sha != head:
+        summary += f" It does not cover the current head {head[:7]}."
+    noted = any(m[1] == head for c in comments
+                if (m := CLEAN_NOTE.search(c.get("body") or "")))
+    result = {
         "comment_id": comment["id"], "url": comment.get("html_url"),
-        "updated_at": comment.get("updated_at"), "state": state,
-        "covers_head": code.get("commit_sha") == head and code.get("status") == "completed",
+        "created_at": created, "updated_at": updated, "edited_in_place": edited,
+        "reviewed_commit": sha, "status": status, "completed_at": completed_at,
+        "findings_on_reviewed_commit": findings, "outcome": outcome,
+        "summary": summary, "state": state, "covers_head": covers,
+        "clean_note_posted": noted,
     }
+    if covers and outcome == "clean" and not noted:
+        result["clean_note"] = (
+            f"<!-- codex-clean-review-note:v1 {head} -->\n"
+            f"Codex review of `{head[:7]}` completed at {completed_at} with no new findings. "
+            f"Codex records clean reviews only by editing its [summary comment]({comment.get('html_url')}), "
+            "which GitHub keeps at its original time, so this note marks the result.")
+    return result
 
 
 def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False):
@@ -413,7 +463,7 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
         "pr": pr, "commits": commits, "files": files, "checks": checks,
         "statuses": statuses, "reviews": reviews, "comments": kept,
         "threads": threads, "filtering": filtering,
-        "codex_review": codex_review(issue_comments, head),
+        "codex_review": codex_review(issue_comments, head, inline_comments),
         "pr_reactions": reactions(api, f"{api.prefix}/issues/{api.number}/reactions"),
     }
     if include_diff:

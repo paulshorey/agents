@@ -144,9 +144,19 @@ should write a file and query it rather than read truncated stdout. Fields:
   without findings posts no review object, so this is its only commit-linked
   record. It is reported even though filtering drops the summary comment; `null`
   means Codex has not posted one, and `state` is `null` if the marker is unreadable.
+  Codex edits that one comment in place for every review, so GitHub shows it at
+  its creation time. The helper therefore also reports `reviewed_commit`,
+  `status`, `completed_at` (from the summary table), `edited_in_place`,
+  `findings_on_reviewed_commit` (Codex's top-level inline comments on that
+  commit), and `outcome` (`clean`, `findings`, a running status, or `unknown`),
+  plus a plain-language `summary`. For a clean review of the head it adds
+  `clean_note`, a ready-to-post PR comment marked
+  `<!-- codex-clean-review-note:v1 SHA -->`; `clean_note_posted` is true once a
+  note for the head exists.
 - `pr_reactions`: actors/content/timestamps on the PR itself. Codex reacts `eyes`
-  while reviewing and `+1` when a review finds nothing, but a reaction does not
-  identify a reviewed commit; use `codex_review` or a review's `commit_id`.
+  while reviewing and may react `+1` when a review finds nothing (it did not on a
+  PR with earlier findings), but a reaction does not identify a reviewed commit;
+  use `codex_review` or a review's `commit_id`.
 - `filtering`: counts of removed entries and cleaned bodies. `--no-filter` keeps
   the original comment text and entries in the same output schema.
 

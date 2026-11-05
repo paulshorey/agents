@@ -20,8 +20,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    not a busy loop. Then fetch fresh PR context, including all comment, review,
    and thread pages. Codex has reviewed the head when the helper's `codex_review`
    reports `covers_head: true`, or when a Codex review's `commit_id` is that head.
-   Codex reacts 👀 to the PR while reviewing, posts its findings as review
-   comments, and reacts 👍 when it finds nothing. A reaction does not name a commit,
+   Codex reacts 👀 to the PR while reviewing and posts its findings as review
+   comments. A clean review posts nothing new: Codex only edits its existing
+   summary comment, which GitHub keeps at its original time. Read the helper's
+   `codex_review.outcome` and `summary` instead of comment timestamps. A reaction does not name a commit,
    and a review of an older head does not cover the current one; silence and
    passing CI do not prove review.
 3. **Handle every comment.** Address all new feedback since your last check: Codex
@@ -44,6 +46,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    the current head, yields no new valid, necessary fixes, and all handled feedback
    has verified replies and thread dispositions. Recheck required CI independently.
    Do not push again for an unchanged head just to revisit a rejected finding.
+   When `codex_review` reports `outcome: "clean"` with `covers_head: true`, post
+   its `clean_note` once as a PR comment (`gh pr comment <PR> --body-file`) so the
+   clean result is visible and timestamped on GitHub; skip it when
+   `clean_note_posted` is true. Never edit the note to add the Codex bot handle.
 
 If 30 minutes pass without a review of the current head, handle any feedback that
 did arrive, keep the head/push record, and report the review pending. If Codex

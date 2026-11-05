@@ -448,6 +448,34 @@ Keep the finding suffix.</details>'''
         broken = pr_context.codex_review([comment(1, "<!-- codex-review-state:v1 {oops} -->")], "abc")
         self.assertEqual((broken["state"], broken["covers_head"]), (None, False))
 
+    def test_codex_review_reports_clean_result_from_edited_summary(self):
+        body = (self.state("abc") + '\n| Code Review | Completed <relative-time datetime="2026-01-02T00:00:05Z">'
+                "</relative-time> |")
+        summary = {"id": 7, "body": body, "user": {"login": BOT}, "html_url": f"{URL}#issuecomment-7",
+                   "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T00:00:06Z"}
+        clean = pr_context.codex_review([summary], "abc")
+        self.assertEqual((clean["outcome"], clean["edited_in_place"], clean["completed_at"]),
+                         ("clean", True, "2026-01-02T00:00:05Z"))
+        self.assertIn("no new findings", clean["summary"])
+        self.assertIn("created 2026-01-01T00:00:00Z", clean["summary"])
+        self.assertIn("codex-clean-review-note:v1 abc", clean["clean_note"])
+        self.assertNotIn("@", clean["clean_note"].replace(URL, ""))
+        # An existing note for the head suppresses another one.
+        note = {"id": 8, "body": clean["clean_note"], "user": {"login": "agent"}}
+        noted = pr_context.codex_review([summary, note], "abc")
+        self.assertTrue(noted["clean_note_posted"])
+        self.assertNotIn("clean_note", noted)
+        # Inline findings on the reviewed commit make the outcome "findings", never clean.
+        finding = {"id": 9, "user": {"login": BOT}, "original_commit_id": "abc"}
+        reply = {"id": 10, "user": {"login": BOT}, "original_commit_id": "abc", "in_reply_to_id": 9}
+        found = pr_context.codex_review([summary], "abc", [finding, reply])
+        self.assertEqual((found["outcome"], found["findings_on_reviewed_commit"]), ("findings", 1))
+        self.assertNotIn("clean_note", found)
+        # A clean review of an older commit says it does not cover the head.
+        stale = pr_context.codex_review([summary], "def")
+        self.assertIn("does not cover the current head def", stale["summary"])
+        self.assertNotIn("clean_note", stale)
+
     def test_resolved_or_outdated_thread_changes_invalidate_snapshot(self):
         for key in ("isResolved", "isOutdated", "id"):
             fixture = Fixture()
