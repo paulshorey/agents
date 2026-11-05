@@ -145,6 +145,34 @@ BEGIN
   IF found IS NOT NULL THEN
     RAISE EXCEPTION 'agent_readonly can read views or relations outside public: % (grants to PUBLIC?); revoke them and re-run.', found;
   END IF;
+  -- Privileges that act outside a read-only transaction: TRIGGER and MAINTAIN on tables
+  -- (17+), configuration parameters such as ALTER SYSTEM (15+), large-object UPDATE.
+  SELECT string_agg(c.oid::regclass::text, ', ') INTO found FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname !~ '^pg_(toast|temp_|toast_temp_)' AND c.relkind IN ('r', 'p', 'm')
+      AND has_table_privilege('agent_readonly', c.oid, 'TRIGGER');
+  IF found IS NULL AND current_setting('server_version_num')::int >= 170000 THEN
+    EXECUTE $q$SELECT string_agg(c.oid::regclass::text, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname !~ '^pg_(toast|temp_|toast_temp_)' AND c.relkind IN ('r', 'p', 'm')
+        AND has_table_privilege('agent_readonly', c.oid, 'MAINTAIN')$q$ INTO found;
+  END IF;
+  IF found IS NOT NULL THEN
+    RAISE EXCEPTION 'agent_readonly has TRIGGER or MAINTAIN on: % (grants to PUBLIC?); revoke them and re-run.', found;
+  END IF;
+  IF current_setting('server_version_num')::int >= 150000 THEN
+    EXECUTE $q$SELECT string_agg(p.parname, ', ') FROM pg_parameter_acl p, aclexplode(p.paracl) a
+      WHERE a.grantee IN ('agent_readonly'::regrole, 0)$q$ INTO found;
+    IF found IS NOT NULL THEN
+      RAISE EXCEPTION 'agent_readonly or PUBLIC holds configuration parameter privileges on: %; revoke them and re-run.', found;
+    END IF;
+  END IF;
+  FOR found IN SELECT l.oid::text FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
+      WHERE a.grantee = 'agent_readonly'::regrole LOOP
+    EXECUTE format('REVOKE ALL ON LARGE OBJECT %s FROM agent_readonly', found);
+  END LOOP;
+  IF current_setting('lo_compat_privileges')::bool OR EXISTS (SELECT 1 FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
+      WHERE a.grantee = 0 AND a.privilege_type = 'UPDATE') THEN
+    RAISE EXCEPTION 'Every role can write some large objects (PUBLIC UPDATE grant or lo_compat_privileges); revoke and re-run.';
+  END IF;
   -- SECURITY DEFINER functions run with their owner's privileges and could return secrets.
   SELECT string_agg(p.oid::regprocedure::text, ', ') INTO found FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
     WHERE p.prosecdef AND n.nspname NOT IN ('pg_catalog', 'information_schema')

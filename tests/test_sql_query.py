@@ -229,11 +229,12 @@ class PrepareTests(unittest.TestCase):
     def test_prepare_keeps_a_pinned_server_certificate(self):
         root = Path(self.directory.name) / 'root.crt'
         root.write_text('fixture')
-        current = url(sslmode='verify-full', sslrootcert=str(root))
-        code, _ = self.run_main(['prepare', 'fixture'], connection_url=current)
-        self.assertEqual(code, 0)
-        env = sql.libpq_environment(pending_url(self.directory.name), TARGET)
-        self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), ('verify-full', str(root)))
+        for mode in ('verify-full', 'require'):
+            current = url(sslmode=mode, sslrootcert=str(root))
+            code, _ = self.run_main(['prepare', 'fixture'], connection_url=current)
+            self.assertEqual(code, 0)
+            env = sql.libpq_environment(pending_url(self.directory.name), TARGET)
+            self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), (mode, str(root)))
 
     def test_concurrent_prepare_runs_keep_password_and_verifier_paired(self):
         with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, '_hosting', return_value=FakeHosting), \
@@ -403,6 +404,8 @@ class LiveRoleTests(unittest.TestCase):
         schema = 'agent_probe_s_' + os.urandom(3).hex()
         cases = [('GRANT INSERT ON public.users TO agent_readonly', 'REVOKE INSERT ON public.users FROM agent_readonly',
                   'can write'),
+                 ('GRANT TRIGGER ON public.users TO agent_readonly', 'REVOKE TRIGGER ON public.users FROM agent_readonly',
+                  'can write'),
                  ('GRANT UPDATE (email) ON public.users TO agent_readonly',
                   'REVOKE UPDATE (email) ON public.users FROM agent_readonly', 'can write'),
                  ('CREATE SEQUENCE IF NOT EXISTS public.agent_probe_seq; GRANT USAGE ON public.agent_probe_seq TO agent_readonly',
@@ -506,6 +509,12 @@ class LiveRoleTests(unittest.TestCase):
                  (f'CREATE SCHEMA {schema}; CREATE TABLE {schema}.notes (id int); '
                   f'GRANT USAGE ON SCHEMA {schema} TO PUBLIC; GRANT SELECT ON {schema}.notes TO PUBLIC',
                   f'DROP SCHEMA {schema} CASCADE', 'outside public'),
+                 ('GRANT TRIGGER ON public.users TO PUBLIC', 'REVOKE TRIGGER ON public.users FROM PUBLIC', 'TRIGGER or MAINTAIN'),
+                 ('GRANT MAINTAIN ON public.users TO PUBLIC', 'REVOKE MAINTAIN ON public.users FROM PUBLIC', 'TRIGGER or MAINTAIN'),
+                 ('GRANT ALTER SYSTEM ON PARAMETER work_mem TO PUBLIC',
+                  'REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM PUBLIC', 'configuration parameter'),
+                 ("SELECT lo_from_bytea(424242, 'blob'); GRANT UPDATE ON LARGE OBJECT 424242 TO PUBLIC",
+                  'SELECT lo_unlink(424242)', 'large objects'),
                  ('CREATE FUNCTION public.agent_probe_definer() RETURNS text LANGUAGE sql SECURITY DEFINER '
                   'AS $$ SELECT password FROM public.users LIMIT 1 $$',
                   'DROP FUNCTION public.agent_probe_definer()', 'SECURITY DEFINER'),

@@ -65,7 +65,7 @@ FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.cr
     EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
         AND ((c.relkind IN ('r', 'p', 'v', 'm', 'f')
-            AND (has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
+            AND (has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER')
               OR has_any_column_privilege(c.oid, 'INSERT, UPDATE')))
           OR (c.relkind = 'S' AND has_sequence_privilege(c.oid, 'USAGE, UPDATE')))) AS writes,  -- USAGE allows nextval
     (has_database_privilege(current_database(), 'CREATE')
@@ -416,7 +416,8 @@ def command_prepare(args):
             current = urllib.parse.parse_qs(urllib.parse.urlsplit(connection_url(entry, hosting)).query)
         except (SqlError, ValueError):
             current = {}
-        if current.get('sslmode', [''])[0] in ('verify-ca', 'verify-full') and current.get('sslrootcert'):
+        # libpq also verifies the server with `require` when sslrootcert is set.
+        if current.get('sslmode', [''])[0] in STRONG_SSL_MODES and current.get('sslrootcert'):
             query = '?' + urllib.parse.urlencode({'sslmode': current['sslmode'][0],
                                                   'sslrootcert': current['sslrootcert'][0]})
         url = f"postgresql://agent_readonly:{password}@{host}:{entry['port']}/{urllib.parse.quote(entry['database'])}{query}"
