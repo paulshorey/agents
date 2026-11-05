@@ -95,3 +95,43 @@ Record observed versions, target IDs and sanitized checks in ignored local statu
 when useful. Publish the PR with validation and remaining gaps, and leave active
 application configuration intact unless this task authorizes changing it. A proposed
 policy or connection is not an installed capability.
+
+## Claude Code auto mode and PR writes
+
+Claude Code's auto-mode classifier reviews shell commands after permission rules.
+Its built-in `External System Writes` rule (`claude auto-mode defaults --label
+'External System Writes'`) allows two writes on a PR the user asked the agent to
+work on, or one the agent opened in the session: new comments (including inline
+replies) and title/body edits. It soft-blocks everything else on GitHub PRs:
+resolving review threads, reactions, editing or deleting comments, comments on
+other PRs, and bodies the classifier can't see, such as `--body-file` or `-F
+body=@file` naming a file the session didn't write, or a pipe from another
+command. A compound command that includes one blocked write is refused whole.
+Codex is unaffected because its local policy allows `gh` (`~/.codex/rules`).
+
+The [review loop](../../skills/git-management/references/review-loop.md) gives
+commands that stay within those rules. To let agents resolve threads and post
+review-loop comments without per-action approval, add personal entries to
+`autoMode` in `~/.claude/settings.json` (application-owned; edit only with the
+user's consent). Always keep `"$defaults"`, because a list without it replaces
+every built-in rule in that section:
+
+```json
+{
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Source control: GitHub account paulshorey; all repositories under github.com/paulshorey are the user's own"
+    ],
+    "allow": [
+      "$defaults",
+      "PR review loop: on a pull request in a github.com/paulshorey repository that the agent is working on, replying to review comments, posting PR comments, and resolving review threads is the user's standing workflow, unless the text contains a bot or ChatOps command"
+    ]
+  }
+}
+```
+
+Check the result with `claude auto-mode config`. Without this, a user can
+approve one refused action under `/permissions` → **Recently blocked**, or name
+the exact action in a message (for example, "reply to the three findings on
+PR 31 and resolve their threads"), which the classifier treats as explicit intent.
