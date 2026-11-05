@@ -831,6 +831,15 @@ class LiveRoleTests(unittest.TestCase):
             guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn(f'{name}_in', str(raised.exception))
 
+    def test_accepts_stock_maintenance_databases_on_postgresql_15(self):
+        version = int(subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SHOW server_version_num'],
+                                     capture_output=True, text=True, check=True).stdout)
+        if version < 150000:
+            self.skipTest('stock databases are accepted only on PostgreSQL 15+')
+        self.admin('GRANT CONNECT ON DATABASE postgres, template1 TO PUBLIC')
+        self.addCleanup(self.admin, 'REVOKE CONNECT ON DATABASE postgres, template1 FROM PUBLIC')
+        guard(self.env(self.readonly_url), WITHHELD)
+
     def test_refused_role_never_runs_the_query_in_the_same_session(self):
         role = self.scratch_role('GRANT INSERT ON public.users TO {role};')
         started = time.monotonic()

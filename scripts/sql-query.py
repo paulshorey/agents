@@ -130,10 +130,14 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     ORDER BY 1 LIMIT 5) routines), '') AS routines,
   -- Roles are cluster-wide and PUBLIC may connect to every database by default; the
   -- other databases' grants are not audited here, so each must be listed by the target.
+  -- The stock postgres and template1 databases are accepted on PostgreSQL 15+, where
+  -- PUBLIC cannot create objects in them: they hold no data unless someone adds it.
   coalesce((SELECT string_agg(d.datname, ',' ORDER BY d.datname) FROM pg_database d
     WHERE d.datname<>current_database() AND d.datallowconn
       AND has_database_privilege(current_user, d.oid, 'CONNECT')
-      AND NOT (d.datname = ANY(__OTHER_DATABASES__::text[]))), '') AS other_databases,
+      AND NOT (d.datname = ANY(__OTHER_DATABASES__::text[])
+        OR (d.datname IN ('postgres', 'template1')
+          AND current_setting('server_version_num')::int >= 150000))), '') AS other_databases,
   current_user AS usr, current_setting('server_version') AS version
 FROM pg_roles r WHERE r.rolname=current_user
 """

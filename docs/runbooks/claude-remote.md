@@ -110,6 +110,28 @@ idle system sleep, not child-process crashes or provider rejection.
   After the roughly four-hour window, run `cclaude` to start a new session;
   neither `--continue` nor `--session-id` is a documented way around that limit.
 
+## Computer use
+
+Sessions this server spawns run the CLI non-interactively (`claude --print
+--sdk-url ...`), and the CLI's built-in `computer-use` server is not available in
+`--print` mode, so these sessions cannot control apps on this Mac. Observed on
+2026-11-05 with Claude Code 2.1.316. Computer use is not a Remote Control
+restriction:
+
+- **Desktop app sessions** (Code tab) get computer use from the app once it is
+  enabled in **Settings > This computer > System > Computer use** (or **Settings >
+  Capabilities** on builds without "This computer"), with Accessibility and Screen
+  Recording granted to Claude in macOS **System Settings > Privacy & Security**. They
+  can still be continued from other devices: keep **Settings > Claude Code > Connect
+  new sessions to Remote Control** on, or turn on a session's Remote Control switch.
+  Start sessions that need computer use there instead of through this server.
+- **An interactive terminal session** (`claude` in a terminal) can enable the
+  `computer-use` server once per project with `/mcp`.
+
+Both need a Pro, Max or Ultra plan and macOS 14 or later. Only one session at a
+time can control the computer. Browsers are view-only to computer use; for web
+pages use Claude in Chrome or the built-in browser.
+
 ## Validation
 
 ```sh

@@ -30,6 +30,11 @@ Verification dates describe historical observations, not current readiness.
   superuser or `CREATEROLE` and names other connectable databases. The runbook states
   that the role's grants are the boundary and the SQL rules only stop mistakes, and
   lists ways to limit personal data. 64 tests pass against local PostgreSQL 18.
+- The check accepts the stock `postgres` and `template1` databases on PostgreSQL
+  15+, so a standard Railway Postgres service needs no `CONNECT` change. The
+  Remote Control runbook records that sessions spawned by `claude-remote.py` run in
+  `--print` mode, where computer use is unavailable; desktop-app sessions get it from
+  the app's Computer use setting and can still use Remote Control.
 
 ## 2026-11-05 — Claude Code auto mode trusts the PR review loop
 

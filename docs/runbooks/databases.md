@@ -50,13 +50,17 @@ correct rather than adding more client-side rules.
   in that same connection passed, so nothing can change between check and query, and
   each query costs one connection.
 - Roles are cluster-wide and PostgreSQL lets PUBLIC connect to every database by
-  default. The check refuses a role that can connect to another database unless the
-  target lists it in `other_databases`. Either revoke `CONNECT` on those databases from
-  PUBLIC (granting it to the roles that need it), or audit them and list them. Stock
-  `postgres` and `template1` normally hold no data, but on PostgreSQL 14 or older PUBLIC
-  can create objects in their `public` schema (and objects in `template1` are copied
-  into new databases), so revoke there instead of listing them. The role SQL prints a
-  notice naming these databases.
+  default. On PostgreSQL 15+ the check accepts the stock `postgres` and `template1`
+  databases with no setup: they hold no data, and PUBLIC cannot create objects in them.
+  This covers a standard Railway Postgres service (one application database plus those
+  two), so new services need nothing extra. The check refuses any other database the
+  role can connect to, and both stock databases on PostgreSQL 14 or older (where PUBLIC
+  can create objects in their `public` schema, and objects in `template1` are copied
+  into new databases), unless the target lists it in `other_databases`. Either revoke
+  `CONNECT` on such a database from PUBLIC (granting it to the roles that need it), or
+  audit it and list it. If you store data in `postgres`, treat it like any other
+  database: its tables are not granted to PUBLIC by default, so the role still cannot
+  read them. The role SQL prints a notice naming databases the check would refuse.
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants and ancestors (a parent returns its
   children's rows), and through any view or

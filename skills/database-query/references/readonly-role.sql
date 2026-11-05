@@ -60,7 +60,9 @@ DECLARE others text;
 BEGIN
   SELECT string_agg(datname, ', ' ORDER BY datname) INTO others FROM pg_database
     WHERE datallowconn AND datname <> current_database()
-      AND has_database_privilege('agent_readonly', oid, 'CONNECT');
+      AND has_database_privilege('agent_readonly', oid, 'CONNECT')
+      -- agents-sql accepts the stock, empty maintenance databases on PostgreSQL 15+.
+      AND NOT (datname IN ('postgres', 'template1') AND current_setting('server_version_num')::int >= 150000);
   IF others IS NOT NULL THEN
     RAISE NOTICE 'agent_readonly can also connect to: %. Revoke CONNECT on them from PUBLIC (grant it to the roles that need it), or audit them and list them in the target''s other_databases.', others;
   END IF;
