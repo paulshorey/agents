@@ -1,0 +1,63 @@
+# Read-only database access for agents
+
+Agents query deployed databases with `~/.agents/bin/agents-sql` (skill
+[`database-query`](../../skills/database-query/SKILL.md)). Each target in the ignored
+`~/.agents/local/databases.json` (format:
+[`config/databases.example.json`](../../config/databases.example.json)) names a
+credential profile, a variable, and the expected host, port and database. Real
+endpoints stay out of this public repository; copy them from the project's private
+runbook. This machine registers `livx-dev` and `livx-production`. Credentials are connection
+URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only file:
+
+| Profile | File | Variables |
+| --- | --- | --- |
+| `postgres.livx-readonly` | `~/.agents/local/credentials/livx-db-readonly.env` | `LIVX_DEV_READONLY_DATABASE_URL`, `LIVX_PRODUCTION_READONLY_DATABASE_URL` |
+
+## Safety model
+
+- The role has `SELECT` only, owns nothing, cannot create objects, and defaults to
+  read-only sessions with statement and idle timeouts. Secret tables and columns
+  (`user_auth_tokens`, `password_reset_tokens`, `users.password`, `users.api_token`,
+  `device_push_tokens.token`, `membership_offers.code`, `get_deals.qr_token`) are
+  withheld. New tables become readable by default; extend the withheld list in
+  [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
+  and re-run it when a migration adds a secret.
+- `agents-sql` refuses a stored URL whose host, port or database differs from the
+  target, and refuses any role that is elevated, owns or can create objects, has
+  non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
+- The URL is passed to `psql` through libpq environment variables only, with inherited
+  `PG*`/`DATABASE_URL` settings dropped. Nothing prints it.
+
+## Owner setup (once per database)
+
+1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`.
+2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
+   as the database owner with that password substituted: in the hosting provider's
+   SQL console for that database (Railway: Postgres service → **Data** tab), or with
+   psql using its owner connection. Project, environment and service IDs are in the
+   project's private runbook (LivX: `~/git/livx/docs/database-migrations.md`).
+3. Build the URL from the database's public host and port, documented in that same
+   runbook: `postgresql://agent_readonly:PASSWORD@HOST:PORT/DATABASE`.
+4. Store it without echo. The tool verifies the role before saving:
+
+   ```sh
+   ~/.agents/bin/agents-sql set-url livx-production   # paste at the hidden prompt
+   ~/.agents/bin/agents-sql check livx-production
+   ```
+
+An agent may perform steps 1–4 itself only with explicit authorization for that
+database and a Railway credential that can read the project (see
+[Railway profiles](railway.md)); it must keep the owner URL and generated password
+in memory and never print them.
+
+## Rotate, revoke, add a target
+
+- Rotate: re-run the role SQL with a new password, then `agents-sql set-url TARGET`.
+- Revoke: `ALTER ROLE agent_readonly NOLOGIN;` (or `DROP OWNED BY agent_readonly; DROP ROLE agent_readonly;`)
+  and delete the variable from the credential file.
+- Add a database: add a target to `local/databases.json`, register its variable
+  in the profile in `config/profiles.json` (or a new `postgres.*` profile), update
+  `config/inventory.json`, regenerate the inventory docs, then do the owner setup.
+
+Recovery: the credential file is local only and not backed up in Git. If it is lost,
+rotate the password and store the new URL.

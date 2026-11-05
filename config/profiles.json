@@ -4,6 +4,14 @@
       "provider": "cloudflare",
       "path": "~/.agents/local/credentials/cloudflare.env"
     },
+    "postgres.livx-readonly": {
+      "provider": "postgres",
+      "path": "~/.agents/local/credentials/livx-db-readonly.env",
+      "variables": [
+        "LIVX_DEV_READONLY_DATABASE_URL",
+        "LIVX_PRODUCTION_READONLY_DATABASE_URL"
+      ]
+    },
     "railway.workspace": {
       "provider": "railway",
       "path": "~/.secrets.sh",

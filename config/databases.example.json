@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "targets": {
+    "example-production": {
+      "description": "Example target. Copy this file to local/databases.json and replace the placeholders with the project's documented public endpoint.",
+      "profile": "postgres.livx-readonly",
+      "variable": "LIVX_PRODUCTION_READONLY_DATABASE_URL",
+      "host": "db.example.invalid",
+      "port": 5432,
+      "database": "railway",
+      "docs": "Project migration runbook"
+    }
+  }
+}

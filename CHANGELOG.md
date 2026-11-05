@@ -4,6 +4,22 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — Read-only deployed database queries
+
+- Added `agents-sql` (`bin/agents-sql`, `scripts/sql-query.py`) and the
+  `database-query` skill. Targets live in ignored `local/databases.json` (format in
+  `config/databases.example.json`) so private project endpoints stay out of this
+  public repository. Registered credential profile
+  `postgres.livx-readonly` (`~/.agents/local/credentials/livx-db-readonly.env`,
+  variables `LIVX_DEV_READONLY_DATABASE_URL` and `LIVX_PRODUCTION_READONLY_DATABASE_URL`).
+- The helper verifies the stored role is SELECT-only and owns/creates nothing
+  before every query, so an owner URL is refused. Role SQL withholds credential and
+  bearer-code tables/columns. Verified against disposable local PostgreSQL 18.6.
+- No deployed role or credential exists yet: the owner must create `agent_readonly`
+  on each database and store its URL (`docs/runbooks/databases.md`). Observed on
+  2026-11-05: the `railway.workspace` token reads projects in my workspace but not
+  the LivX serving project, which is in another Railway workspace.
+
 ## 2026-11-04 — Guarded Claude Remote Control shortcut
 
 - Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating

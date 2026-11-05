@@ -50,6 +50,8 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [twilio.sms-cli](#twilio-sms-cli) | tool | agents | bin/agents-sms | [docs/runbooks/sms.md](../docs/runbooks/sms.md) |
 | [application.last30days-config](#application-last30days-config) | configuration | application | ~/.config/last30days/.env | [docs/runbooks/last30days.md](../docs/runbooks/last30days.md) |
 | [tool.claude-remote-shortcut](#tool-claude-remote-shortcut) | tool | agents | scripts/claude-remote.py | [docs/runbooks/claude-remote.md](../docs/runbooks/claude-remote.md) |
+| [postgres.livx-readonly](#postgres-livx-readonly) | credential | agents | ~/.agents/local/credentials/livx-db-readonly.env | [docs/runbooks/databases.md](../docs/runbooks/databases.md) |
+| [database.agents-sql](#database-agents-sql) | tool | agents | bin/agents-sql, scripts/sql-query.py, config/databases.example.json | [docs/runbooks/databases.md](../docs/runbooks/databases.md) |
 
 <a id="cloudflare-dns-token"></a>
 
@@ -692,6 +694,38 @@ Owner-only advisory locks live under ~/.agents/local/claude-remote. A live exist
 
 [Update and recovery instructions](../docs/runbooks/claude-remote.md).
 
+<a id="postgres-livx-readonly"></a>
+
+## postgres.livx-readonly
+
+Connection URLs for the agent_readonly role on the LivX dev and production databases, used by agents-sql.
+
+Owner: **agents**.
+
+Location: `~/.agents/local/credentials/livx-db-readonly.env`.
+
+Variable names: `LIVX_DEV_READONLY_DATABASE_URL`, `LIVX_PRODUCTION_READONLY_DATABASE_URL`.
+
+Declared permissions: `SELECT-only role agent_readonly per database; secret tables and columns withheld (skills/database-query/references/readonly-role.sql)`.
+
+Consumers: `database.agents-sql`.
+
+Owner-only dotenv file (mode 600) with literal assignments; write it with agents-sql set-url, which verifies the role before saving. Rotate by re-running the role SQL with a new password.
+
+[Update and recovery instructions](../docs/runbooks/databases.md).
+
+<a id="database-agents-sql"></a>
+
+## database.agents-sql
+
+Read-only SQL helper for registered deployed databases; verifies the stored role cannot write before every query.
+
+Owner: **agents**.
+
+Requires psql on PATH. Targets with real endpoints live in ignored local/databases.json (mode 600), copied from config/databases.example.json; project endpoints stay in each project's private runbook. Agent guidance is the database-query skill. Writes and migrations stay with each project's migration runbook.
+
+[Update and recovery instructions](../docs/runbooks/databases.md).
+
 ## Utility files
 
 Derived from `bin/` and `scripts/`. See the utility runbook before executing a helper.
@@ -699,6 +733,7 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [bin/agents-config](../bin/agents-config)
 - [bin/agents-hosting](../bin/agents-hosting)
 - [bin/agents-sms](../bin/agents-sms)
+- [bin/agents-sql](../bin/agents-sql)
 - [bin/cf](../bin/cf)
 - [bin/railway-mcp](../bin/railway-mcp)
 - [scripts/claude-remote.py](../scripts/claude-remote.py)
@@ -713,3 +748,4 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [scripts/send-sms.mjs](../scripts/send-sms.mjs)
 - [scripts/set-cloudflare-token.py](../scripts/set-cloudflare-token.py)
 - [scripts/sms.mjs](../scripts/sms.mjs)
+- [scripts/sql-query.py](../scripts/sql-query.py)
