@@ -30,8 +30,12 @@ Verification dates describe historical observations, not current readiness.
   superuser or `CREATEROLE` and names other connectable databases. The runbook states
   that the role's grants are the boundary and the SQL rules only stop mistakes, and
   lists ways to limit personal data. 64 tests pass against local PostgreSQL 18.
-- The check accepts the stock `postgres` and `template1` databases on PostgreSQL
-  15+, so a standard Railway Postgres service needs no `CONNECT` change. The
+- `check`, `activate` and `set-url` connect to every other database the role can
+  reach and audit it, so clean stock `postgres` and `template1` databases need no
+  `CONNECT` change on a standard Railway Postgres service. Compiled and
+  untrusted-language routines are audited whether or not the role can execute them
+  (PostgreSQL calls support routines without that check). `prepare` keeps a pinned
+  `verify-ca`/`verify-full` TLS setting. The
   Remote Control runbook records that sessions spawned by `claude-remote.py` run in
   `--print` mode, where computer use is unavailable; desktop-app sessions get it from
   the app's Computer use setting and can still use Remote Control.

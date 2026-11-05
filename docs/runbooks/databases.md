@@ -50,17 +50,20 @@ correct rather than adding more client-side rules.
   in that same connection passed, so nothing can change between check and query, and
   each query costs one connection.
 - Roles are cluster-wide and PostgreSQL lets PUBLIC connect to every database by
-  default. On PostgreSQL 15+ the check accepts the stock `postgres` and `template1`
-  databases with no setup: they hold no data, and PUBLIC cannot create objects in them.
-  This covers a standard Railway Postgres service (one application database plus those
-  two), so new services need nothing extra. The check refuses any other database the
-  role can connect to, and both stock databases on PostgreSQL 14 or older (where PUBLIC
-  can create objects in their `public` schema, and objects in `template1` are copied
-  into new databases), unless the target lists it in `other_databases`. Either revoke
-  `CONNECT` on such a database from PUBLIC (granting it to the roles that need it), or
-  audit it and list it. If you store data in `postgres`, treat it like any other
-  database: its tables are not granted to PUBLIC by default, so the role still cannot
-  read them. The role SQL prints a notice naming databases the check would refuse.
+  default. `check`, `activate` and `set-url` connect to every other database the role
+  can reach and run the same role check there (without withheld lists), so the stock
+  `postgres` and `template1` databases need no setup when they are clean. A standard
+  Railway Postgres service (one application database plus those two) needs nothing
+  extra. If PUBLIC can create objects there (PostgreSQL 14, or a cluster upgraded
+  from it), that check fails and names the database. Each `query` re-checks only its
+  own database and accepts the stock pair, so run `check` after changing grants in
+  another database. Any other database the role can connect to must also be listed
+  in the target's `other_databases`, or have `CONNECT` revoked from PUBLIC (granting
+  it to the roles that need it). The role SQL prints a notice naming such databases.
+  Known gap: `pg_logical_emit_message` stays executable by PUBLIC in the other
+  databases (the role SQL revokes it only in the target), so someone using the
+  credential directly could add messages to the write-ahead log, using disk. Any
+  role can do that by default; revoke it in those databases as a superuser to close it.
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants and ancestors (a parent returns its
   children's rows), and through any view or
@@ -73,9 +76,9 @@ correct rather than adding more client-side rules.
   misspelled safeguard such as `withold` fails instead of silently checking nothing.
 - The check audits the login role itself: a session whose current role differs from
   the authenticated one (a persistent `SET role` setting) is refused, and the role
-  SQL clears the role's persistent settings. Compiled support functions of any type
-  or range count as executable even without `EXECUTE`, because reading or casting a
-  value of that type calls them.
+  SQL clears the role's persistent settings. Compiled and untrusted-language routines
+  count whether or not the role can `EXECUTE` them, because PostgreSQL calls type,
+  operator-class, aggregate, cast and conversion support routines without that check.
 - The URL is passed to `psql` through libpq environment variables only, with inherited
   `PG*`/`DATABASE_URL` settings dropped. SQL containing a backslash is rejected, so
   psql meta-commands (`\!`, `\o |cmd`, `\copy ... program`) cannot start a local
@@ -161,7 +164,8 @@ and a credential that can reach its owner connection (see
 
 ## Rotate, revoke, add a target
 
-- Rotate: `agents-sql prepare TARGET`, run the newly prepared
+- Rotate: `agents-sql prepare TARGET` (a stored `verify-ca`/`verify-full` setting
+  and its `sslrootcert` carry over to the new URL), run the newly prepared
   `<target>-readonly-role.sql` as the owner, then `agents-sql activate TARGET`. The old
   password works until the SQL runs and the stored URL changes only after `activate`
   verifies the new one, so queries in between fail for at most that gap.

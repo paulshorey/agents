@@ -111,33 +111,29 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable))::text AS grantable,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT {ROUTINE_IDENTITY} AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
-    WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
-        OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal'))
+    WHERE ((p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(__SIDE_EFFECT_ROUTINES__::text[]))
         -- Built-ins PostgreSQL restricts by default (pg_read_file, pg_ls_dir, ...) carry an ACL.
-        OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL)
-        -- Compiled extension routines (dblink_exec, aliases of restricted built-ins) can act
-        -- outside the transaction; only a target's explicit allowed_routines may pass.
-        -- OIDs from 16384 (FirstNormalObjectId) were created after initdb, so a compiled
-        -- routine there is never a core built-in, whatever its schema or extension.
-        OR (l.lanname IN ('c', 'internal') AND (n.nspname<>'pg_catalog' OR p.oid >= 16384)
-          AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[]))))
-      -- A type's support functions run whenever its values are read or cast, even
-      -- without EXECUTE on them (CREATE TYPE documents this as an implicit grant).
-      AND (has_function_privilege(current_user, p.oid, 'EXECUTE')
-        OR p.oid IN (SELECT unnest(ARRAY[t.typinput, t.typoutput, t.typreceive, t.typsend, t.typmodin,
-            t.typmodout, t.typanalyze, t.typsubscript]::oid[]) FROM pg_type t
-          UNION SELECT unnest(ARRAY[rg.rngcanonical, rg.rngsubdiff]::oid[]) FROM pg_range rg))
+        OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL))
+        AND has_function_privilege(current_user, p.oid, 'EXECUTE'))
+      -- Compiled and untrusted-language routines count whether or not the role can
+      -- EXECUTE them: PostgreSQL calls type, range, operator-class, aggregate, cast and
+      -- conversion support routines without checking EXECUTE. Untrusted-language routines
+      -- (plpython3u ...) always fail; a compiled routine (dblink_exec, aliases of
+      -- restricted built-ins) passes only if the target lists it in allowed_routines.
+      -- OIDs from 16384 (FirstNormalObjectId) were created after initdb, so a compiled
+      -- routine there is never a core built-in, whatever its schema or extension.
+      OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal'))
+      OR (l.lanname IN ('c', 'internal') AND (n.nspname<>'pg_catalog' OR p.oid >= 16384)
+        AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[])))
     ORDER BY 1 LIMIT 5) routines), '') AS routines,
-  -- Roles are cluster-wide and PUBLIC may connect to every database by default; the
-  -- other databases' grants are not audited here, so each must be listed by the target.
-  -- The stock postgres and template1 databases are accepted on PostgreSQL 15+, where
-  -- PUBLIC cannot create objects in them: they hold no data unless someone adds it.
+  -- Roles are cluster-wide and PUBLIC may connect to every database by default. Other
+  -- databases are accepted only if they are the stock postgres/template1 or listed by
+  -- the target; guard() (check, activate, set-url) connects to each and audits it.
   coalesce((SELECT string_agg(d.datname, ',' ORDER BY d.datname) FROM pg_database d
     WHERE d.datname<>current_database() AND d.datallowconn
       AND has_database_privilege(current_user, d.oid, 'CONNECT')
       AND NOT (d.datname = ANY(__OTHER_DATABASES__::text[])
-        OR (d.datname IN ('postgres', 'template1')
-          AND current_setting('server_version_num')::int >= 150000))), '') AS other_databases,
+        OR d.datname IN ('postgres', 'template1'))), '') AS other_databases,
   current_user AS usr, current_setting('server_version') AS version
 FROM pg_roles r WHERE r.rolname=current_user
 """
@@ -379,14 +375,15 @@ def _sql_array(values):
     return 'ARRAY[' + ', '.join(f"'{v}'" for v in values) + ']'
 
 
-def guard_script(entry):
+def guard_script(entry, side_effect_routines=SIDE_EFFECT_ROUTINES):
     """psql commands that verify the role and set :agents_sql_safe to on or off.
     Verification runs with search_path pinned to pg_catalog, so a role-level
     search_path cannot shadow catalog relations, functions or operators. The
     result goes to stderr as one AGENTS_SQL_GUARD line for guard_result()."""
     withheld = withheld_sql(entry.get('withheld') or {}) or "SELECT '|'"
     guard_sql = (GUARD_SQL.replace('__ALLOWED_ROUTINES__', _sql_array(entry.get('allowed_routines', [])))
-                 .replace('__OTHER_DATABASES__', _sql_array(entry.get('other_databases', []))))
+                 .replace('__OTHER_DATABASES__', _sql_array(entry.get('other_databases', [])))
+                 .replace('__SIDE_EFFECT_ROUTINES__', _sql_array(side_effect_routines)))
     return f"""SET search_path TO pg_catalog, pg_temp;
 SELECT CASE WHEN current_setting('server_version_num')::int >= 170000 THEN 'on' ELSE 'off' END AS agents_sql_pg17,
   CASE WHEN current_setting('server_version_num')::int >= 150000 THEN 'on' ELSE 'off' END AS agents_sql_pg15 \\gset
@@ -458,13 +455,35 @@ def refusal(verified, problems):
                     + '. Store a dedicated read-only role instead (docs/runbooks/databases.md).')
 
 
+OTHER_DATABASES_SQL = """SELECT datname FROM pg_catalog.pg_database
+  WHERE datname <> current_database() AND datallowconn
+    AND has_database_privilege(current_user, oid, 'CONNECT') ORDER BY 1;
+"""
+
+
 def guard(env, entry):
     """Refuse any role able to write, own or create objects, reach unaudited
-    databases, or read withheld secrets."""
+    databases, or read withheld secrets. Every other database the role can
+    connect to is audited the same way (without withheld lists), so the stock
+    postgres/template1 databases are accepted only after an actual check."""
     result = run_session(env, guard_script(entry))
     verified, problems, _ = guard_result(result.stderr)
     if problems:
         raise refusal(verified, problems)
+    listed = run_session(env, OTHER_DATABASES_SQL, ['-At'])
+    if listed.returncode:
+        raise SqlError('Could not list other databases: ' + (listed.stderr or '').strip()[:500])
+    names = [name for name in listed.stdout.split() if name]
+    for name in names:
+        other = {'withheld': {}, 'allowed_routines': entry.get('allowed_routines', []),
+                 'other_databases': [n for n in names + [env['PGDATABASE']] if n != name and DATABASE_NAME.fullmatch(n)]}
+        # pg_logical_emit_message is PUBLIC in every database unless a superuser revokes
+        # it in each; the role SQL does that only in the target. Its effect (extra WAL)
+        # is accepted in the others rather than requiring setup in each database.
+        result = run_session({**env, 'PGDATABASE': name}, guard_script(other, side_effect_routines=()))
+        _, problems, _ = guard_result(result.stderr)
+        if problems:
+            raise refusal(verified, [f'in database {name!r}: ' + '; '.join(problems)])
     return verified
 
 
@@ -713,6 +732,13 @@ def command_prepare(args):
     password = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789') for _ in range(32))
     host = f"[{entry['host']}]" if ':' in entry['host'] else entry['host']
     query = '' if entry['host'] in LOOPBACK else '?sslmode=require'
+    # Keep a pinned server certificate: rotation must not fall back to unauthenticated TLS.
+    try:
+        current = urllib.parse.parse_qs(urllib.parse.urlsplit(connection_url(entry, hosting)).query)
+    except SqlError:
+        current = {}
+    if current.get('sslmode', [''])[0] in ('verify-ca', 'verify-full') and current.get('sslrootcert'):
+        query = '?' + urllib.parse.urlencode({'sslmode': current['sslmode'][0], 'sslrootcert': current['sslrootcert'][0]})
     url = (f"postgresql://agent_readonly:{password}@{host}:{entry['port']}/"
            f"{urllib.parse.quote(entry['database'])}{query}")
     libpq_environment(url, entry)  # same validation as a stored URL

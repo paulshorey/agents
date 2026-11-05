@@ -266,6 +266,19 @@ class PrepareTests(unittest.TestCase):
             self.assertNotIn('SCRAM-SHA-256$', out.getvalue())
             self.assertNotIn(urllib.parse.urlsplit(pending).password, out.getvalue())
 
+    def test_prepare_keeps_a_pinned_server_certificate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            FakeHosting.credentials = Path(directory) / 'db.env'
+            self.addCleanup(setattr, FakeHosting, 'credentials', None)
+            root = Path(directory) / 'root.crt'
+            root.write_text('fixture')
+            current = url(sslmode='verify-full', sslrootcert=str(root))
+            with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, '_hosting', return_value=FakeHosting), \
+                    patch.object(sql, 'connection_url', return_value=current), patch('sys.stdout', new_callable=io.StringIO):
+                self.assertEqual(sql.main(['prepare', 'fixture']), 0)
+            env = sql.libpq_environment(pending_url(directory), TARGET)
+            self.assertEqual((env['PGSSLMODE'], env['PGSSLROOTCERT']), ('verify-full', str(root)))
+
     def test_activate_stores_only_a_verified_pending_url(self):
         with tempfile.TemporaryDirectory() as directory:
             FakeHosting.credentials = Path(directory) / 'db.env'
@@ -831,14 +844,30 @@ class LiveRoleTests(unittest.TestCase):
             guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn(f'{name}_in', str(raised.exception))
 
-    def test_accepts_stock_maintenance_databases_on_postgresql_15(self):
-        version = int(subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SHOW server_version_num'],
-                                     capture_output=True, text=True, check=True).stdout)
-        if version < 150000:
-            self.skipTest('stock databases are accepted only on PostgreSQL 15+')
+    def test_audits_stock_maintenance_databases_by_connecting(self):
         self.admin('GRANT CONNECT ON DATABASE postgres, template1 TO PUBLIC')
         self.addCleanup(self.admin, 'REVOKE CONNECT ON DATABASE postgres, template1 FROM PUBLIC')
-        guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)  # clean stock databases pass after an actual check
+        maintenance = urllib.parse.urlunsplit(self.parts._replace(path='/postgres'))
+        table = 'agent_probe_stock_' + os.urandom(3).hex()
+        subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', maintenance, '-c',
+                        f'CREATE TABLE public.{table} (id int); GRANT UPDATE ON public.{table} TO PUBLIC'],
+                       check=True, capture_output=True)
+        self.addCleanup(subprocess.run, ['psql', '-X', '-q', maintenance, '-c', f'DROP TABLE public.{table}'],
+                        capture_output=True)
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn("in database 'postgres'", str(raised.exception))
+
+    def test_refuses_unlisted_compiled_routines_even_without_execute(self):
+        name = 'agent_probe_hidden_' + os.urandom(3).hex()
+        self.admin(f"CREATE FUNCTION public.{name}(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'lower'; "
+                   f'REVOKE EXECUTE ON FUNCTION public.{name}(text) FROM PUBLIC')
+        self.addCleanup(self.admin, f'DROP FUNCTION public.{name}(text)')
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn(name, str(raised.exception))
+        guard(self.env(self.readonly_url), WITHHELD, [f'public.{name}(text)'])  # listed after an audit
 
     def test_refused_role_never_runs_the_query_in_the_same_session(self):
         role = self.scratch_role('GRANT INSERT ON public.users TO {role};')
