@@ -2,7 +2,7 @@
   "schema_version": 1,
   "targets": {
     "example-production": {
-      "description": "Example target. Copy this file to local/databases.json and replace the placeholders with the project's documented public endpoint. 'withheld' lists whole tables ('*') and columns the role must not read; the tool refuses to run if it can.",
+      "description": "Example target. Copy this file to local/databases.json and replace the placeholders with the project's documented public endpoint. 'withheld' lists whole tables ('*') and columns the role must not read; the tool refuses to run if it can. 'other_databases' lists other databases in the cluster the role may connect to after the owner audited them (stock postgres/template1 hold no data); the tool refuses unlisted ones.",
       "profile": "postgres.livx-readonly",
       "variable": "LIVX_PRODUCTION_READONLY_DATABASE_URL",
       "host": "db.example.invalid",
@@ -16,7 +16,8 @@
         ],
         "user_auth_tokens": "*"
       },
-      "allowed_routines": []
+      "allowed_routines": [],
+      "other_databases": []
     }
   }
 }

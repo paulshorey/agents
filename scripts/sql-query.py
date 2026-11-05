@@ -9,9 +9,12 @@ The URL is read from the owner-only profile file, never from arguments, and is
 passed to psql through libpq environment variables so it never appears in a
 process listing or in output.
 
-Before every query the role is checked: it must not be a superuser or own,
-create or write anything. Sessions also default to read-only with a statement
-timeout. Writes and migrations are out of scope; use the project's runbook.
+Every query runs in one psql session that first checks the role (it must not be
+a superuser or own, create or write anything) and runs the SQL only if the check
+passes, inside a read-only transaction. The database role's grants are the real
+boundary: the client-side SQL rules only stop mistakes, since anything that can
+read the credential file can connect without this tool. Writes and migrations
+are out of scope; use the project's runbook.
 """
 import argparse
 import base64
@@ -27,6 +30,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -42,6 +46,8 @@ RELATION = re.compile(r'^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*$')  # table or 
 # Full routine identity as regprocedure prints it with search_path pinned to pg_catalog,
 # e.g. public.digest(text,text). Overloads must each be listed.
 ROUTINE = re.compile(r'^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\([a-z0-9_ ,.\[\]]*\)$')
+DATABASE_NAME = re.compile(r'^[A-Za-z0-9_][A-Za-z0-9_.-]*$')
+GUARD_MARK = 'AGENTS_SQL_GUARD '
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
 # Railway's public TCP proxy serves a self-signed certificate, so `require`
 # (encrypted, unauthenticated) is the default; verify-ca/verify-full need a
@@ -57,15 +63,14 @@ READ_STATEMENTS = {'select', 'with', 'table', 'values', 'show', 'explain'}
 ROUTINE_IDENTITY = r"(n.nspname||'.'||p.proname||substring(p.oid::regprocedure::text from '\(.*\)$'))"
 USER_SCHEMAS = ("n.nspname NOT IN ('pg_catalog','information_schema') "
                 "AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'")
-# One row, '|'-separated: elevated|owns|can_write|can_create|memberships|grant_options|
-# definer_routines|current_user|server_version|server_version_num.
+# One row of named fields; guard_script() joins them into the AGENTS_SQL_GUARD line.
 # Checks use effective privileges (direct, PUBLIC and inherited), so a grant at
 # table, column, sequence, server or large-object level is caught. Ownership
 # comes from pg_shdepend, which records owners of every object type.
 GUARD_SQL = rf"""
-SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication)::text,
+SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication)::text AS elevated,
   EXISTS(SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass
-    AND d.refobjid=r.oid AND d.deptype='o')::text,
+    AND d.refobjid=r.oid AND d.deptype='o')::text AS owns,
   (EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     -- Every persistent schema, catalogs included: system catalogs are writable tables.
     -- pg_settings is exempt: PostgreSQL grants PUBLIC UPDATE on it by default, and its
@@ -80,15 +85,15 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
    -- Large objects cannot be withheld individually, so any SELECT or UPDATE grant fails.
    OR EXISTS(SELECT 1 FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
      WHERE a.grantee IN (r.oid, 0) AND a.privilege_type IN ('SELECT', 'UPDATE'))
-   OR current_setting('lo_compat_privileges')='on')::text,
+   OR current_setting('lo_compat_privileges')='on')::text AS writes,
   (has_database_privilege(current_user, current_database(), 'CREATE')
     OR EXISTS(SELECT 1 FROM pg_namespace n
       WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%'
       AND has_schema_privilege(current_user, n.oid, 'CREATE'))
     OR EXISTS(SELECT 1 FROM pg_foreign_data_wrapper w
-      WHERE has_foreign_data_wrapper_privilege(current_user, w.oid, 'USAGE')))::text,
+      WHERE has_foreign_data_wrapper_privilege(current_user, w.oid, 'USAGE')))::text AS creates,
   coalesce((SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
-    JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid), ''),
+    JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid), '') AS memberships,
   -- Grant options, plus default ACLs (any creator, any schema or global) that would
   -- give this role or PUBLIC privileges on future objects.
   (EXISTS(SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a WHERE a.grantee IN (r.oid, 0))
@@ -98,7 +103,7 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
       UNION ALL SELECT typacl FROM pg_type UNION ALL SELECT lomacl FROM pg_largeobject_metadata
       UNION ALL SELECT srvacl FROM pg_foreign_server UNION ALL SELECT lanacl FROM pg_language
       UNION ALL SELECT datacl FROM pg_database WHERE datname=current_database()
-    ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable))::text,
+    ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable))::text AS grantable,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT {ROUTINE_IDENTITY} AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
     WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
@@ -112,12 +117,18 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
         OR (l.lanname IN ('c', 'internal') AND (n.nspname<>'pg_catalog' OR p.oid >= 16384)
           AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[]))))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
-    ORDER BY 1 LIMIT 5) routines), ''),
-  current_user, current_setting('server_version'), current_setting('server_version_num')
+    ORDER BY 1 LIMIT 5) routines), '') AS routines,
+  -- Roles are cluster-wide and PUBLIC may connect to every database by default; the
+  -- other databases' grants are not audited here, so each must be listed by the target.
+  coalesce((SELECT string_agg(d.datname, ',' ORDER BY d.datname) FROM pg_database d
+    WHERE d.datname<>current_database() AND d.datallowconn
+      AND has_database_privilege(current_user, d.oid, 'CONNECT')
+      AND NOT (d.datname = ANY(__OTHER_DATABASES__::text[]))), '') AS other_databases,
+  current_user AS usr, current_setting('server_version') AS version
 FROM pg_roles r WHERE r.rolname=current_user
 """
 # Version-specific privileges that older servers cannot even parse.
-MAINTAIN_SQL = rf"""SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+MAINTAIN_SQL = """SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%' AND c.relkind IN ('r','p','m')
     AND has_table_privilege(current_user, c.oid, 'MAINTAIN'))::text"""
 PARAMETER_SQL = """SELECT EXISTS(SELECT 1 FROM pg_parameter_acl p, aclexplode(p.paracl) a
@@ -151,16 +162,19 @@ def load_targets(path=None):
         for name, target in data['targets'].items():
             if (not TARGET_NAME.fullmatch(name) or not isinstance(target, dict)
                     or not {'description', 'profile', 'variable', 'host', 'port', 'database'} <= set(target)
+                    or not all(isinstance(target[k], str) and target[k] for k in ('description', 'host', 'database'))
+                    or not isinstance(target['profile'], str) or not isinstance(target['variable'], str)
                     or not re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', target['profile'])
                     or not re.fullmatch(r'[A-Z][A-Z0-9_]*', target['variable'])
                     or not isinstance(target['port'], int) or not 1 <= target['port'] <= 65535):
                 raise ValueError()
-            allowed = target.get('allowed_routines', [])
-            if not isinstance(allowed, list) or not all(isinstance(r, str) and ROUTINE.fullmatch(r) for r in allowed):
-                raise ValueError()
+            for key, pattern in (('allowed_routines', ROUTINE), ('other_databases', DATABASE_NAME)):
+                values = target.get(key, [])
+                if not isinstance(values, list) or not all(isinstance(v, str) and pattern.fullmatch(v) for v in values):
+                    raise ValueError()
             withheld = target.get('withheld', {})
             if not isinstance(withheld, dict) or not all(
-                    RELATION.fullmatch(t) and (cols == '*' or (isinstance(cols, list) and cols
+                    isinstance(t, str) and RELATION.fullmatch(t) and (cols == '*' or (isinstance(cols, list) and cols
                                                                and all(isinstance(c, str) and IDENTIFIER.fullmatch(c) for c in cols)))
                     for t, cols in withheld.items()):
                 raise ValueError()
@@ -247,12 +261,27 @@ def psql_binary():
     return found
 
 
-def run_psql(env, args, capture=True, timeout=120):
+def run_session(env, script, args=(), capture_stdout=True, timeout=120):
+    """Run one psql session reading the script on stdin. On timeout psql gets
+    SIGINT, which makes it send a cancel request so the server stops the
+    statement (a query can raise its own statement_timeout with set_config, so
+    only this cancel bounds it); it is killed only if it does not exit."""
+    process = subprocess.Popen([psql_binary(), '-X', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', '-q', *args, '-f', '-'],
+                               env=env, text=True, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
+                               stdout=subprocess.PIPE if capture_stdout else None)
     try:
-        return subprocess.run([psql_binary(), '-X', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', *args],
-                              env=env, capture_output=capture, text=True, timeout=timeout)
+        stdout, stderr = process.communicate(script, timeout=timeout)
     except subprocess.TimeoutExpired:
-        raise SqlError('psql timed out') from None
+        process.send_signal(signal.SIGINT)
+        try:
+            process.communicate(timeout=10)
+            cancelled = 'psql cancelled the statement on the server'
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            cancelled = 'psql did not exit after a cancel request and was killed'
+        raise SqlError(f'Query timed out after {timeout}s; {cancelled}') from None
+    return subprocess.CompletedProcess(process.args, process.returncode, stdout, stderr)
 
 
 def withheld_sql(withheld):
@@ -329,59 +358,98 @@ SELECT concat_ws(',', (SELECT string_agg(name, ',' ORDER BY name) FROM readable)
   || '|' || coalesce((SELECT string_agg(name, ',' ORDER BY name) FROM missing), '')"""
 
 
-def guard_query(env, statement):
-    """Run a verification query with the catalogs pinned, so a role-level
-    search_path cannot shadow pg_catalog relations, functions or operators."""
-    return run_psql(env, ['-q', '-At', '-F', '|', '-c', 'SET search_path TO pg_catalog, pg_temp', '-c', statement])
+def _sql_array(values):
+    """Text array literal of values pre-validated by load_targets (no quotes)."""
+    return 'ARRAY[' + ', '.join(f"'{v}'" for v in values) + ']'
 
 
-def guard(env, withheld=None, allowed_routines=()):
-    """Refuse any role able to write, own or create objects, or read withheld secrets.
-    allowed_routines are pre-validated schema.name entries the owner audited."""
-    allowed = 'ARRAY[' + ', '.join(f"'{r}'" for r in allowed_routines) + ']'
-    result = guard_query(env, GUARD_SQL.replace('__ALLOWED_ROUTINES__', allowed))
-    if result.returncode:
-        raise SqlError('Could not connect or verify the role: ' + (result.stderr or result.stdout).strip()[:500])
-    fields = result.stdout.strip().split('|')
-    if len(fields) != 10:
+def guard_script(entry):
+    """psql commands that verify the role and set :agents_sql_safe to on or off.
+    Verification runs with search_path pinned to pg_catalog, so a role-level
+    search_path cannot shadow catalog relations, functions or operators. The
+    result goes to stderr as one AGENTS_SQL_GUARD line for guard_result()."""
+    withheld = withheld_sql(entry.get('withheld') or {}) or "SELECT '|'"
+    guard_sql = (GUARD_SQL.replace('__ALLOWED_ROUTINES__', _sql_array(entry.get('allowed_routines', [])))
+                 .replace('__OTHER_DATABASES__', _sql_array(entry.get('other_databases', []))))
+    return f"""SET search_path TO pg_catalog, pg_temp;
+SELECT CASE WHEN current_setting('server_version_num')::int >= 170000 THEN 'on' ELSE 'off' END AS agents_sql_pg17,
+  CASE WHEN current_setting('server_version_num')::int >= 150000 THEN 'on' ELSE 'off' END AS agents_sql_pg15 \\gset
+\\if :agents_sql_pg17
+{MAINTAIN_SQL} AS agents_sql_maintain \\gset
+\\else
+SELECT 'false' AS agents_sql_maintain \\gset
+\\endif
+\\if :agents_sql_pg15
+{PARAMETER_SQL} AS agents_sql_parameter \\gset
+\\else
+SELECT 'false' AS agents_sql_parameter \\gset
+\\endif
+{withheld} AS agents_sql_withheld \\gset
+WITH g AS ({guard_sql})
+SELECT CASE WHEN g.elevated='false' AND g.owns='false' AND g.writes='false' AND g.creates='false'
+    AND g.memberships='' AND g.grantable='false' AND g.routines='' AND g.other_databases=''
+    AND :'agents_sql_maintain'='false' AND :'agents_sql_parameter'='false' AND :'agents_sql_withheld'='|'
+    THEN 'on' ELSE 'off' END AS agents_sql_safe FROM g \\gset
+WITH g AS ({guard_sql})
+SELECT concat_ws('|', :'agents_sql_safe', g.elevated, g.owns, g.writes, g.creates, g.memberships, g.grantable,
+    g.routines, g.other_databases, :'agents_sql_maintain', :'agents_sql_parameter', :'agents_sql_withheld',
+    g.usr, g.version) AS agents_sql_guard FROM g \\gset
+\\warn {GUARD_MARK}:agents_sql_guard
+"""
+
+
+def guard_result(stderr):
+    """Parse the AGENTS_SQL_GUARD line. Returns (verified, problems, other stderr)."""
+    lines = (stderr or '').splitlines()
+    marks = [line[len(GUARD_MARK):] for line in lines if line.startswith(GUARD_MARK)]
+    # Line numbers refer to the generated script, not the agent's SQL.
+    rest = '\n'.join(re.sub(r'^psql:<stdin>:\d+: ', '', line) for line in lines if not line.startswith(GUARD_MARK))
+    if len(marks) != 1:
+        raise SqlError('Could not connect or verify the role: ' + rest.strip()[:500])
+    fields = marks[0].split('|')
+    if len(fields) != 15:
         raise SqlError('Unexpected role verification result')
-    elevated, owns, writes, creates, memberships, grantable, routines, user, version, version_num = fields
-    unsafe = [m for m in memberships.split(',') if m]
+    (safe, elevated, owns, writes, creates, memberships, grantable, routines, others,
+     maintain, parameter, exposed, missing, user, version) = fields
     problems = [label for label, flag in (
         ('has elevated role attributes', elevated), ('owns database objects', owns),
         ('can write to tables, columns, sequences, foreign servers or large objects', writes),
         ('can create objects or foreign servers', creates),
-        ('holds grant options or default privileges on future objects', grantable)) if flag == 'true']
+        ('holds grant options or default privileges on future objects', grantable),
+        ('has MAINTAIN on tables', maintain), ('has configuration parameter privileges', parameter)) if flag != 'false']
     # Any membership can confer reads or writes beyond the audited grants
     # (pg_read_all_data reads every secret column), so none are allowed.
-    if unsafe:
-        problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
+    if memberships:
+        problems.append('is a member of other roles (' + memberships.replace(',', ', ') + ')')
     if routines:
         problems.append('can execute restricted built-in, SECURITY DEFINER, WAL-writing, untrusted-language or '
                         'unlisted compiled extension routines (' + routines
                         + '); revoke their EXECUTE from PUBLIC and this role')
-    for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
-                                      (150000, 'has configuration parameter privileges', PARAMETER_SQL)):
-        if int(version_num) >= minimum:
-            extra = guard_query(env, statement)
-            if extra.returncode:
-                raise SqlError('Could not verify the role: ' + (extra.stderr or extra.stdout).strip()[:500])
-            if extra.stdout.strip() == 'true':
-                problems.append(label)
-    if not problems and withheld:
-        readable = guard_query(env, withheld_sql(withheld))
-        if readable.returncode:
-            raise SqlError('Could not verify withheld columns: ' + (readable.stderr or readable.stdout).strip()[:500])
-        exposed, _, missing = readable.stdout.strip().partition('|')
-        if exposed:
-            problems.append('can read withheld secrets (' + exposed + ')')
-        if missing:
-            problems.append('has withheld entries that do not exist (' + missing
-                            + '); update the target in local/databases.json')
+    if others:
+        problems.append('can connect to other databases whose grants are not audited (' + others
+                        + '); revoke CONNECT on them from PUBLIC, or list audited ones in the target\'s other_databases')
+    if exposed:
+        problems.append('can read withheld secrets (' + exposed + ')')
+    if missing:
+        problems.append('has withheld entries that do not exist (' + missing + '); update the target in local/databases.json')
+    if (safe == 'on') == bool(problems):
+        raise SqlError('Role verification was inconsistent; treat the role as unverified and report this bug')
+    return {'user': user, 'server_version': version}, problems, rest
+
+
+def refusal(verified, problems):
+    return SqlError(f"Refusing to run: role {verified['user']!r} " + '; '.join(problems)
+                    + '. Store a dedicated read-only role instead (docs/runbooks/databases.md).')
+
+
+def guard(env, entry):
+    """Refuse any role able to write, own or create objects, reach unaudited
+    databases, or read withheld secrets."""
+    result = run_session(env, guard_script(entry))
+    verified, problems, _ = guard_result(result.stderr)
     if problems:
-        raise SqlError(f'Refusing to run: role {user!r} ' + '; '.join(problems)
-                       + '. Store a dedicated read-only role instead (docs/runbooks/databases.md).')
-    return {'user': user, 'server_version': version}
+        raise refusal(verified, problems)
+    return verified
 
 
 def summary(name, entry, verified):
@@ -404,7 +472,7 @@ def command_targets(args):
 def command_check(args):
     entry = target(args.target)
     env = libpq_environment(connection_url(entry), entry)
-    print(summary(args.target, entry, guard(env, entry.get('withheld'), entry.get('allowed_routines', []))))
+    print(summary(args.target, entry, guard(env, entry)))
     return 0
 
 
@@ -483,7 +551,9 @@ def wrapped_sql(text):
         raise SqlError('Provide exactly one SQL statement per query')
     if first_keyword(text) not in READ_STATEMENTS:
         raise SqlError('Only ' + ', '.join(sorted(k.upper() for k in READ_STATEMENTS)) + ' statements are allowed')
-    return ('BEGIN TRANSACTION READ ONLY;\n'
+    # Unqualified names resolve in public only, never a schema another role controls.
+    return ('SET search_path TO public;\n'
+            'BEGIN TRANSACTION READ ONLY;\n'
             'SELECT 1 AS agents_sql_snapshot \\gset\n'
             + text.strip() + '\n;\nROLLBACK;\n')
 
@@ -515,14 +585,15 @@ def command_query(args):
         sql_text = sys.stdin.read()
     sql_text = wrapped_sql(checked_sql(sql_text))
     env = libpq_environment(connection_url(entry), entry)
-    verified = guard(env, entry.get('withheld'), entry.get('allowed_routines', []))
+    # One session: the SQL runs only if the role check in the same connection passed.
+    script = guard_script(entry) + '\\if :agents_sql_safe\n' + sql_text + '\\endif\n'
+    result = run_session(env, script, ['--csv'] if args.csv else [], capture_stdout=False, timeout=args.timeout)
+    verified, problems, rest = guard_result(result.stderr)
+    if problems:
+        raise refusal(verified, problems)
     print('-- ' + summary(args.target, entry, verified), file=sys.stderr)
-    psql_args = (['--csv'] if args.csv else []) + ['-q', '-f', '-']
-    try:
-        result = subprocess.run([psql_binary(), '-X', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', *psql_args],
-                                env=env, input=sql_text, text=True, timeout=args.timeout)
-    except subprocess.TimeoutExpired:
-        raise SqlError('psql timed out') from None
+    if rest.strip():
+        print(rest, file=sys.stderr)
     return result.returncode
 
 
@@ -579,7 +650,7 @@ def command_set_url(args):
     hosting = _hosting()
     check_profile(entry, hosting)  # never overwrite an unrelated credential
     env = libpq_environment(value, entry)
-    verified = guard(env, entry.get('withheld'), entry.get('allowed_routines', []))  # never store a role that can write
+    verified = guard(env, entry)  # never store a role that can write
     write_profile_value(hosting.resolve_profile(entry['profile']), entry['variable'], value)
     print('Stored. ' + summary(args.target, entry, verified))
     return 0
@@ -597,10 +668,16 @@ def scram_verifier(password, salt=None, iterations=4096):
     return f'SCRAM-SHA-256${iterations}:{b64(salt)}${b64(hashlib.sha256(client_key).digest())}:{b64(server_key)}'
 
 
+def pending_paths(name, entry, hosting):
+    credentials = Path(hosting.resolve_profile(entry['profile'])).expanduser()
+    return credentials, credentials.parent / f'{name}-readonly-role.sql', credentials.parent / f'{name}-pending.url'
+
+
 def command_prepare(args):
-    """Generate a password and store the target's URL privately. The SCRAM verifier
-    is never printed: it goes into an owner-only, ready-to-run copy of
-    readonly-role.sql that the owner pastes into the database's SQL console."""
+    """Generate a password and keep its URL pending, so the current credential
+    keeps working until the owner applies the new role SQL and `activate` swaps
+    it in. The SCRAM verifier is never printed: it goes into an owner-only,
+    ready-to-run copy of readonly-role.sql."""
     entry = target(args.target)
     hosting = _hosting()
     check_profile(entry, hosting)
@@ -610,17 +687,41 @@ def command_prepare(args):
     url = (f"postgresql://agent_readonly:{password}@{host}:{entry['port']}/"
            f"{urllib.parse.quote(entry['database'])}{query}")
     libpq_environment(url, entry)  # same validation as a stored URL
-    credentials = Path(hosting.resolve_profile(entry['profile'])).expanduser()
-    setup = credentials.parent / f'{args.target}-readonly-role.sql'
+    credentials, setup, pending = pending_paths(args.target, entry, hosting)
     role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
-    # One lock covers both files, so the stored password and the prepared verifier always pair.
+    # One lock covers both files, so the pending password and the prepared verifier always pair.
     with profile_lock(credentials):
         _write_private(setup, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', scram_verifier(password)))
-        _replace_assignment(credentials, entry['variable'], url)
-    print(f'Stored a new (not yet active) connection for {args.target}.\n'
-          f'As the database owner, run the prepared setup (it contains a password verifier; keep it private):\n'
+        _write_private(pending, url + '\n')
+    print(f'Prepared a new password for {args.target}; the current credential stays active until you activate it.\n'
+          f'As a superuser or CREATEROLE role, run the prepared setup (it contains a password verifier; keep it private):\n'
           f'  pbcopy < {setup}   # then paste into the database SQL console, or: psql OWNER_URL -f {setup}\n'
-          f'Then verify with: agents-sql check {args.target}, and delete {setup}.')
+          f'Then run: agents-sql activate {args.target}  (verifies the new role, stores it, deletes both files).')
+    return 0
+
+
+def command_activate(args):
+    """Verify the pending URL from `prepare` and make it the stored credential."""
+    entry = target(args.target)
+    hosting = _hosting()
+    check_profile(entry, hosting)
+    credentials, setup, pending = pending_paths(args.target, entry, hosting)
+    with profile_lock(credentials):
+        if not pending.exists():
+            raise SqlError(f'No pending credential for {args.target}; run `agents-sql prepare {args.target}` first')
+        info = pending.stat()
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            raise SqlError(f'Pending credential must be owned by you and mode 600: {pending}')
+        url = pending.read_text().strip()
+        try:
+            verified = guard(libpq_environment(url, entry), entry)
+        except SqlError as error:
+            raise SqlError(f'{error} The new password is not active yet; run the prepared role SQL as the owner, '
+                           f'then activate again. The current credential is unchanged.') from None
+        _replace_assignment(credentials, entry['variable'], url)
+        for path in (pending, setup):
+            path.unlink(missing_ok=True)
+    print('Activated. ' + summary(args.target, entry, verified))
     return 0
 
 
@@ -651,15 +752,18 @@ def main(argv=None):
     group.add_argument('-c', '--command')
     group.add_argument('-f', '--file')
     query.add_argument('--csv', action='store_true')
-    query.add_argument('--timeout', type=int, default=120, help='Seconds before psql is stopped (default 120)')
+    query.add_argument('--timeout', type=int, default=120,
+                       help='Seconds before the statement is cancelled on the server (default 120)')
     store = sub.add_parser('set-url', help='Verify and store a read-only connection URL from hidden input/stdin')
     store.add_argument('target')
-    prepare = sub.add_parser('prepare', help='Generate and store a new password; print the SCRAM verifier for the owner')
+    prepare = sub.add_parser('prepare', help='Generate a pending password and write the owner role SQL privately')
     prepare.add_argument('target')
+    activate = sub.add_parser('activate', help='Verify the pending password from prepare and store it')
+    activate.add_argument('target')
     args = parser.parse_args(argv)
     try:
         return {'targets': command_targets, 'check': command_check, 'query': command_query,
-                'set-url': command_set_url, 'prepare': command_prepare}[args.action](args)
+                'set-url': command_set_url, 'prepare': command_prepare, 'activate': command_activate}[args.action](args)
     except SqlError as error:
         print(f'agents-sql: {error}', file=sys.stderr)
         return 2

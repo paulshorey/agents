@@ -19,6 +19,17 @@ Verification dates describe historical observations, not current readiness.
   on each database and store its URL (`docs/runbooks/databases.md`). Observed on
   2026-11-05: the `railway.workspace` token reads projects in my workspace but not
   the LivX serving project, which is in another Railway workspace.
+- Review follow-up: the role check and the query now run in one `psql` session, so
+  the SQL runs only if the check in that connection passed. The check refuses a role
+  that can connect to another database in the cluster unless the target lists it in
+  `other_databases`. Query sessions pin `search_path` to `public`. A timeout interrupts
+  `psql` so the server cancels the statement (a query can raise its own
+  `statement_timeout`). `prepare` keeps the new URL pending and the new
+  `agents-sql activate` verifies and stores it, so rotation no longer breaks the
+  working credential. Registry fields are type-checked. The role SQL requires a
+  superuser or `CREATEROLE` and names other connectable databases. The runbook states
+  that the role's grants are the boundary and the SQL rules only stop mistakes, and
+  lists ways to limit personal data. 64 tests pass against local PostgreSQL 18.
 
 ## 2026-11-05 — Claude Code auto mode trusts the PR review loop
 

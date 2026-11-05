@@ -10,8 +10,9 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import urllib.parse
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,6 +92,18 @@ class RegistryTests(unittest.TestCase):
                 path.chmod(0o600)
                 with self.assertRaises(sql.SqlError, msg=targets):
                     sql.load_targets(path)
+
+    def test_rejects_non_string_registry_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'databases.json'
+            for bad in [{'host': None}, {'database': 5}, {'description': ''}, {'other_databases': ["x'y"]},
+                        {'other_databases': 'postgres'}]:
+                path.write_text(json.dumps({'schema_version': 1, 'targets': {'t': {**TARGET, **bad}}}))
+                path.chmod(0o600)
+                with self.assertRaises(sql.SqlError, msg=bad):
+                    sql.load_targets(path)
+            path.write_text(json.dumps({'schema_version': 1, 'targets': {'t': {**TARGET, 'other_databases': ['postgres']}}}))
+            self.assertIn('t', sql.load_targets(path))
 
     def test_accepts_schema_qualified_withheld_relations(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -180,7 +193,7 @@ class MetaCommandTests(unittest.TestCase):
                      "SELECT 'x", '-- nothing']:
             with patch.object(sql, 'target', return_value=TARGET), \
                     patch.object(sql, 'connection_url') as connection, \
-                    patch.object(sql.subprocess, 'run') as run, patch('sys.stderr', new_callable=io.StringIO):
+                    patch.object(sql.subprocess, 'Popen') as run, patch('sys.stderr', new_callable=io.StringIO):
                 self.assertEqual(sql.main(['query', 'fixture', '-c', text]), 2, text)
             connection.assert_not_called()
             run.assert_not_called()
@@ -203,31 +216,58 @@ class MetaCommandTests(unittest.TestCase):
             for args in [['-c', '\\! env'], ['-f', str(script)]]:
                 with patch.object(sql, 'target', return_value=TARGET), \
                         patch.object(sql, 'connection_url') as connection, \
-                        patch.object(sql.subprocess, 'run') as run, patch('sys.stderr', new_callable=io.StringIO):
+                        patch.object(sql.subprocess, 'Popen') as run, patch('sys.stderr', new_callable=io.StringIO):
                     self.assertEqual(sql.main(['query', 'fixture', *args]), 2)
                 connection.assert_not_called()
                 run.assert_not_called()
 
 
+def pending_url(directory):
+    return (Path(directory) / 'fixture-pending.url').read_text().strip()
+
+
 class PrepareTests(unittest.TestCase):
-    def test_prepare_brackets_ipv6_hosts_and_never_prints_the_verifier(self):
+    def test_prepare_keeps_the_current_credential_and_never_prints_the_verifier(self):
         with tempfile.TemporaryDirectory() as directory:
             FakeHosting.credentials = Path(directory) / 'db.env'
             self.addCleanup(setattr, FakeHosting, 'credentials', None)
+            current = url(host='::1', port=5432)
+            sql.write_profile_value(FakeHosting.credentials, 'FIXTURE_DATABASE_URL', current)
             entry = {**TARGET, 'host': '::1', 'port': 5432}
             out = io.StringIO()
             with patch.object(sql, 'target', return_value=entry), patch.object(sql, '_hosting', return_value=FakeHosting), \
                     patch('sys.stdout', out):
                 self.assertEqual(sql.main(['prepare', 'fixture']), 0)
-            stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
-            self.assertIn('@[::1]:5432/', stored)
-            self.assertEqual(sql.libpq_environment(stored, entry)['PGHOST'], '::1')
-            setup = Path(directory) / 'fixture-readonly-role.sql'
-            self.assertEqual(stat.S_IMODE(setup.stat().st_mode), 0o600)
-            self.assertIn('SCRAM-SHA-256$', setup.read_text())
+            self.assertIn(current, FakeHosting.credentials.read_text())  # rotation does not break the working URL
+            pending = pending_url(directory)
+            self.assertIn('@[::1]:5432/', pending)
+            self.assertEqual(sql.libpq_environment(pending, entry)['PGHOST'], '::1')
+            for name in ('fixture-readonly-role.sql', 'fixture-pending.url'):
+                self.assertEqual(stat.S_IMODE((Path(directory) / name).stat().st_mode), 0o600)
+            self.assertIn('SCRAM-SHA-256$', (Path(directory) / 'fixture-readonly-role.sql').read_text())
             self.assertNotIn('SCRAM-SHA-256$', out.getvalue())
-            self.assertNotIn(urllib.parse.urlsplit(stored).password, out.getvalue())
+            self.assertNotIn(urllib.parse.urlsplit(pending).password, out.getvalue())
 
+    def test_activate_stores_only_a_verified_pending_url(self):
+        with tempfile.TemporaryDirectory() as directory:
+            FakeHosting.credentials = Path(directory) / 'db.env'
+            self.addCleanup(setattr, FakeHosting, 'credentials', None)
+            current = url()
+            sql.write_profile_value(FakeHosting.credentials, 'FIXTURE_DATABASE_URL', current)
+            with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, '_hosting', return_value=FakeHosting), \
+                    patch('sys.stdout', new_callable=io.StringIO), patch('sys.stderr', new_callable=io.StringIO):
+                self.assertEqual(sql.main(['activate', 'fixture']), 2)  # nothing pending
+                sql.main(['prepare', 'fixture'])
+                pending = pending_url(directory)
+                with patch.object(sql, 'guard', side_effect=sql.SqlError('password authentication failed')):
+                    self.assertEqual(sql.main(['activate', 'fixture']), 2)
+                self.assertIn(current, FakeHosting.credentials.read_text())
+                with patch.object(sql, 'guard', return_value={'user': 'agent_readonly', 'server_version': '18'}):
+                    self.assertEqual(sql.main(['activate', 'fixture']), 0)
+            self.assertIn(pending, FakeHosting.credentials.read_text())
+            self.assertNotIn(current, FakeHosting.credentials.read_text())
+            self.assertEqual(sorted(path.name for path in Path(directory).iterdir() if not path.name.startswith('.')),
+                             ['db.env'])
 
     def test_concurrent_prepare_runs_keep_password_and_verifier_paired(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -240,11 +280,22 @@ class PrepareTests(unittest.TestCase):
                     thread.start()
                 for thread in threads:
                     thread.join()
-            stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
-            password = urllib.parse.unquote(urllib.parse.urlsplit(stored).password)
+            password = urllib.parse.unquote(urllib.parse.urlsplit(pending_url(directory)).password)
             verifier = re.search(r"SCRAM-SHA-256\$4096:([^$]+)\$([^:]+):(\S+?)'", (Path(directory) / 'fixture-readonly-role.sql').read_text())
             salt = base64.b64decode(verifier.group(1))
             self.assertEqual(sql.scram_verifier(password, salt), verifier.group(0)[:-1])
+
+
+class TimeoutTests(unittest.TestCase):
+    def test_timeout_interrupts_psql_so_it_cancels_the_statement(self):
+        process = MagicMock()
+        process.communicate.side_effect = [subprocess.TimeoutExpired('psql', 1), ('', '')]
+        with patch.object(sql, 'psql_binary', return_value='psql'), patch.object(sql.subprocess, 'Popen', return_value=process):
+            with self.assertRaises(sql.SqlError) as raised:
+                sql.run_session({}, 'SELECT 1;', timeout=1)
+        process.send_signal.assert_called_once_with(sql.signal.SIGINT)
+        process.kill.assert_not_called()
+        self.assertIn('cancelled the statement on the server', str(raised.exception))
 
 
 class CredentialFileTests(unittest.TestCase):
@@ -282,6 +333,21 @@ ADMIN_URL = os.environ.get('AGENTS_SQL_TEST_ADMIN_URL')
 WITHHELD = {'users': ['password', 'api_token'], 'user_auth_tokens': '*'}
 
 
+def guard(env, withheld=None, allowed_routines=(), other_databases=()):
+    return sql.guard(env, {'withheld': withheld or {}, 'allowed_routines': list(allowed_routines),
+                           'other_databases': list(other_databases)})
+
+
+def run_session_text(env, script):
+    return subprocess.run(['psql', '-X', '-At', '-q', '-v', 'ON_ERROR_STOP=1', '-f', '-'], env=env, input=script,
+                          capture_output=True, text=True, timeout=60, check=True).stdout
+
+
+def run_psql(env, args):
+    return subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', *args], env=env, capture_output=True, text=True,
+                          timeout=60)
+
+
 @unittest.skipUnless(ADMIN_URL and shutil.which('psql'), 'set AGENTS_SQL_TEST_ADMIN_URL to a disposable localhost database')
 class LiveRoleTests(unittest.TestCase):
     """Applies the reference role SQL to a disposable local database."""
@@ -296,6 +362,13 @@ class LiveRoleTests(unittest.TestCase):
                       'database': parts.path.lstrip('/'), 'withheld': WITHHELD}
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
         cls.secret = 'fixture' + os.urandom(8).hex()
+        # Roles are cluster-wide; keep PUBLIC from connecting to the cluster's other databases.
+        others = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c',
+                                 "SELECT string_agg(format('REVOKE CONNECT ON DATABASE %I FROM PUBLIC;', datname), ' ') "
+                                 'FROM pg_database WHERE datallowconn AND datname <> current_database()'],
+                                check=True, capture_output=True, text=True).stdout.strip()
+        if others:
+            cls.admin(others)
         cls.admin("""
           CREATE TABLE IF NOT EXISTS public.users (id bigint PRIMARY KEY, email text, password text, api_token text);
           CREATE TABLE IF NOT EXISTS public.user_auth_tokens (id bigint PRIMARY KEY, token text);
@@ -327,28 +400,28 @@ class LiveRoleTests(unittest.TestCase):
         return self.role_url(name, secret)
 
     def test_verifies_the_read_only_role_and_refuses_the_owner(self):
-        self.assertEqual(sql.guard(self.env(self.readonly_url), WITHHELD)['user'], 'agent_readonly')
+        self.assertEqual(guard(self.env(self.readonly_url), WITHHELD)['user'], 'agent_readonly')
         owner = self.role_url(self.parts.username, urllib.parse.unquote(self.parts.password or 'x'))
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(owner))
+            guard(self.env(owner))
         self.assertIn('Refusing to run', str(raised.exception))
 
     def test_refuses_column_level_write_grants(self):
         role = self.scratch_role('GRANT SELECT (id, email) ON public.users TO {role}; GRANT UPDATE (email) ON public.users TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('write', str(raised.exception))
 
     def test_refuses_inherited_read_all_data(self):
         role = self.scratch_role('GRANT pg_read_all_data TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role), WITHHELD)
+            guard(self.env(role), WITHHELD)
         self.assertIn('pg_read_all_data', str(raised.exception))
 
     def test_refuses_a_role_that_can_read_withheld_secrets(self):
         role = self.scratch_role('GRANT SELECT ON public.users TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role), WITHHELD)
+            guard(self.env(role), WITHHELD)
         self.assertIn('users.password', str(raised.exception))
 
     def test_refuses_other_write_paths(self):
@@ -367,13 +440,13 @@ class LiveRoleTests(unittest.TestCase):
             with self.subTest(label):
                 role = self.scratch_role(grants)
                 with self.assertRaises(sql.SqlError, msg=label):
-                    sql.guard(self.env(role))
+                    guard(self.env(role))
 
     def test_refuses_executable_security_definer_routines(self):
         self.admin('CREATE FUNCTION public.agent_probe_definer() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$')
         self.addCleanup(self.admin, 'DROP FUNCTION public.agent_probe_definer()')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_definer', str(raised.exception))
 
     def test_tool_queries_run_in_an_enforced_read_only_transaction(self):
@@ -405,16 +478,16 @@ class LiveRoleTests(unittest.TestCase):
             with self.subTest(exposed):
                 self.admin(grants)
                 with self.assertRaises(sql.SqlError) as raised:
-                    sql.guard(self.env(self.readonly_url), WITHHELD)
+                    guard(self.env(self.readonly_url), WITHHELD)
                 self.assertIn(exposed, str(raised.exception))
                 self.admin(grants.replace('GRANT SELECT', 'REVOKE ALL').replace(' TO ', ' FROM '))
-        sql.guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)
 
     def test_fails_closed_on_missing_withheld_entries(self):
         for withheld, missing in [({'no_such_table': '*'}, 'public.no_such_table'),
                                   ({'users': ['no_such_column']}, 'public.users.no_such_column')]:
             with self.subTest(missing), self.assertRaises(sql.SqlError) as raised:
-                sql.guard(self.env(self.readonly_url), {**WITHHELD, **withheld})
+                guard(self.env(self.readonly_url), {**WITHHELD, **withheld})
             self.assertIn(missing, str(raised.exception))
 
     def test_checks_withheld_relations_outside_public(self):
@@ -422,14 +495,14 @@ class LiveRoleTests(unittest.TestCase):
                    'GRANT USAGE ON SCHEMA agent_probe_auth TO agent_readonly; GRANT SELECT ON agent_probe_auth.tokens TO agent_readonly')
         self.addCleanup(self.admin, 'DROP SCHEMA agent_probe_auth CASCADE')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_auth.tokens': '*'})
+            guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_auth.tokens': '*'})
         self.assertIn('agent_probe_auth.tokens', str(raised.exception))
 
     def test_refuses_security_definer_routines_in_system_schemas(self):
         self.admin('CREATE FUNCTION information_schema.agent_probe_definer() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$')
         self.addCleanup(self.admin, 'DROP FUNCTION information_schema.agent_probe_definer()')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_definer', str(raised.exception))
 
     def test_refuses_untrusted_language_routines(self):
@@ -439,7 +512,7 @@ class LiveRoleTests(unittest.TestCase):
                    'AS $$ BEGIN RETURN 1; END $$')
         self.addCleanup(self.admin, 'DROP LANGUAGE agent_probe_lang CASCADE')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_untrusted', str(raised.exception))
 
     def test_refuses_foreign_data_wrapper_usage(self):
@@ -447,7 +520,7 @@ class LiveRoleTests(unittest.TestCase):
         self.addCleanup(self.admin, 'DROP FOREIGN DATA WRAPPER agent_probe_fdw CASCADE')
         role = self.scratch_role('GRANT USAGE ON FOREIGN DATA WRAPPER agent_probe_fdw TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('foreign servers', str(raised.exception))
 
     def test_role_sql_accepts_only_a_scram_verifier(self):
@@ -457,12 +530,12 @@ class LiveRoleTests(unittest.TestCase):
                                     capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('SCRAM-SHA-256 verifier', failed.stderr)
-        sql.guard(self.env(self.readonly_url), WITHHELD)  # the existing password still works
+        guard(self.env(self.readonly_url), WITHHELD)  # the existing password still works
 
     def test_refuses_granted_file_reading_built_ins(self):
         role = self.scratch_role('GRANT EXECUTE ON FUNCTION pg_read_file(text) TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('pg_read_file', str(raised.exception))
 
     def test_refuses_whole_row_views_over_withheld_columns(self):
@@ -470,10 +543,10 @@ class LiveRoleTests(unittest.TestCase):
                    'CREATE VIEW public.agent_probe_safe AS SELECT id, email FROM public.users; '
                    'GRANT SELECT ON public.agent_probe_safe TO agent_readonly')
         self.addCleanup(self.admin, 'DROP VIEW IF EXISTS public.agent_probe_rows, public.agent_probe_safe')
-        sql.guard(self.env(self.readonly_url), WITHHELD)  # a column-only view is fine
+        guard(self.env(self.readonly_url), WITHHELD)  # a column-only view is fine
         self.admin('GRANT SELECT ON public.agent_probe_rows TO agent_readonly')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_rows', str(raised.exception))
 
     def test_role_search_path_cannot_shadow_the_catalogs(self):
@@ -484,7 +557,7 @@ class LiveRoleTests(unittest.TestCase):
         name = urllib.parse.urlsplit(role).username
         self.addCleanup(self.admin, f'DROP SCHEMA IF EXISTS agent_probe_shadow_{name} CASCADE')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('owns database objects', str(raised.exception))
 
     def run_role_sql(self):
@@ -497,8 +570,8 @@ class LiveRoleTests(unittest.TestCase):
         # PostgreSQL denies catalog writes to non-superusers even with an explicit grant,
         # and the guard scans effective privileges in every schema, catalogs included.
         role = self.scratch_role('GRANT UPDATE ON pg_catalog.pg_description TO {role};')
-        sql.guard(self.env(role))
-        denied = sql.run_psql(self.env(role), ['-At', '-c',
+        guard(self.env(role))
+        denied = run_psql(self.env(role), ['-At', '-c',
             "SET transaction_read_only = off; UPDATE pg_catalog.pg_description SET description = description WHERE false"])
         self.assertNotEqual(denied.returncode, 0)
         self.assertIn('permission denied', denied.stderr)
@@ -506,9 +579,9 @@ class LiveRoleTests(unittest.TestCase):
     def test_role_sql_removes_stale_write_grants(self):
         self.admin('GRANT INSERT, UPDATE (email) ON public.users TO agent_readonly')
         with self.assertRaises(sql.SqlError):
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertEqual(self.run_role_sql().returncode, 0)
-        sql.guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)
 
     def test_role_sql_stops_instead_of_changing_public_create(self):
         self.admin('GRANT CREATE ON SCHEMA public TO PUBLIC')
@@ -525,16 +598,16 @@ class LiveRoleTests(unittest.TestCase):
         self.admin('ALTER TABLE public.users ADD COLUMN password_copy text GENERATED ALWAYS AS (password) STORED')
         self.addCleanup(self.admin, 'ALTER TABLE public.users DROP COLUMN IF EXISTS password_copy')
         self.assertEqual(self.run_role_sql().returncode, 0)
-        sql.guard(self.env(self.readonly_url), WITHHELD)  # setup skipped the derived column
+        guard(self.env(self.readonly_url), WITHHELD)  # setup skipped the derived column
         self.admin('GRANT SELECT (password_copy) ON public.users TO agent_readonly')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('password_copy', str(raised.exception))
 
     def test_refuses_create_on_any_persistent_schema(self):
         role = self.scratch_role('GRANT CREATE ON SCHEMA information_schema TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('can create', str(raised.exception))
 
     def test_default_privileges_for_any_creator_are_refused_and_cleared(self):
@@ -544,10 +617,10 @@ class LiveRoleTests(unittest.TestCase):
         self.addCleanup(self.admin, 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE ALL ON TABLES FROM agent_readonly; '
                                     'DROP OWNED BY agent_probe_migrator; DROP ROLE agent_probe_migrator')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('default privileges', str(raised.exception))
         self.assertEqual(self.run_role_sql().returncode, 0)
-        sql.guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)
 
     def test_readable_parent_exposes_a_withheld_child(self):
         self.admin('CREATE TABLE public.agent_probe_parent (token text); '
@@ -555,27 +628,27 @@ class LiveRoleTests(unittest.TestCase):
                    'GRANT SELECT ON public.agent_probe_parent TO agent_readonly')
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.agent_probe_kid, public.agent_probe_parent')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_kid': '*'})
+            guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_kid': '*'})
         self.assertIn('agent_probe_parent', str(raised.exception))
 
     def test_refuses_unlisted_compiled_extension_routines(self):
         self.admin("CREATE FUNCTION public.agent_probe_lower(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'lower'")
         self.addCleanup(self.admin, 'DROP FUNCTION IF EXISTS public.agent_probe_lower(text), public.agent_probe_lower(text, text)')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_lower', str(raised.exception))
-        sql.guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower(text)'])
+        guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower(text)'])
         # An unaudited overload is not covered by the allowlisted identity.
         self.admin("CREATE FUNCTION public.agent_probe_lower(text, text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'textcat'")
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower(text)'])
+            guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower(text)'])
         self.assertIn('public.agent_probe_lower(text,text)', str(raised.exception))
 
     def test_refuses_custom_compiled_routines_created_in_pg_catalog(self):
         self.admin("CREATE FUNCTION pg_catalog.agent_probe_catalog(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'lower'")
         self.addCleanup(self.admin, 'DROP FUNCTION pg_catalog.agent_probe_catalog(text)')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('pg_catalog.agent_probe_catalog(text)', str(raised.exception))
 
     def test_refuses_compiled_extension_routines_installed_in_pg_catalog(self):
@@ -587,7 +660,7 @@ class LiveRoleTests(unittest.TestCase):
             "FROM pg_proc p WHERE p.pronamespace='public'::regnamespace AND p.proname LIKE 'dblink%'"],
             capture_output=True, text=True, check=True).stdout.split()
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(self.readonly_url), WITHHELD, others)
+            guard(self.env(self.readonly_url), WITHHELD, others)
         self.assertIn('pg_catalog.dblink_exec(text,text)', str(raised.exception))
 
     def test_refuses_large_object_reads_and_role_sql_revokes_them(self):
@@ -596,12 +669,12 @@ class LiveRoleTests(unittest.TestCase):
         self.addCleanup(self.admin, f'SELECT lo_unlink({lo})')
         self.admin(f'GRANT SELECT ON LARGE OBJECT {lo} TO agent_readonly')
         with self.assertRaises(sql.SqlError):
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
         self.assertEqual(self.run_role_sql().returncode, 0)
-        sql.guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)
         self.admin(f'GRANT SELECT ON LARGE OBJECT {lo} TO PUBLIC')
         with self.assertRaises(sql.SqlError):
-            sql.guard(self.env(self.readonly_url), WITHHELD)
+            guard(self.env(self.readonly_url), WITHHELD)
 
     def test_role_sql_keeps_existing_roles_wal_message_access(self):
         self.admin("CREATE ROLE agent_probe_app; DO $$ DECLARE f regprocedure; BEGIN FOR f IN SELECT oid::regprocedure "
@@ -636,10 +709,10 @@ class LiveRoleTests(unittest.TestCase):
             self.skipTest('MAINTAIN needs PostgreSQL 17+')
         role = self.scratch_role('GRANT MAINTAIN ON pg_catalog.pg_description TO {role};')
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('MAINTAIN', str(raised.exception))
 
-    def test_prepare_stores_the_password_and_prints_only_a_working_verifier(self):
+    def test_prepare_then_activate_rotates_the_password(self):
         self.addCleanup(lambda: self.assertEqual(self.run_role_sql().returncode, 0))  # restore the class password
         with tempfile.TemporaryDirectory() as directory:
             FakeHosting.credentials = Path(directory) / 'db.env'
@@ -647,18 +720,66 @@ class LiveRoleTests(unittest.TestCase):
             fixture = {**self.target, 'profile': 'postgres.fixture', 'variable': 'FIXTURE_DATABASE_URL'}
             out = io.StringIO()
             with patch.object(sql, 'target', return_value=fixture), patch.object(sql, '_hosting', return_value=FakeHosting), \
-                    patch('sys.stdout', out):
+                    patch('sys.stdout', out), patch('sys.stderr', new_callable=io.StringIO):
                 self.assertEqual(sql.main(['prepare', 'fixture']), 0)
+                password = urllib.parse.unquote(urllib.parse.urlsplit(pending_url(directory)).password)
+                self.assertNotIn(password, out.getvalue())
+                self.assertNotIn('SCRAM-SHA-256$', out.getvalue())
+                guard(self.env(self.readonly_url), WITHHELD)  # the old password still works before the owner step
+                self.assertEqual(sql.main(['activate', 'fixture']), 2)  # new password not applied yet
+                setup = Path(directory) / 'fixture-readonly-role.sql'
+                subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL, '-f', str(setup)],
+                               check=True, capture_output=True)
+                self.assertEqual(sql.main(['activate', 'fixture']), 0)
             stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
-            password = urllib.parse.unquote(urllib.parse.urlsplit(stored).password)
+            self.assertEqual(urllib.parse.unquote(urllib.parse.urlsplit(stored).password), password)
             self.assertEqual(stat.S_IMODE(FakeHosting.credentials.stat().st_mode), 0o600)
-            self.assertNotIn(password, out.getvalue())
-            self.assertNotIn('SCRAM-SHA-256$', out.getvalue())
-            setup = FakeHosting.credentials.parent / 'fixture-readonly-role.sql'
-            subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL, '-f', str(setup)],
-                           check=True, capture_output=True)
-            self.assertEqual(sql.guard(sql.libpq_environment(stored + '?sslmode=disable', self.target), WITHHELD)['user'],
-                             'agent_readonly')
+            self.assertFalse(setup.exists())
+
+    def test_refuses_connect_on_unlisted_databases(self):
+        name = 'agent_probe_db_' + os.urandom(3).hex()
+        self.admin(f'CREATE DATABASE {name}')
+        self.addCleanup(self.admin, f'DROP DATABASE {name}')
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn(name, str(raised.exception))
+        guard(self.env(self.readonly_url), WITHHELD, other_databases=[name])  # audited and listed
+
+    def test_refused_role_never_runs_the_query_in_the_same_session(self):
+        role = self.scratch_role('GRANT INSERT ON public.users TO {role};')
+        started = time.monotonic()
+        with patch.object(sql, 'target', return_value=self.target), patch.object(sql, 'connection_url', return_value=role), \
+                patch('sys.stderr', new_callable=io.StringIO) as err:
+            self.assertEqual(sql.main(['query', 'fixture', '-c', 'SELECT pg_sleep(5)']), 2)
+        self.assertLess(time.monotonic() - started, 4)  # the query part was skipped
+        self.assertIn('can write', err.getvalue())
+
+    def test_query_search_path_is_pinned_to_public(self):
+        self.admin('ALTER ROLE agent_readonly SET search_path = agent_probe_nowhere')
+        self.addCleanup(self.admin, 'ALTER ROLE agent_readonly RESET search_path')
+        env = self.env(self.readonly_url)
+        self.assertIn('agent_probe_nowhere', run_psql(env, ['-At', '-c', 'SHOW search_path']).stdout)
+        session = run_session_text(env, sql.wrapped_sql('SHOW search_path'))
+        self.assertEqual(session.strip(), 'public')
+        guard(env, WITHHELD)  # verification pins pg_catalog regardless
+
+    def test_timeout_cancels_a_query_that_raises_its_own_statement_timeout(self):
+        with patch.object(sql, 'target', return_value=self.target), \
+                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
+                patch('sys.stderr', new_callable=io.StringIO) as err, patch('sys.stdout', new_callable=io.StringIO):
+            code = sql.main(['query', 'fixture', '--timeout', '3', '-c',
+                             "SELECT set_config('statement_timeout', '0', true), pg_sleep(60)"])
+        self.assertEqual(code, 2)
+        self.assertIn('cancelled the statement on the server', err.getvalue())
+        for _ in range(20):
+            running = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c',
+                                      "SELECT count(*) FROM pg_stat_activity WHERE usename='agent_readonly' "
+                                      "AND query LIKE '%pg_sleep(60)%' AND state='active'"],
+                                     capture_output=True, text=True).stdout.strip()
+            if running == '0':
+                break
+            subprocess.run(['sleep', '0.25'])
+        self.assertEqual(running, '0')
 
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
@@ -667,7 +788,7 @@ class LiveRoleTests(unittest.TestCase):
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
                        input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)), text=True,
                        check=True, capture_output=True)
-        sql.guard(self.env(self.readonly_url), {**WITHHELD, 'device_push_tokens': ['token']})
+        guard(self.env(self.readonly_url), {**WITHHELD, 'device_push_tokens': ['token']})
 
     def test_role_sql_withholds_secrets_on_child_tables(self):
         self.admin('CREATE TABLE public.agent_probe_child2 () INHERITS (public.user_auth_tokens)')
@@ -676,25 +797,25 @@ class LiveRoleTests(unittest.TestCase):
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
                        input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)), text=True,
                        check=True, capture_output=True)
-        sql.guard(self.env(self.readonly_url), WITHHELD)
+        guard(self.env(self.readonly_url), WITHHELD)
 
     def test_refuses_wal_writing_routines(self):
         role = self.scratch_role("DO $$ DECLARE f regprocedure; BEGIN FOR f IN SELECT oid::regprocedure FROM pg_proc "
                                  "WHERE proname='pg_logical_emit_message' LOOP EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO {role}', f); "
                                  "END LOOP; END $$;")
         with self.assertRaises(sql.SqlError) as raised:
-            sql.guard(self.env(role))
+            guard(self.env(role))
         self.assertIn('pg_logical_emit_message', str(raised.exception))
 
     def test_reads_allowed_columns_but_never_writes_or_reads_secrets(self):
         env = self.env(self.readonly_url)
-        ok = sql.run_psql(env, ['-At', '-c', 'SELECT email FROM public.users WHERE id=1'])
+        ok = run_psql(env, ['-At', '-c', 'SELECT email FROM public.users WHERE id=1'])
         self.assertEqual(ok.stdout.strip(), 'member@example.invalid')
         for statement in ['SELECT password FROM public.users', 'SELECT token FROM public.user_auth_tokens',
                           "SET transaction_read_only=off; UPDATE public.users SET email='x'",
                           'BEGIN READ WRITE; DELETE FROM public.users; COMMIT',
                           'CREATE TABLE public.agent_probe(id int)']:
-            denied = sql.run_psql(env, ['-At', '-c', statement])
+            denied = run_psql(env, ['-At', '-c', statement])
             self.assertNotEqual(denied.returncode, 0, statement)
 
     def test_query_command_runs_sql_through_the_guard(self):

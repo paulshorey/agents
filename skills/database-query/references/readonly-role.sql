@@ -1,13 +1,14 @@
--- Create a dedicated read-only login for AI agents. Run once per database as its
--- owner (Railway's `postgres` user), for example in Railway's Postgres "Data" tab
--- or with psql using that database's DATABASE_PUBLIC_URL.
+-- Create a dedicated read-only login for AI agents. Run once per database as a
+-- superuser or a role with CREATEROLE (Railway's `postgres` user is a superuser;
+-- owning the database is not enough to create or alter roles), for example in
+-- Railway's Postgres "Data" tab or with psql using that database's DATABASE_PUBLIC_URL.
 --
--- Do not edit this template: `agents-sql prepare TARGET` stores a new connection URL
--- privately and writes a ready-to-run copy, with the password's SCRAM-SHA-256
+-- Do not edit this template: `agents-sql prepare TARGET` keeps a new connection URL
+-- pending privately and writes a ready-to-run copy, with the password's SCRAM-SHA-256
 -- verifier in place of REPLACE_WITH_SCRAM_VERIFIER, to
 -- ~/.agents/local/credentials/TARGET-readonly-role.sql. Only the verifier reaches the
 -- server, so statement logging never records a usable password. The script aborts
--- on anything else.
+-- on anything else. Afterwards `agents-sql activate TARGET` verifies and stores it.
 -- Re-running is safe: it updates the password and grants. Re-run it after
 -- migrations add tables: only base tables that exist now are granted.
 --
@@ -29,6 +30,9 @@ BEGIN
   IF secret !~ '^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$' THEN
     RAISE EXCEPTION 'Set agents.readonly_verifier to the SCRAM-SHA-256 verifier from agents-sql prepare (run its prepared role SQL file, never a cleartext password)';
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = current_user AND (rolsuper OR rolcreaterole)) THEN
+    RAISE EXCEPTION 'Run this as a superuser or a role with CREATEROLE (on PostgreSQL 16+ also with ADMIN OPTION on an existing agent_readonly). Database ownership alone cannot create or alter roles.';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_readonly') THEN
     CREATE ROLE agent_readonly LOGIN;
   END IF;
@@ -40,6 +44,19 @@ ALTER ROLE agent_readonly SET statement_timeout = '30s';
 ALTER ROLE agent_readonly SET idle_in_transaction_session_timeout = '60s';
 
 DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_readonly', current_database()); END $$;
+-- Roles are cluster-wide and PUBLIC can connect to every database by default.
+-- agents-sql refuses the role while it can connect to another database that the
+-- target does not list in other_databases; name them here so the owner can decide.
+DO $$
+DECLARE others text;
+BEGIN
+  SELECT string_agg(datname, ', ' ORDER BY datname) INTO others FROM pg_database
+    WHERE datallowconn AND datname <> current_database()
+      AND has_database_privilege('agent_readonly', oid, 'CONNECT');
+  IF others IS NOT NULL THEN
+    RAISE NOTICE 'agent_readonly can also connect to: %. Revoke CONNECT on them from PUBLIC (grant it to the roles that need it), or audit them and list them in the target''s other_databases.', others;
+  END IF;
+END $$;
 GRANT USAGE ON SCHEMA public TO agent_readonly;
 -- PostgreSQL 15+ denies CREATE on schema public to PUBLIC. On an older or upgraded
 -- database PUBLIC may still have it; agents-sql refuses such a role, and revoking it

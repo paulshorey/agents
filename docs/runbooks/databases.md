@@ -16,6 +16,13 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Safety model
 
+The database role's grants are the security boundary. Anything that can read the
+credential file (any agent running as this OS user) can connect without
+`agents-sql`, so the tool's SQL rules (one read statement, no backslashes) only stop
+mistakes. The check the tool runs before every query is what catches a role
+that was granted too much; keep the grants, the check and the withheld lists
+correct rather than adding more client-side rules.
+
 - The role has `SELECT` on base tables only (views and materialized views run with
   their owner's privileges, so they are granted only after an audit), owns nothing,
   cannot create objects, and defaults to read-only sessions with statement and idle
@@ -39,6 +46,17 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - `agents-sql` refuses a stored URL whose host, port or database differs from the
   target, and refuses any role that is elevated, owns or can create objects, has
   non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
+- The check and the query run in one `psql` session: the SQL runs only if the check
+  in that same connection passed, so nothing can change between check and query, and
+  each query costs one connection.
+- Roles are cluster-wide and PostgreSQL lets PUBLIC connect to every database by
+  default. The check refuses a role that can connect to another database unless the
+  target lists it in `other_databases`. Either revoke `CONNECT` on those databases from
+  PUBLIC (granting it to the roles that need it), or audit them and list them. Stock
+  `postgres` and `template1` normally hold no data, but on PostgreSQL 14 or older PUBLIC
+  can create objects in their `public` schema (and objects in `template1` are copied
+  into new databases), so revoke there instead of listing them. The role SQL prints a
+  notice naming these databases.
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants and ancestors (a parent returns its
   children's rows), and through any view or
@@ -58,6 +76,11 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   authenticated) is the practical baseline there; pin the exported root CA with
   `verify-ca` for authentication. Weaker modes are accepted only for loopback hosts.
 
+- Query sessions set `search_path` to `public`, so an unqualified name never resolves in
+  a schema another role controls, whatever the role's own `search_path` setting.
+- `--timeout` (default 120 s) is enforced by interrupting `psql`, which sends a cancel
+  request so the server stops the statement. The role's 30 s `statement_timeout` is
+  only a default: a query can raise it with `set_config`, so the cancel is the bound.
 - Each `query` runs exactly one `SELECT`, `WITH`, `TABLE`, `VALUES`, `SHOW` or
   `EXPLAIN` statement inside a `READ ONLY` transaction that has already taken a
   snapshot, then rolls back. Transaction control (including `PREPARE TRANSACTION`),
@@ -79,21 +102,24 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Owner setup (once per database)
 
-1. Generate and store the credential:
+1. Generate a pending credential:
 
    ```sh
    ~/.agents/bin/agents-sql prepare livx-production
    ```
 
-   The password and URL go straight to the owner-only credential file. The role SQL,
+   The new URL is kept pending in `~/.agents/local/credentials/<target>-pending.url`
+   (mode 600); any current credential keeps working until step 3. The role SQL,
    with the password's SCRAM-SHA-256 verifier substituted, is written next to it as
    `~/.agents/local/credentials/<target>-readonly-role.sql` (mode 600); nothing secret
    is printed. The verifier cannot log in but allows offline password guessing, so
-   keep that file private and delete it after step 3.
+   keep that file private; step 3 deletes both files.
    Roles are cluster-wide: if this database shares a cluster with another registered
-   target, prepare once and copy that URL's password to the other target instead.
+   target, prepare once and store that password for the other target with `set-url`.
 2. Run that prepared copy of [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
-   (one transaction; it covers schema `public`) as the database owner: `pbcopy < FILE`
+   (one transaction; it covers schema `public`) as a superuser or a role with
+   `CREATEROLE` (database ownership cannot create or alter roles; Railway's
+   `postgres` user is a superuser): `pbcopy < FILE`
    and paste into the hosting provider's SQL console for that database (Railway:
    Postgres service → **Data** tab), or `psql OWNER_URL -f FILE`. It must run as a
    superuser or a member of every role that created default privileges naming
@@ -101,11 +127,15 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
    and public endpoints are in the project's private runbook (LivX:
    `~/git/livx/docs/database-migrations.md`). The script aborts on anything other
    than a verifier.
-3. Verify:
+3. Verify and activate:
 
    ```sh
-   ~/.agents/bin/agents-sql check livx-production
+   ~/.agents/bin/agents-sql activate livx-production
    ```
+
+   This runs the full role check with the pending URL, stores it in the credential
+   file, and deletes the pending URL and prepared SQL. If the check fails, nothing
+   changes. `agents-sql check TARGET` re-verifies the stored credential at any time.
 
 `agents-sql set-url TARGET` remains for storing an existing read-only URL (hidden
 prompt; verified before saving). If a target has audited compiled extension routines
@@ -121,12 +151,27 @@ and a credential that can reach its owner connection (see
 ## Rotate, revoke, add a target
 
 - Rotate: `agents-sql prepare TARGET`, run the newly prepared
-  `<target>-readonly-role.sql` as the owner, then `agents-sql check TARGET`.
+  `<target>-readonly-role.sql` as the owner, then `agents-sql activate TARGET`. The old
+  password works until the SQL runs and the stored URL changes only after `activate`
+  verifies the new one, so queries in between fail for at most that gap.
 - Revoke: `ALTER ROLE agent_readonly NOLOGIN;` (or `DROP OWNED BY agent_readonly; DROP ROLE agent_readonly;`)
   and delete the variable from the credential file.
 - Add a database: add a target to `local/databases.json`, register its variable
   in the profile in `config/profiles.json` (or a new `postgres.*` profile), update
   `config/inventory.json`, regenerate the inventory docs, then do the owner setup.
+
+## Personal data
+
+`withheld` covers credentials and bearer codes. Emails, names, phone numbers and
+addresses stay readable, and query results enter the agent's context (and the model
+provider's logs). The skill tells agents to prefer aggregates and to select personal
+fields only when the user asked for those records. To enforce more for a target:
+
+- add personal columns to its `withheld` list and to the role SQL's
+  `secret_columns`, then re-run the role SQL (agents can still count and join on ids);
+- grant an audited view with the personal columns removed or hashed, instead of the
+  base table; or
+- create the role only on dev until production access is needed.
 
 Recovery: the credential file is local only and not backed up in Git. If it is lost,
 rotate the password and store the new URL.
