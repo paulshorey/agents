@@ -426,6 +426,9 @@ class LiveRoleTests(unittest.TestCase):
         if version >= 170000:
             cases.append(('GRANT MAINTAIN ON public.users TO agent_readonly',
                           'REVOKE MAINTAIN ON public.users FROM agent_readonly', 'can write'))
+            cases.append(('CREATE VIEW public.agent_probe_mview AS SELECT id FROM public.users; '
+                          'GRANT MAINTAIN ON public.agent_probe_mview TO agent_readonly',
+                          'DROP VIEW public.agent_probe_mview', 'can write'))
         if version >= 150000:
             cases.append(('GRANT ALTER SYSTEM ON PARAMETER work_mem TO agent_readonly',
                           'REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM agent_readonly', 'can write'))
@@ -539,6 +542,9 @@ class LiveRoleTests(unittest.TestCase):
         if version >= 170000:
             cases.append(('GRANT MAINTAIN ON public.users TO PUBLIC', 'REVOKE MAINTAIN ON public.users FROM PUBLIC',
                           'TRIGGER or MAINTAIN'))
+            cases.append(('CREATE VIEW public.agent_probe_mview2 AS SELECT id FROM public.users; '
+                          'GRANT MAINTAIN ON public.agent_probe_mview2 TO PUBLIC',
+                          'DROP VIEW public.agent_probe_mview2', 'TRIGGER or MAINTAIN'))
         if version >= 150000:
             cases.append(('GRANT ALTER SYSTEM ON PARAMETER work_mem TO PUBLIC',
                           'REVOKE ALTER SYSTEM ON PARAMETER work_mem FROM PUBLIC', 'configuration parameter'))

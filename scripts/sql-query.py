@@ -53,7 +53,7 @@ GUARD_SCRIPT = r"""SET search_path TO pg_catalog, pg_temp;
 SELECT CASE WHEN current_setting('server_version_num')::int >= 170000 THEN 'on' ELSE 'off' END AS agents_sql_v17,
   CASE WHEN current_setting('server_version_num')::int >= 150000 THEN 'on' ELSE 'off' END AS agents_sql_v15 \gset
 \if :agents_sql_v17
-SELECT EXISTS(SELECT 1 FROM pg_class c WHERE c.relkind IN ('r', 'p', 'm')
+SELECT EXISTS(SELECT 1 FROM pg_class c WHERE c.relkind IN ('r', 'p', 'm', 'v', 'f')
   AND has_table_privilege(c.oid, 'MAINTAIN'))::text AS agents_sql_maintain \gset
 \else
 SELECT 'false' AS agents_sql_maintain \gset

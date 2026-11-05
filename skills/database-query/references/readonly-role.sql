@@ -152,7 +152,7 @@ BEGIN
       AND has_table_privilege('agent_readonly', c.oid, 'TRIGGER');
   IF found IS NULL AND current_setting('server_version_num')::int >= 170000 THEN
     EXECUTE $q$SELECT string_agg(c.oid::regclass::text, ', ') FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname !~ '^pg_(toast|temp_|toast_temp_)' AND c.relkind IN ('r', 'p', 'm')
+      WHERE n.nspname !~ '^pg_(toast|temp_|toast_temp_)' AND c.relkind IN ('r', 'p', 'm', 'v', 'f')
         AND has_table_privilege('agent_readonly', c.oid, 'MAINTAIN')$q$ INTO found;
   END IF;
   IF found IS NOT NULL THEN
