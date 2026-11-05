@@ -38,6 +38,19 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   authenticated) is the practical baseline there; pin the exported root CA with
   `verify-ca` for authentication. Weaker modes are accepted only for loopback hosts.
 
+- Each `query` runs exactly one statement inside a `READ ONLY` transaction that has
+  already taken a snapshot, then rolls back. PostgreSQL refuses to switch that
+  transaction to read-write, so writes, `nextval`, large-object creation, temp tables
+  and DDL fail even if a grant was missed. Multi-statement input is rejected.
+- The role check also refuses ownership of any object (via `pg_shdepend`), grant
+  options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
+  executable `SECURITY DEFINER` routines in user schemas, `MAINTAIN` (PostgreSQL 17+)
+  and configuration-parameter privileges (15+).
+- Residual risk: anyone who can read the credential file can connect without the
+  tool and switch a session to read-write. The role's grants then still prevent data
+  changes, but any login role can create large objects or temp tables. Keep the file
+  mode 600 and the role limited to this use.
+
 ## Owner setup (once per database)
 
 1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`. Roles are

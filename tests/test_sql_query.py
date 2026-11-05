@@ -142,6 +142,18 @@ class MetaCommandTests(unittest.TestCase):
                 sql.checked_sql(text)
         self.assertEqual(sql.checked_sql('SELECT chr(92)'), 'SELECT chr(92)')
 
+    def test_rejects_more_than_one_statement_before_connecting(self):
+        for text in ['SELECT 1; SELECT 2', 'SET transaction_read_only=off; UPDATE t SET a=1', 'COMMIT; DELETE FROM t',
+                     "SELECT 'x", '-- nothing']:
+            with patch.object(sql, 'target', return_value=TARGET), \
+                    patch.object(sql, 'connection_url') as connection, \
+                    patch.object(sql.subprocess, 'run') as run, patch('sys.stderr', new_callable=io.StringIO):
+                self.assertEqual(sql.main(['query', 'fixture', '-c', text]), 2, text)
+            connection.assert_not_called()
+            run.assert_not_called()
+        for text, count in [('SELECT $$a;b$$', 1), ("SELECT ';' -- x;", 1), ('/* ; */ SELECT 1;', 1), ('SELECT 1; SELECT 2', 2)]:
+            self.assertEqual(sql.statement_count(text), count, text)
+
     def test_query_command_never_starts_psql_for_meta_commands(self):
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / 'q.sql'
@@ -247,6 +259,50 @@ class LiveRoleTests(unittest.TestCase):
         with self.assertRaises(sql.SqlError) as raised:
             sql.guard(self.env(role), WITHHELD)
         self.assertIn('users.password', str(raised.exception))
+
+    def test_refuses_other_write_paths(self):
+        cases = {
+            'sequence usage': 'CREATE SEQUENCE IF NOT EXISTS public.probe_seq; GRANT USAGE ON SEQUENCE public.probe_seq TO {role};',
+            'owned type': "CREATE TYPE public.probe_type_{role} AS ENUM ('a'); ALTER TYPE public.probe_type_{role} OWNER TO {role};",
+            'grant option': 'GRANT SELECT (id, email) ON public.users TO {role} WITH GRANT OPTION;',
+            'maintain': 'GRANT MAINTAIN ON public.users TO {role};',
+            'parameter': 'GRANT SET ON PARAMETER work_mem TO {role};',
+        }
+        version = int(subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SHOW server_version_num'],
+                                     capture_output=True, text=True, check=True).stdout)
+        for label, grants in cases.items():
+            if label == 'maintain' and version < 170000 or label == 'parameter' and version < 150000:
+                continue
+            with self.subTest(label):
+                role = self.scratch_role(grants)
+                with self.assertRaises(sql.SqlError, msg=label):
+                    sql.guard(self.env(role))
+
+    def test_refuses_executable_security_definer_routines(self):
+        self.admin('CREATE FUNCTION public.agent_probe_definer() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$')
+        self.addCleanup(self.admin, 'DROP FUNCTION public.agent_probe_definer()')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('agent_probe_definer', str(raised.exception))
+
+    def test_tool_queries_run_in_an_enforced_read_only_transaction(self):
+        self.admin('CREATE SEQUENCE IF NOT EXISTS public.probe_ro_seq')
+        self.addCleanup(self.admin, 'DROP SEQUENCE IF EXISTS public.probe_ro_seq')
+        before = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SELECT count(*) FROM pg_largeobject_metadata'],
+                                capture_output=True, text=True, check=True).stdout
+        for statement in ['SET transaction_read_only = off', "SELECT lo_from_bytea(0, 'x')",
+                          'CREATE TEMP TABLE agent_probe_temp (id int)', "UPDATE public.users SET email='x'"]:
+            with patch.object(sql, 'target', return_value=self.target), \
+                    patch.object(sql, 'connection_url', return_value=self.readonly_url), \
+                    patch('sys.stderr', new_callable=io.StringIO):
+                self.assertNotEqual(sql.main(['query', 'fixture', '-c', statement]), 0, statement)
+        with patch.object(sql, 'target', return_value=self.target), \
+                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
+                patch('sys.stderr', new_callable=io.StringIO):
+            self.assertEqual(sql.main(['query', 'fixture', '-c', 'COMMIT']), 0)
+        after = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SELECT count(*) FROM pg_largeobject_metadata'],
+                               capture_output=True, text=True, check=True).stdout
+        self.assertEqual(before, after, 'no large object was created')
 
     def test_reads_allowed_columns_but_never_writes_or_reads_secrets(self):
         env = self.env(self.readonly_url)

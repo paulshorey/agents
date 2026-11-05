@@ -38,28 +38,52 @@ LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
 # pinned sslrootcert. Weaker modes are allowed only for loopback test databases.
 STRONG_SSL_MODES = {'require', 'verify-ca', 'verify-full'}
 SESSION_OPTIONS = '-c default_transaction_read_only=on -c statement_timeout=30s -c idle_in_transaction_session_timeout=60s'
-# One row: elevated|owns_objects|can_write|can_create|memberships|current_user|server_version
-# Write checks use effective privileges (direct, PUBLIC and inherited; table,
-# column and sequence level), not just catalog rows granted to this role.
-GUARD_SQL = r"""
+USER_SCHEMAS = ("n.nspname NOT IN ('pg_catalog','information_schema') "
+                "AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'")
+# One row, '|'-separated: elevated|owns|can_write|can_create|memberships|grant_options|
+# definer_routines|current_user|server_version|server_version_num.
+# Checks use effective privileges (direct, PUBLIC and inherited), so a grant at
+# table, column, sequence, server or large-object level is caught. Ownership
+# comes from pg_shdepend, which records owners of every object type.
+GUARD_SQL = rf"""
 SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication)::text,
-  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE c.relowner=r.oid AND n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%')::text,
-  EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'
+  EXISTS(SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass
+    AND d.refobjid=r.oid AND d.deptype='o')::text,
+  (EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE {USER_SCHEMAS}
       AND ((c.relkind IN ('r','p','v','m','f')
           AND (has_table_privilege(current_user, c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER')
             OR has_any_column_privilege(current_user, c.oid, 'INSERT, UPDATE')))
-        OR (c.relkind='S' AND has_sequence_privilege(current_user, c.oid, 'UPDATE'))))::text,
+        OR (c.relkind='S' AND has_sequence_privilege(current_user, c.oid, 'USAGE, UPDATE'))))
+   OR EXISTS(SELECT 1 FROM pg_foreign_server s WHERE has_server_privilege(current_user, s.oid, 'USAGE'))
+   OR EXISTS(SELECT 1 FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
+     WHERE a.grantee IN (r.oid, 0) AND a.privilege_type='UPDATE')
+   OR current_setting('lo_compat_privileges')='on')::text,
   (has_database_privilege(current_user, current_database(), 'CREATE')
-    OR EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname NOT IN ('pg_catalog','information_schema')
-      AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'
+    OR EXISTS(SELECT 1 FROM pg_namespace n WHERE {USER_SCHEMAS}
       AND has_schema_privilege(current_user, n.oid, 'CREATE')))::text,
   coalesce((SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
     JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid), ''),
-  current_user, current_setting('server_version')
+  EXISTS(SELECT 1 FROM (
+      SELECT relacl AS acl FROM pg_class UNION ALL SELECT attacl FROM pg_attribute
+      UNION ALL SELECT nspacl FROM pg_namespace UNION ALL SELECT proacl FROM pg_proc
+      UNION ALL SELECT typacl FROM pg_type UNION ALL SELECT lomacl FROM pg_largeobject_metadata
+      UNION ALL SELECT srvacl FROM pg_foreign_server UNION ALL SELECT lanacl FROM pg_language
+      UNION ALL SELECT datacl FROM pg_database WHERE datname=current_database()
+    ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable)::text,
+  coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE p.prosecdef AND {USER_SCHEMAS} AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+    ORDER BY 1 LIMIT 5) routines), ''),
+  current_user, current_setting('server_version'), current_setting('server_version_num')
 FROM pg_roles r WHERE r.rolname=current_user
 """
+# Version-specific privileges that older servers cannot even parse.
+MAINTAIN_SQL = rf"""SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE {USER_SCHEMAS} AND c.relkind IN ('r','p','m')
+    AND has_table_privilege(current_user, c.oid, 'MAINTAIN'))::text"""
+PARAMETER_SQL = """SELECT EXISTS(SELECT 1 FROM pg_parameter_acl p, aclexplode(p.paracl) a
+  WHERE a.grantee IN ((SELECT oid FROM pg_roles WHERE rolname=current_user), 0))::text"""
 
 
 class SqlError(Exception):
@@ -210,17 +234,29 @@ def guard(env, withheld=None):
     if result.returncode:
         raise SqlError('Could not connect or verify the role: ' + (result.stderr or result.stdout).strip()[:500])
     fields = result.stdout.strip().split('|')
-    if len(fields) != 7:
+    if len(fields) != 10:
         raise SqlError('Unexpected role verification result')
-    elevated, owns, writes, creates, memberships, user, version = fields
+    elevated, owns, writes, creates, memberships, grantable, routines, user, version, version_num = fields
+    unsafe = [m for m in memberships.split(',') if m]
+    problems = [label for label, flag in (
+        ('has elevated role attributes', elevated), ('owns database objects', owns),
+        ('can write to tables, columns, sequences, foreign servers or large objects', writes),
+        ('can create objects', creates), ('holds grant options', grantable)) if flag == 'true']
     # Any membership can confer reads or writes beyond the audited grants
     # (pg_read_all_data reads every secret column), so none are allowed.
-    unsafe = [m for m in memberships.split(',') if m]
-    problems = [label for label, flag in (('has elevated role attributes', elevated), ('owns database objects', owns),
-                                          ('can write to tables, columns or sequences', writes), ('can create objects', creates))
-                if flag == 'true']
     if unsafe:
         problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
+    if routines:
+        problems.append('can execute SECURITY DEFINER routines (' + routines
+                        + '); revoke their EXECUTE from PUBLIC and this role')
+    for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
+                                      (150000, 'has configuration parameter privileges', PARAMETER_SQL)):
+        if int(version_num) >= minimum:
+            extra = run_psql(env, ['-At', '-c', statement])
+            if extra.returncode:
+                raise SqlError('Could not verify the role: ' + (extra.stderr or extra.stdout).strip()[:500])
+            if extra.stdout.strip() == 'true':
+                problems.append(label)
     if not problems and withheld:
         readable = run_psql(env, ['-At', '-c', withheld_sql(withheld)])
         if readable.returncode:
@@ -257,6 +293,60 @@ def command_check(args):
     return 0
 
 
+def statement_count(text):
+    """Count statements in backslash-free SQL, skipping quotes, dollar quotes and
+    comments the way psql's lexer does. Unterminated constructs are rejected."""
+    i, n, count, has_content = 0, len(text), 0, False
+    while i < n:
+        ch = text[i]
+        if ch in "'\"":
+            close = text.find(ch, i + 1)
+            while close != -1 and close + 1 < n and text[close + 1] == ch:
+                close = text.find(ch, close + 2)
+            if close == -1:
+                raise SqlError('SQL has an unterminated quote')
+            i, has_content = close + 1, True
+        elif ch == '$' and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] in '_$')) \
+                and (tag := re.match(r'\$([A-Za-z_][A-Za-z0-9_]*)?\$', text[i:])):
+            close = text.find(tag.group(0), i + len(tag.group(0)))
+            if close == -1:
+                raise SqlError('SQL has an unterminated dollar quote')
+            i, has_content = close + len(tag.group(0)), True
+        elif text.startswith('--', i):
+            newline = text.find('\n', i)
+            i = n if newline == -1 else newline + 1
+        elif text.startswith('/*', i):
+            depth, i = 1, i + 2
+            while depth and i < n:
+                if text.startswith('/*', i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith('*/', i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+            if depth:
+                raise SqlError('SQL has an unterminated comment')
+        elif ch == ';':
+            count += has_content
+            has_content, i = False, i + 1
+        else:
+            has_content = has_content or not ch.isspace()
+            i += 1
+    return count + has_content
+
+
+def wrapped_sql(text):
+    """Run exactly one statement inside a READ ONLY transaction that has already
+    taken a snapshot: PostgreSQL then refuses to switch it to read-write, and the
+    single statement cannot start another transaction. Writes, nextval, large
+    object creation and DDL fail regardless of the role's grants."""
+    if statement_count(text) != 1:
+        raise SqlError('Provide exactly one SQL statement per query')
+    return ('BEGIN TRANSACTION READ ONLY;\n'
+            'SELECT 1 AS agents_sql_snapshot \\gset\n'
+            + text.strip() + '\n;\nROLLBACK;\n')
+
+
 def checked_sql(text):
     """psql meta-commands (\\!, \\o |cmd, \\copy ... program, \\i) all start with a
     backslash and can run local programs that inherit the password, so no SQL
@@ -282,11 +372,11 @@ def command_query(args):
         if sys.stdin.isatty():
             raise SqlError('Provide SQL with -c, -f, or on stdin')
         sql_text = sys.stdin.read()
-    sql_text = checked_sql(sql_text)
+    sql_text = wrapped_sql(checked_sql(sql_text))
     env = libpq_environment(connection_url(entry), entry)
     verified = guard(env, entry.get('withheld'))
     print('-- ' + summary(args.target, entry, verified), file=sys.stderr)
-    psql_args = (['--csv'] if args.csv else []) + ['-f', '-']
+    psql_args = (['--csv'] if args.csv else []) + ['-q', '-f', '-']
     try:
         result = subprocess.run([psql_binary(), '-X', '-v', 'ON_ERROR_STOP=1', '-P', 'pager=off', *psql_args],
                                 env=env, input=sql_text, text=True, timeout=args.timeout)
