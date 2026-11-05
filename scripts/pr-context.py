@@ -283,7 +283,9 @@ CODEX_COMPLETED_AT = re.compile(r'<relative-time datetime="([^"]+)"')
 CLEAN_NOTE = re.compile(r"<!-- codex-clean-review-note:v1 ([0-9a-f]+) -->")
 
 
-REVIEW_RUN_WINDOW = 600  # seconds between Codex submitting a review and marking it completed
+# Codex submits a run's review 2-4 s before marking the run completed, and a run takes
+# minutes, so an earlier run's review of the same commit can't fall inside this window.
+REVIEW_RUN_WINDOW = 120
 
 
 def parse_time(value):
@@ -294,26 +296,31 @@ def parse_time(value):
 
 
 def codex_findings(sha, completed_at, inline_comments, reviews):
-    """Codex's review of `sha` submitted during the run that finished at completed_at.
+    """Link Codex's reviews of `sha` to the run that finished at completed_at.
 
-    Returns (review_found, top-level inline findings in that review). Codex marks
-    `has_any_findings` for the whole PR, not per review, so it can't classify a run.
-    A clean run posts no review object; an older review of the same commit is
-    outside the run window and doesn't count.
+    Returns (match, top-level inline findings in the matched review), where match is
+    "run" (a review submitted within REVIEW_RUN_WINDOW before completion), "earlier"
+    (only reviews submitted before that window: an earlier run or a delayed one, so
+    the run can't be called clean), or None (no Codex review of the commit before
+    completion). Codex marks `has_any_findings` for the whole PR, not per review,
+    so it can't classify a run.
     """
     done = parse_time(completed_at)
-    run = None
+    run, earlier = None, False
     for review in reviews:
         submitted = parse_time(review.get("submitted_at"))
-        if (login(review.get("user")) in CODEX_BOTS and sha and review.get("commit_id") == sha
-                and done and submitted and 0 <= (done - submitted).total_seconds() <= REVIEW_RUN_WINDOW
-                and (run is None or submitted > parse_time(run.get("submitted_at")))):
+        if not (login(review.get("user")) in CODEX_BOTS and sha and review.get("commit_id") == sha
+                and done and submitted and submitted <= done):
+            continue
+        if (done - submitted).total_seconds() > REVIEW_RUN_WINDOW:
+            earlier = True
+        elif run is None or submitted > parse_time(run.get("submitted_at")):
             run = review
     if run is None:
-        return False, 0
+        return ("earlier" if earlier else None), 0
     count = sum(1 for c in inline_comments if c.get("pull_request_review_id") == run["id"]
                 and not c.get("in_reply_to_id"))
-    return True, count
+    return "run", count
 
 
 def codex_review(comments, head, inline_comments=(), reviews=()):
@@ -348,20 +355,24 @@ def codex_review(comments, head, inline_comments=(), reviews=()):
     created, updated = comment.get("created_at"), comment.get("updated_at")
     completed = CODEX_COMPLETED_AT.search(comment.get("body") or "")
     completed_at = completed[1] if completed else updated
-    reviewed, findings = codex_findings(sha, completed_at, inline_comments, reviews)
+    match, findings = codex_findings(sha, completed_at, inline_comments, reviews)
     if not sha or not status:
         outcome = "unknown"
     elif status != "completed":
         outcome = status
     else:
         # A review object from this run means findings, even if its comments were deleted.
-        outcome = "findings" if reviewed else "clean"
+        outcome = {"run": "findings", "earlier": "ambiguous"}.get(match, "clean")
     edited = bool(created and updated and created != updated)
     short = (sha or "?")[:7]
     if outcome == "clean":
         summary = f"Codex completed a review of {short} at {completed_at} and posted no new findings."
     elif outcome == "findings":
         summary = f"Codex completed a review of {short} at {completed_at} and posted a review with {findings} inline finding(s)."
+    elif outcome == "ambiguous":
+        summary = (f"Codex completed a review of {short} at {completed_at}, but a Codex review of the same"
+                   " commit was submitted earlier than this run's window; it may be an earlier run or a"
+                   " delayed one, so treat this run as unconfirmed and check that review's findings.")
     else:
         summary = f"Codex review of {short} is {outcome} (summary updated {updated})."
     if edited:

@@ -23,19 +23,26 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    Codex reacts 👀 to the PR while reviewing and posts its findings as review
    comments. A clean review posts nothing new: Codex only edits its existing
    summary comment, which GitHub keeps at its original time. Read the helper's
-   `codex_review.outcome` and `summary` instead of comment timestamps. A reaction does not name a commit,
+   `codex_review.outcome` and `summary` instead of comment timestamps. If the
+   outcome is `ambiguous`, read the earlier Codex review of that commit and handle
+   its findings; never treat it as clean. A reaction does not name a commit,
    and a review of an older head does not cover the current one; silence and
    passing CI do not prove review.
 3. **Handle every comment.** Address all new feedback since your last check: Codex
    findings and comments from people requesting changes. Verify correctness,
    necessity, and scope against the current code. For valid, necessary findings,
-   fix, validate, commit, and push. Reply to **each** addressed comment with the
-   change, commit or contribution PR, and validation, even when one fix addresses
-   several comments. For unnecessary or incorrect suggestions, reply with the
-   concrete reason instead of changing code. Use the original inline thread; for
-   ordinary comments/review summaries, post a PR reply linking the original.
-   Verify each reply was posted; an existing reply for the same outcome need not
-   be duplicated.
+   fix, validate, commit, and push. The user may merge or close the PR while you
+   work, so check its state (`pr.state`, `pr.merged`) just before pushing, and
+   after pushing confirm that `pr.head.sha` is the pushed commit and the PR is
+   still open. If it was merged, put the fixes on a new branch from the updated
+   base, open a new PR, and link it in the replies. If it was closed without
+   merging, keep the fixes on the branch and ask the user before opening a
+   replacement PR. Reply to **each** addressed comment with the change, commit or
+   contribution PR, and validation, even when one fix addresses several comments.
+   For unnecessary or incorrect suggestions, reply with the concrete reason instead
+   of changing code. Use the original inline thread; for ordinary comments/review
+   summaries, post a PR reply linking the original. Verify each reply was posted;
+   an existing reply for the same outcome need not be duplicated.
 4. **Resolve handled threads.** After verification and reply, resolve inline
    threads whose finding was fixed or rejected with evidence. Ordinary comments
    cannot be marked resolved; the linked reply records their disposition. Leave
@@ -65,21 +72,24 @@ Complete useful independent work while waiting.
 
 `gh` has no command to reply inside an inline thread or resolve one; use the API.
 Put the text in a quoted heredoc so it appears in the command, needs no escaping,
-and backticks are never run by the shell. Send one write per command, replies
-before resolutions, so one refusal does not block the rest. `gh api` defaults to
-github.com: for a GitHub Enterprise PR, set `HOST` to the PR URL's host (with any
-port) and use `--repo HOST/OWNER/REPO` for `gh pr comment`.
+and backticks are never run by the shell. Use a delimiter unique to that write,
+such as `REPLY_` plus a few random characters, and check that no line of the body
+equals it: a matching line ends the heredoc early and the rest runs as commands.
+Send one write per command, replies before resolutions, so one refusal does not
+block the rest. `gh api` defaults to github.com: for a GitHub Enterprise PR, set
+`HOST` to the PR URL's host (with any port) and use `--repo HOST/OWNER/REPO` for
+`gh pr comment`.
 
 ```sh
 # Reply to an inline comment (its root comment ID from pr-context).
-gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'EOF'
+gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'REPLY_k3v9'
 Fixed in abc1234: what changed, and the test or check that verifies it.
-EOF
+REPLY_k3v9
 
 # Top-level PR comment: a reply to an ordinary comment or summary, or the clean note.
-gh pr comment PR --repo OWNER/REPO --body-file - <<'EOF'
+gh pr comment PR --repo OWNER/REPO --body-file - <<'NOTE_p7qd'
 ...
-EOF
+NOTE_p7qd
 
 # Resolve a thread by its node ID (`threads[].id` in pr-context, `PRRT_...`).
 gh api --hostname HOST graphql -f id=PRRT_xxx -f query='mutation($id: ID!) {

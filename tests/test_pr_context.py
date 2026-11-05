@@ -485,10 +485,21 @@ Keep the finding suffix.</details>'''
         # Its comments may be deleted; the review object still marks findings.
         deleted = pr_context.codex_review([summary], "abc", [], [review(50, "2026-01-02T00:00:03Z")])
         self.assertEqual((deleted["outcome"], deleted["findings_on_reviewed_commit"]), ("findings", 0))
-        # An earlier run's review of the same commit doesn't make a later clean run dirty.
-        rerun = pr_context.codex_review([summary], "abc", [finding],
-                                        [review(50, "2026-01-01T00:00:00Z")])
-        self.assertEqual(rerun["outcome"], "clean")
+        # A same-commit review before the run window may be an earlier run or a delayed
+        # one: never call that clean, and post no note.
+        for earlier in ("2026-01-01T00:00:00Z", "2026-01-01T23:55:05Z"):
+            with self.subTest(earlier=earlier):
+                rerun = pr_context.codex_review([summary], "abc", [finding], [review(50, earlier)])
+                self.assertEqual(rerun["outcome"], "ambiguous")
+                self.assertNotIn("clean_note", rerun)
+                self.assertIn("unconfirmed", rerun["summary"])
+        # A review inside the window wins over an earlier one.
+        both = pr_context.codex_review([summary], "abc", [finding], [
+            review(49, "2026-01-01T00:00:00Z"), review(50, "2026-01-02T00:00:03Z")])
+        self.assertEqual(both["outcome"], "findings")
+        # Reviews submitted after completion belong to a later run.
+        later = pr_context.codex_review([summary], "abc", [finding], [review(50, "2026-01-02T00:10:00Z")])
+        self.assertEqual(later["outcome"], "clean")
         # Reviews of other commits or from people are ignored.
         other = pr_context.codex_review([summary], "abc", [finding], [
             review(50, "2026-01-02T00:00:03Z", "old"),
