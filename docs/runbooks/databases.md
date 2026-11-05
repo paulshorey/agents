@@ -32,7 +32,9 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants, and through any view or
   materialized view built on them (security-invoker views excepted). Checks use
-  effective privileges, so a column grant or `pg_read_all_data` is refused.
+  effective privileges, so a column grant or `pg_read_all_data` is refused. Keys are
+  `table` (schema `public`) or `schema.table`. A withheld relation or column that does
+  not exist fails closed, so update the list when a migration renames one.
   Any role membership is refused.
 - The URL is passed to `psql` through libpq environment variables only, with inherited
   `PG*`/`DATABASE_URL` settings dropped. SQL containing a backslash is rejected, so
@@ -52,7 +54,7 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   and DDL fail even if a grant was missed. Multi-statement input is rejected.
 - The role check also refuses ownership of any object (via `pg_shdepend`), grant
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
-  executable `SECURITY DEFINER` routines in user schemas, `MAINTAIN` (PostgreSQL 17+)
+  executable `SECURITY DEFINER` routines in any schema (stock PostgreSQL has none), `MAINTAIN` (PostgreSQL 17+)
   and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
@@ -64,7 +66,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`. Roles are
    cluster-wide: if this database shares a cluster with another registered target,
    reuse that role's password (or update every affected URL together).
-2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
+2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql) (one
+   transaction; it covers schema `public`)
    as the database owner with that password substituted: in the hosting provider's
    SQL console for that database (Railway: Postgres service → **Data** tab), or with
    psql using its owner connection. Project, environment and service IDs are in the

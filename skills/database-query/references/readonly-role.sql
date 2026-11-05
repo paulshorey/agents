@@ -13,6 +13,9 @@
 -- On Railway each Postgres service is its own cluster.
 -- Keep the withheld tables/columns below in sync with the target's `withheld`
 -- list in local/databases.json; agents-sql refuses a role that can read them.
+-- Everything runs in one transaction: any error leaves the previous grants intact.
+
+BEGIN;
 
 DO $$
 BEGIN
@@ -85,7 +88,9 @@ BEGIN
           FROM pg_attribute a
           WHERE a.attrelid = rel AND a.attnum > 0 AND NOT a.attisdropped
             AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t));
-        EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);
+        IF cols IS NOT NULL THEN
+          EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);
+        END IF;
       END IF;
     END LOOP;
   END LOOP;
@@ -94,3 +99,5 @@ END $$;
 -- Verify: should list only SELECT, and none of the withheld tables.
 SELECT table_name, privilege_type FROM information_schema.table_privileges
 WHERE grantee = 'agent_readonly' ORDER BY 1, 2;
+
+COMMIT;

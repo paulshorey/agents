@@ -72,10 +72,20 @@ class RegistryTests(unittest.TestCase):
             for targets in [{'Bad Name': TARGET}, {'ok': {**TARGET, 'port': 'x'}},
                             {'ok': {**TARGET, 'withheld': {'users; drop': '*'}}},
                             {'ok': {**TARGET, 'withheld': {'users': ["pass'word"]}}},
+                            {'ok': {**TARGET, 'withheld': {'a.b.c': '*'}}},
+                            {'ok': {**TARGET, 'withheld': {'Auth.tokens': '*'}}},
                             {'ok': {**TARGET, 'profile': '/tmp/creds.env'}}]:
                 path.write_text(json.dumps({'schema_version': 1, 'targets': targets}))
                 with self.assertRaises(sql.SqlError, msg=targets):
                     sql.load_targets(path)
+
+    def test_accepts_schema_qualified_withheld_relations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'databases.json'
+            path.write_text(json.dumps({'schema_version': 1, 'targets': {'ok': {**TARGET, 'withheld': {'auth.tokens': '*'}}}}))
+            self.assertIn('ok', sql.load_targets(path))
+        self.assertIn("('auth', 'tokens', NULL::text)", sql.withheld_sql({'auth.tokens': '*'}))
+        self.assertIn("('public', 'users', 'password'::text)", sql.withheld_sql({'users': ['password']}))
 
     def test_unknown_target(self):
         with self.assertRaises(sql.SqlError):
@@ -196,8 +206,7 @@ class CredentialFileTests(unittest.TestCase):
 
 
 ADMIN_URL = os.environ.get('AGENTS_SQL_TEST_ADMIN_URL')
-WITHHELD = {'users': ['password', 'api_token'], 'user_auth_tokens': '*', 'missing_table': '*',
-            'users_missing': ['token']}
+WITHHELD = {'users': ['password', 'api_token'], 'user_auth_tokens': '*'}
 
 
 @unittest.skipUnless(ADMIN_URL and shutil.which('psql'), 'set AGENTS_SQL_TEST_ADMIN_URL to a disposable localhost database')
@@ -327,6 +336,37 @@ class LiveRoleTests(unittest.TestCase):
                 self.assertIn(exposed, str(raised.exception))
                 self.admin(grants.replace('GRANT SELECT', 'REVOKE ALL').replace(' TO ', ' FROM '))
         sql.guard(self.env(self.readonly_url), WITHHELD)
+
+    def test_fails_closed_on_missing_withheld_entries(self):
+        for withheld, missing in [({'no_such_table': '*'}, 'public.no_such_table'),
+                                  ({'users': ['no_such_column']}, 'public.users.no_such_column')]:
+            with self.subTest(missing), self.assertRaises(sql.SqlError) as raised:
+                sql.guard(self.env(self.readonly_url), {**WITHHELD, **withheld})
+            self.assertIn(missing, str(raised.exception))
+
+    def test_checks_withheld_relations_outside_public(self):
+        self.admin('CREATE SCHEMA IF NOT EXISTS agent_probe_auth; CREATE TABLE agent_probe_auth.tokens (token text); '
+                   'GRANT USAGE ON SCHEMA agent_probe_auth TO agent_readonly; GRANT SELECT ON agent_probe_auth.tokens TO agent_readonly')
+        self.addCleanup(self.admin, 'DROP SCHEMA agent_probe_auth CASCADE')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_auth.tokens': '*'})
+        self.assertIn('agent_probe_auth.tokens', str(raised.exception))
+
+    def test_refuses_security_definer_routines_in_system_schemas(self):
+        self.admin('CREATE FUNCTION information_schema.agent_probe_definer() RETURNS int LANGUAGE sql SECURITY DEFINER AS $$ SELECT 1 $$')
+        self.addCleanup(self.admin, 'DROP FUNCTION information_schema.agent_probe_definer()')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('agent_probe_definer', str(raised.exception))
+
+    def test_role_sql_handles_tables_with_only_secret_columns(self):
+        self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
+        self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.device_push_tokens')
+        role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+        subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
+                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                       check=True, capture_output=True)
+        sql.guard(self.env(self.readonly_url), {**WITHHELD, 'device_push_tokens': ['token']})
 
     def test_role_sql_withholds_secrets_on_child_tables(self):
         self.admin('CREATE TABLE public.agent_probe_child2 () INHERITS (public.user_auth_tokens)')

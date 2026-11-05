@@ -32,6 +32,7 @@ REGISTRY = ROOT / 'local/databases.json'
 EXAMPLE_REGISTRY = ROOT / 'config/databases.example.json'
 TARGET_NAME = re.compile(r'^[a-z][a-z0-9-]*$')
 IDENTIFIER = re.compile(r'^[a-z_][a-z0-9_]*$')
+RELATION = re.compile(r'^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*$')  # table or schema.table
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
 # Railway's public TCP proxy serves a self-signed certificate, so `require`
 # (encrypted, unauthenticated) is the default; verify-ca/verify-full need a
@@ -78,7 +79,7 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable)::text,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE ((p.prosecdef AND {USER_SCHEMAS}) OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r})))
+    WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r})))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
@@ -121,7 +122,7 @@ def load_targets(path=None):
                 raise ValueError()
             withheld = target.get('withheld', {})
             if not isinstance(withheld, dict) or not all(
-                    IDENTIFIER.fullmatch(t) and (cols == '*' or (isinstance(cols, list) and cols
+                    RELATION.fullmatch(t) and (cols == '*' or (isinstance(cols, list) and cols
                                                                and all(isinstance(c, str) and IDENTIFIER.fullmatch(c) for c in cols)))
                     for t, cols in withheld.items()):
                 raise ValueError()
@@ -217,21 +218,33 @@ def run_psql(env, args, capture=True, timeout=120):
 
 
 def withheld_sql(withheld):
-    """Withheld tables/columns the role can still read, directly, through any
-    inheritance or partition descendant, or through a view or materialized view
-    built on them (views run with their owner's privileges unless they are
-    security_invoker). Identifiers are pre-validated by load_targets."""
+    """One row 'readable|missing'. readable: withheld relations/columns the role can
+    still read, directly, through inheritance or partition descendants, or through a
+    view or materialized view built on them (views run with their owner's privileges
+    unless security_invoker). missing: withheld entries that do not exist, which
+    fail closed so a typo or rename cannot silently disable protection. Relations
+    default to schema public. Identifiers are pre-validated by load_targets."""
     rows = []
-    for table, columns in sorted(withheld.items()):
+    for relation, columns in sorted(withheld.items()):
+        schema, _, table = relation.rpartition('.')
         for column in (columns if isinstance(columns, list) else [None]):
-            rows.append(f"('{table}', {'NULL' if column is None else repr(column)}::text)")
+            rows.append(f"('{schema or 'public'}', '{table}', {'NULL' if column is None else repr(column)}::text)")
     if not rows:
         return ''
     return f"""
-WITH RECURSIVE secrets(tbl, col) AS (VALUES {', '.join(rows)}),
+WITH RECURSIVE secrets(sch, tbl, col) AS (VALUES {', '.join(rows)}),
+base AS (
+  SELECT s.sch, s.tbl, s.col, c.oid AS relid FROM secrets s
+    LEFT JOIN pg_namespace n ON n.nspname=s.sch
+    LEFT JOIN pg_class c ON c.relnamespace=n.oid AND c.relname=s.tbl
+),
+missing AS (
+  SELECT b.sch||'.'||b.tbl||coalesce('.'||b.col, '') AS name FROM base b
+  WHERE b.relid IS NULL OR (b.col IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_attribute a
+    WHERE a.attrelid=b.relid AND a.attname=b.col AND NOT a.attisdropped))
+),
 tree AS (
-  SELECT s.col, c.oid AS relid FROM secrets s
-    JOIN pg_class c ON c.relname=s.tbl JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname='public'
+  SELECT b.col, b.relid FROM base b WHERE b.relid IS NOT NULL
   UNION SELECT t.col, i.inhrelid FROM tree t JOIN pg_inherits i ON i.inhparent=t.relid
 ),
 readable AS (
@@ -257,7 +270,8 @@ exposed AS (
     AND NOT (c.relkind='v' AND coalesce(array_to_string(c.reloptions, ',') ~* 'security_invoker=(true|on|yes|1)', false))
 )
 SELECT concat_ws(',', (SELECT string_agg(name, ',' ORDER BY name) FROM readable),
-  (SELECT string_agg(name, ',' ORDER BY name) FROM exposed))"""
+    (SELECT string_agg(name, ',' ORDER BY name) FROM exposed))
+  || '|' || coalesce((SELECT string_agg(name, ',' ORDER BY name) FROM missing), '')"""
 
 
 def guard(env, withheld=None):
@@ -293,8 +307,12 @@ def guard(env, withheld=None):
         readable = run_psql(env, ['-At', '-c', withheld_sql(withheld)])
         if readable.returncode:
             raise SqlError('Could not verify withheld columns: ' + (readable.stderr or readable.stdout).strip()[:500])
-        if readable.stdout.strip():
-            problems.append('can read withheld secrets (' + readable.stdout.strip() + ')')
+        exposed, _, missing = readable.stdout.strip().partition('|')
+        if exposed:
+            problems.append('can read withheld secrets (' + exposed + ')')
+        if missing:
+            problems.append('has withheld entries that do not exist (' + missing
+                            + '); update the target in local/databases.json')
     if problems:
         raise SqlError(f'Refusing to run: role {user!r} ' + '; '.join(problems)
                        + '. Store a dedicated read-only role instead (docs/runbooks/databases.md).')
