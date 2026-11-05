@@ -67,7 +67,9 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
    OR current_setting('lo_compat_privileges')='on')::text,
   (has_database_privilege(current_user, current_database(), 'CREATE')
     OR EXISTS(SELECT 1 FROM pg_namespace n WHERE {USER_SCHEMAS}
-      AND has_schema_privilege(current_user, n.oid, 'CREATE')))::text,
+      AND has_schema_privilege(current_user, n.oid, 'CREATE'))
+    OR EXISTS(SELECT 1 FROM pg_foreign_data_wrapper w
+      WHERE has_foreign_data_wrapper_privilege(current_user, w.oid, 'USAGE')))::text,
   coalesce((SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
     JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid), ''),
   EXISTS(SELECT 1 FROM (
@@ -78,8 +80,9 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
       UNION ALL SELECT datacl FROM pg_database WHERE datname=current_database()
     ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable)::text,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
-    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r})))
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
+    WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
+        OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal')))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
@@ -287,13 +290,13 @@ def guard(env, withheld=None):
     problems = [label for label, flag in (
         ('has elevated role attributes', elevated), ('owns database objects', owns),
         ('can write to tables, columns, sequences, foreign servers or large objects', writes),
-        ('can create objects', creates), ('holds grant options', grantable)) if flag == 'true']
+        ('can create objects or foreign servers', creates), ('holds grant options', grantable)) if flag == 'true']
     # Any membership can confer reads or writes beyond the audited grants
     # (pg_read_all_data reads every secret column), so none are allowed.
     if unsafe:
         problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
     if routines:
-        problems.append('can execute SECURITY DEFINER or WAL-writing routines (' + routines
+        problems.append('can execute SECURITY DEFINER, WAL-writing or untrusted-language routines (' + routines
                         + '); revoke their EXECUTE from PUBLIC and this role')
     for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
                                       (150000, 'has configuration parameter privileges', PARAMETER_SQL)):

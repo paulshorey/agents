@@ -359,6 +359,33 @@ class LiveRoleTests(unittest.TestCase):
             sql.guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('agent_probe_definer', str(raised.exception))
 
+    def test_refuses_untrusted_language_routines(self):
+        # A language created without TRUSTED is untrusted; reuse plpgsql's handler.
+        self.admin('CREATE LANGUAGE agent_probe_lang HANDLER plpgsql_call_handler; '
+                   'CREATE FUNCTION public.agent_probe_untrusted() RETURNS int LANGUAGE agent_probe_lang '
+                   'AS $$ BEGIN RETURN 1; END $$')
+        self.addCleanup(self.admin, 'DROP LANGUAGE agent_probe_lang CASCADE')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('agent_probe_untrusted', str(raised.exception))
+
+    def test_refuses_foreign_data_wrapper_usage(self):
+        self.admin('CREATE FOREIGN DATA WRAPPER agent_probe_fdw')
+        self.addCleanup(self.admin, 'DROP FOREIGN DATA WRAPPER agent_probe_fdw CASCADE')
+        role = self.scratch_role('GRANT USAGE ON FOREIGN DATA WRAPPER agent_probe_fdw TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('foreign servers', str(raised.exception))
+
+    def test_role_sql_refuses_the_placeholder_password(self):
+        role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+        for unsafe in [role_sql, role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', 'short')]:
+            failed = subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL], input=unsafe, text=True,
+                                    capture_output=True)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn('at least 20 characters', failed.stderr)
+        sql.guard(self.env(self.readonly_url), WITHHELD)  # the existing password still works
+
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.device_push_tokens')

@@ -2,8 +2,10 @@
 -- owner (Railway's `postgres` user), for example in Railway's Postgres "Data" tab
 -- or with psql using that database's DATABASE_PUBLIC_URL.
 --
--- Replace REPLACE_WITH_GENERATED_PASSWORD with a new random password (for example
--- from `openssl rand -base64 32 | tr -d '/+='`). Never reuse the owner password.
+-- Replace REPLACE_WITH_GENERATED_PASSWORD (once, below BEGIN) with a new random
+-- password of at least 20 characters, for example from
+-- `openssl rand -base64 32 | tr -d '/+='`. The script aborts if it is unchanged.
+-- Never reuse the owner password.
 -- Re-running is safe: it updates the password and grants. Re-run it after
 -- migrations add tables: only base tables that exist now are granted.
 --
@@ -17,14 +19,21 @@
 
 BEGIN;
 
+-- Transaction-local; not stored anywhere after COMMIT.
+SET LOCAL agents.readonly_password = 'REPLACE_WITH_GENERATED_PASSWORD';
+
 DO $$
+DECLARE secret text := current_setting('agents.readonly_password');
 BEGIN
+  IF secret LIKE 'REPLACE' || '\_WITH\_%' OR length(secret) < 20 THEN
+    RAISE EXCEPTION 'Set agents.readonly_password to a new random password of at least 20 characters';
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_readonly') THEN
     CREATE ROLE agent_readonly LOGIN;
   END IF;
+  EXECUTE format('ALTER ROLE agent_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION '
+    'NOBYPASSRLS CONNECTION LIMIT 5 PASSWORD %L', secret);
 END $$;
-ALTER ROLE agent_readonly WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
-  CONNECTION LIMIT 5 PASSWORD 'REPLACE_WITH_GENERATED_PASSWORD';
 ALTER ROLE agent_readonly SET default_transaction_read_only = on;
 ALTER ROLE agent_readonly SET statement_timeout = '30s';
 ALTER ROLE agent_readonly SET idle_in_transaction_session_timeout = '60s';

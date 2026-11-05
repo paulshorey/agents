@@ -54,7 +54,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   and DDL fail even if a grant was missed. Multi-statement input is rejected.
 - The role check also refuses ownership of any object (via `pg_shdepend`), grant
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
-  executable `SECURITY DEFINER` routines in any schema (stock PostgreSQL has none), `MAINTAIN` (PostgreSQL 17+)
+  executable `SECURITY DEFINER` or untrusted-language (e.g. `plpython3u`) routines in
+  any schema (stock PostgreSQL has none), foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
   and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
@@ -63,7 +64,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Owner setup (once per database)
 
-1. Generate a password: `openssl rand -base64 32 | tr -d '/+='`. Roles are
+1. Generate a password (20+ characters; the script aborts on the placeholder):
+   `openssl rand -base64 32 | tr -d '/+='`. Roles are
    cluster-wide: if this database shares a cluster with another registered target,
    reuse that role's password (or update every affected URL together).
 2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql) (one
