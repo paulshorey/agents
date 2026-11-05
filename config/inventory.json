@@ -26,7 +26,7 @@
         "hosting.paul"
       ],
       "notes": [
-        "Provider label: Agent DNS — all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
         "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
         "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
@@ -774,6 +774,51 @@
         "~/.shortcuts.sh delegates cclaude to this helper. Preserve the rest of that external shell file; re-source it in existing terminals after changes.",
         "Server mode (the default) brings back the folder's previous sessions within the roughly four-hour restore window and creates a session for each new app chat. --continue and --session-id select one session within that window, not a way to bypass it. Claude owns authentication and bridge-pointer state under CLAUDE_CONFIG_DIR (normally ~/.claude); the helper reads the current directory record without modifying it.",
         "Owner-only advisory locks live under ~/.agents/local/claude-remote. A live existing server in the folder is reported instead of taken over."
+      ]
+    },
+    {
+      "id": "postgres.livx-readonly",
+      "kind": "credential",
+      "owner": "agents",
+      "description": "Connection URLs for the agent_readonly role on the LivX dev and production databases, used by agents-sql.",
+      "runbook": "docs/runbooks/databases.md",
+      "path_ref": {
+        "file": "config/profiles.json",
+        "pointer": "/profiles/postgres.livx-readonly/path"
+      },
+      "variables": [
+        "LIVX_DEV_READONLY_DATABASE_URL",
+        "LIVX_PRODUCTION_READONLY_DATABASE_URL"
+      ],
+      "permissions": [
+        "SELECT-only role agent_readonly per database; secret tables and columns withheld (skills/database-query/references/readonly-role.sql)"
+      ],
+      "consumers": [
+        "database.agents-sql"
+      ],
+      "notes": [
+        "Owner-only dotenv file (mode 600) with literal assignments. agents-sql prepare keeps a new URL pending in <target>-pending.url beside it with the prepared role SQL; after a superuser runs that SQL, agents-sql activate verifies the role and stores the URL. Rotate the same way."
+      ]
+    },
+    {
+      "id": "database.agents-sql",
+      "kind": "tool",
+      "owner": "agents",
+      "description": "Read-only SQL helper for registered deployed databases; verifies the stored role cannot write before every query.",
+      "runbook": "docs/runbooks/databases.md",
+      "references": [
+        {
+          "file": "bin/agents-sql"
+        },
+        {
+          "file": "scripts/sql-query.py"
+        },
+        {
+          "file": "config/databases.example.json"
+        }
+      ],
+      "notes": [
+        "Requires psql on PATH. Targets with real endpoints live in ignored local/databases.json (mode 600), copied from config/databases.example.json; project endpoints stay in each project's private runbook. Agent guidance is the database-query skill. Writes and migrations stay with each project's migration runbook."
       ]
     }
   ]

@@ -28,6 +28,9 @@ than native auth files, raw prompt dumps, or full environment/config output.
   for conditional detail. Check existing skills before adding another. Imported
   skills retain source revisions and adaptation notes in `licenses/README.md`,
   alongside their preserved licenses. Skills need no inventory registration.
+- Claude Code discovers shared skills through per-skill symlinks in
+  `~/.claude/skills` (not managed by `config/links.json`). After adding a skill, run
+  `ln -s ~/.agents/skills/NAME ~/.claude/skills/NAME` and confirm it is listed.
 - Use repository `AGENTS.md` for project context and `rules/AGENTS.md` for the
   managed Codex global instructions. Cursor User Rules are application/account
   settings; creating a similarly named home file does not prove it loads.

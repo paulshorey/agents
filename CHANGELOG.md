@@ -4,6 +4,31 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — Read-only deployed database queries
+
+- Added `agents-sql` (`bin/agents-sql`, `scripts/sql-query.py`) and the
+  `database-query` skill so Claude Code, Codex and Cursor can query deployed
+  databases by target name. Targets live in ignored `local/databases.json` (format in
+  `config/databases.example.json`) so private endpoints stay out of this public
+  repository. Registered credential profile `postgres.livx-readonly`
+  (`~/.agents/local/credentials/livx-db-readonly.env`, variables
+  `LIVX_DEV_READONLY_DATABASE_URL` and `LIVX_PRODUCTION_READONLY_DATABASE_URL`).
+- The security boundary is the `agent_readonly` role (SELECT on base tables in
+  `public`, credential and bearer-code tables and columns withheld), created by
+  `skills/database-query/references/readonly-role.sql` as a superuser from a SCRAM
+  verifier that `agents-sql prepare` writes privately; `agents-sql activate`
+  verifies and stores the new URL. The tool adds guardrails against mistakes: the
+  role check refuses an owner or app URL, each query runs in a read-only transaction
+  in the same session, and timeouts cancel the statement on the server.
+- An earlier revision of this change audited PostgreSQL catalogs for every way a role
+  could be misconfigured; it was cut back because a role created by this script on a
+  fresh database cannot have those grants, and the audit kept growing.
+- No deployed role or credential exists yet; the owner runs the setup in
+  `docs/runbooks/databases.md` per database. Observed on 2026-11-05: the
+  `railway.workspace` token reads projects in my workspace but not the LivX serving
+  project, which is in another Railway workspace. Tests pass against disposable local
+  PostgreSQL 18.6.
+
 ## 2026-11-05 — Claude Code auto mode trusts the PR review loop
 
 - Claude Code agents kept failing to reply to review comments and resolve threads.

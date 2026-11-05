@@ -26,6 +26,10 @@ profiles, and deployment commands. Skills live in `~/.agents/skills`. Keep share
 config and scripts in this repository; keep credentials, OAuth state, backups, and
 rendered application settings in ignored local storage. Never commit or print secrets.
 
+To read data from a deployed database, use the `database-query` skill
+(`~/.agents/bin/agents-sql`, read-only role, registered targets). Never use an
+owner/admin connection for ad hoc queries; writes follow the project's migration runbook.
+
 For Railway plus Cloudflare hosting, use `deploy-railway-with-cloudflare` and
 `railway-iac`. The local workspace profile reads `RAILWAY_API_TOKEN` from
 `~/.secrets.sh`; `~/.shortcuts.sh` contains shell helpers. Normal zsh and
