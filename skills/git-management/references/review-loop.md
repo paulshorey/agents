@@ -12,9 +12,14 @@ push to ready for review: never open one as a draft, and if the PR is a draft,
 mark it ready with `gh pr ready <PR>` right after pushing, which also starts a
 review. The user converts PRs to drafts to park them and pause automatic review.
 
+The developer can't see when you are working, so every PR you create or push to
+carries an `agent/ready` status on its head (see [Readiness status](#readiness-status)).
+It is pending while you work or wait for review, fails when you need the
+developer, and passes only when `pr-ready.py ready` has verified the PR.
+
 1. **Record the push.** After creating the PR or pushing a functional change, and
    marking a draft ready, record the PR head SHA and the time. That head is what
-   Codex must review.
+   Codex must review. Mark it `working` ("waiting for Codex review of SHA").
 2. **Check back within 30 minutes.** Wait for Codex's review of that head, at most
    30 minutes after the push. Use a timed wait/wakeup or bounded polling with waits,
    not a busy loop. Then fetch fresh PR context, including all comment, review,
@@ -28,8 +33,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    its findings; never treat it as clean. A reaction does not name a commit,
    and a review of an older head does not cover the current one; silence and
    passing CI do not prove review.
-3. **Handle every comment.** Address all new feedback since your last check: Codex
-   findings and comments from people requesting changes. Verify correctness,
+3. **Handle every comment.** As soon as you have new feedback to handle, mark the
+   head `working` with what you are fixing, before any edit. Address all new
+   feedback since your last check: Codex findings and comments from people
+   requesting changes. Verify correctness,
    necessity, and scope against the current code. For valid, necessary findings,
    fix, validate, commit, and push. The user may merge or close the PR while you
    work, so check its state (`pr.state`, `pr.merged`) just before pushing, and
@@ -57,6 +64,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    its `clean_note`, then post that exact text once with a quoted heredoc (see
    below) so the clean result is visible and timestamped on GitHub; skip it when
    `clean_note_posted` is true. Never edit the note to add the Codex bot handle.
+   Then run `pr-ready.py ready` with a note on validation (for example
+   `--note "182 tests pass"`); it marks the head ready to merge only after its own
+   check, and otherwise marks it pending with the unmet condition. Report to the
+   user that the PR is ready to merge only after it succeeds.
 
 If 30 minutes pass without a review of the current head, handle any feedback that
 did arrive, keep the head/push record, and report the review pending. If Codex
@@ -66,7 +77,26 @@ configure it in Codex. A later check
 continues from step 3 when the review arrives. Do not request a review by comment,
 claim a clean review, or merge on silence. If review fails, access is unavailable,
 or a fix needs an unresolved product decision, report the concrete blocker.
-Complete useful independent work while waiting.
+Complete useful independent work while waiting. When you stop with work left or a
+decision needed, mark the head `blocked` with what the developer must do; never
+leave it `working` when nothing is running.
+
+## Readiness status
+
+```sh
+python3 ~/.agents/skills/git-management/scripts/pr-ready.py working PR "fixing 4 Codex findings"
+python3 ~/.agents/skills/git-management/scripts/pr-ready.py blocked PR "choose keep or drop the cache"
+python3 ~/.agents/skills/git-management/scripts/pr-ready.py ready PR --note "182 tests pass"
+python3 ~/.agents/skills/git-management/scripts/pr-ready.py status PR
+```
+
+`agent/ready` appears in the PR's checks. Where branch protection requires it, as
+on `paulshorey/agents` `main`, GitHub disables merging until it passes, so a PR
+cannot be merged while you are still fixing it. A new push leaves the new head
+without the status, which reads as not ready until you verify again. `ready`
+requires an open, non-draft, conflict-free PR, a clean Codex review of the head,
+no unresolved threads, and passing checks and statuses. Never set success by any
+other means.
 
 ## Posting replies and resolving threads
 

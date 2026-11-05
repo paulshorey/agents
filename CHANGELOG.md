@@ -4,6 +4,20 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — PR readiness status and required check on main
+
+- PRs #30 and #31 were merged while agents were still fixing review findings; the
+  developer had no signal that work was in progress, and PR #32's
+  check-before-pushing rule only reacts after a merge.
+- Added `scripts/pr-ready.py`: agents mark a PR head `working` (pending) as soon as
+  they start a round, `blocked` (failure) when they need a decision, and `ready`
+  (success) only after verifying a clean Codex review of the head, no unresolved
+  threads, passing checks and no conflicts. The review loop and `git-management`
+  skill require it, and agents now work in their own worktree and confirm the
+  current branch before each commit.
+- With Paul's approval, `paulshorey/agents` `main` branch protection now requires
+  the `agent/ready` status (admins not enforced, so a deliberate bypass remains).
+
 ## 2026-11-05 — Installer owns Claude Code's per-skill links
 
 - Claude Code finds shared skills only through per-skill links in

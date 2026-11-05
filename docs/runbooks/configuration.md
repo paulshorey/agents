@@ -166,3 +166,14 @@ skill edits are maintained directly in `skills/` without inventory registration.
 
 References: [Codex configuration layers](https://learn.chatgpt.com/docs/config-file/config-basic),
 [credential storage](https://learn.chatgpt.com/docs/auth).
+
+## GitHub branch protection
+
+`paulshorey/agents` protects `main` with one required status check,
+`agent/ready`, which agents set through `scripts/pr-ready.py`
+([utilities runbook](utilities.md#pr-readiness-status)). Admins are not enforced, so
+the owner can merge deliberately with GitHub's bypass option; no review approvals,
+linear history or push restrictions are required. Inspect it with
+`gh api repos/paulshorey/agents/branches/main/protection`. To remove it, use the
+repository's **Settings → Branches** page or
+`gh api -X DELETE repos/paulshorey/agents/branches/main/protection`.

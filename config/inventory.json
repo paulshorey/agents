@@ -26,7 +26,7 @@
         "hosting.paul"
       ],
       "notes": [
-        "Provider label: Agent DNS \u2014 all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
+        "Provider label: Agent DNS — all domains. Scope was user-authorized and verified on 2026-10-14; use check --live to establish current access.",
         "The profile is ignored, owner-only mode 600, in an owner-only mode-700 directory. No token value belongs in this inventory.",
         "The profile also contains the non-secret account selector. The default zone is deliberately unbound; project manifests choose their zone.",
         "Permissions are the dashboard-confirmed declared grant. Read-only checks prove token/user/zone/DNS reads, not DNS Edit or all-zone grants. The deprecated zone.permissions field is not API-token introspection."
@@ -393,11 +393,15 @@
         },
         {
           "file": "scripts/pr-context.py"
+        },
+        {
+          "file": "scripts/pr-ready.py"
         }
       ],
       "notes": [
         "The generated inventory derives bin/* and scripts/* files. Inspect purpose and side effects before executing a helper; lookup never executes commands declared in metadata.",
-        "Git and PR management share scripts/pr-context.py through relative symlinks in their skill scripts/ folders. It reads PR data using the native GitHub CLI sign-in documented by application.github-auth; it does not post or delete comments."
+        "Git and PR management share scripts/pr-context.py through relative symlinks in their skill scripts/ folders. It reads PR data using the native GitHub CLI sign-in documented by application.github-auth; it does not post or delete comments.",
+        "scripts/pr-ready.py sets the agent/ready commit status on a PR head (working, blocked, verified ready) with the same gh sign-in; it is symlinked into both PR skills' scripts/ folders. paulshorey/agents main branch protection requires that status (docs/runbooks/configuration.md)."
       ]
     },
     {

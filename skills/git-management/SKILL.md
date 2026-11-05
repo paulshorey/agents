@@ -16,8 +16,10 @@ needs no empty PR; publishing or completing review does not authorize a merge.
    Start independent work from updated `main` or a verified base; never reuse a
    merged branch. Use an unmerged base only when required. Move task edits off
    `main` before committing; do not publish pre-existing work to clear a checkout.
-3. **Publish.** Run relevant checks, stage only task files, commit, push, and create
-   or update the task PR. Always open PRs ready for review, never as drafts (no
+3. **Publish.** Work in your own worktree, not a checkout the user is also using,
+   and confirm `git branch --show-current` is the intended branch right before each
+   commit (the user may switch a shared checkout). Run relevant checks, stage only
+   task files, commit, push, and create or update the task PR. Always open PRs ready for review, never as drafts (no
    `--draft`), even for unfinished or blocked work; state what remains in the
    body. After pushing to a draft PR, mark it ready with `gh pr ready <PR>`.
    Drafts are for PRs the user parks to pause automatic review. Keep the PR
@@ -29,7 +31,9 @@ needs no empty PR; publishing or completing review does not authorize a merge.
    Check back within 30 minutes of each functional push, fetch all latest
    feedback, address each comment, and repeat after fixes until the current head
    has no new valid issues to fix. A timeout or missing review is pending review,
-   never a clean result.
+   never a clean result. Keep the PR's `agent/ready` status current with
+   `scripts/pr-ready.py` (working, blocked, ready) so the developer can see when it
+   is safe to merge.
 5. **Maintain or merge.** For reviews, conflicts, failed checks, or authorized
    merges, read [PR maintenance](references/pr-maintenance.md). Review the exact
    current head; verify bot suggestions rather than accepting them automatically.
