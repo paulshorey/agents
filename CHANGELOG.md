@@ -7,38 +7,27 @@ Verification dates describe historical observations, not current readiness.
 ## 2026-11-05 — Read-only deployed database queries
 
 - Added `agents-sql` (`bin/agents-sql`, `scripts/sql-query.py`) and the
-  `database-query` skill. Targets live in ignored `local/databases.json` (format in
-  `config/databases.example.json`) so private project endpoints stay out of this
-  public repository. Registered credential profile
-  `postgres.livx-readonly` (`~/.agents/local/credentials/livx-db-readonly.env`,
-  variables `LIVX_DEV_READONLY_DATABASE_URL` and `LIVX_PRODUCTION_READONLY_DATABASE_URL`).
-- The helper verifies the stored role is SELECT-only and owns/creates nothing
-  before every query, so an owner URL is refused. Role SQL withholds credential and
-  bearer-code tables/columns. Verified against disposable local PostgreSQL 18.6.
-- No deployed role or credential exists yet: the owner must create `agent_readonly`
-  on each database and store its URL (`docs/runbooks/databases.md`). Observed on
-  2026-11-05: the `railway.workspace` token reads projects in my workspace but not
-  the LivX serving project, which is in another Railway workspace.
-- Review follow-up: the role check and the query now run in one `psql` session, so
-  the SQL runs only if the check in that connection passed. The check refuses a role
-  that can connect to another database in the cluster unless the target lists it in
-  `other_databases`. Query sessions pin `search_path` to `public`. A timeout interrupts
-  `psql` so the server cancels the statement (a query can raise its own
-  `statement_timeout`). `prepare` keeps the new URL pending and the new
-  `agents-sql activate` verifies and stores it, so rotation no longer breaks the
-  working credential. Registry fields are type-checked. The role SQL requires a
-  superuser or `CREATEROLE` and names other connectable databases. The runbook states
-  that the role's grants are the boundary and the SQL rules only stop mistakes, and
-  lists ways to limit personal data. 64 tests pass against local PostgreSQL 18.
-- `check`, `activate` and `set-url` connect to every other database the role can
-  reach and audit it, so clean stock `postgres` and `template1` databases need no
-  `CONNECT` change on a standard Railway Postgres service. Compiled and
-  untrusted-language routines are audited whether or not the role can execute them
-  (PostgreSQL calls support routines without that check). `prepare` keeps a pinned
-  `verify-ca`/`verify-full` TLS setting. The
-  Remote Control runbook records that sessions spawned by `claude-remote.py` run in
-  `--print` mode, where computer use is unavailable; desktop-app sessions get it from
-  the app's Computer use setting and can still use Remote Control.
+  `database-query` skill so Claude Code, Codex and Cursor can query deployed
+  databases by target name. Targets live in ignored `local/databases.json` (format in
+  `config/databases.example.json`) so private endpoints stay out of this public
+  repository. Registered credential profile `postgres.livx-readonly`
+  (`~/.agents/local/credentials/livx-db-readonly.env`, variables
+  `LIVX_DEV_READONLY_DATABASE_URL` and `LIVX_PRODUCTION_READONLY_DATABASE_URL`).
+- The security boundary is the `agent_readonly` role (SELECT on base tables in
+  `public`, credential and bearer-code tables and columns withheld), created by
+  `skills/database-query/references/readonly-role.sql` as a superuser from a SCRAM
+  verifier that `agents-sql prepare` writes privately; `agents-sql activate`
+  verifies and stores the new URL. The tool adds guardrails against mistakes: the
+  role check refuses an owner or app URL, each query runs in a read-only transaction
+  in the same session, and timeouts cancel the statement on the server.
+- An earlier revision of this change audited PostgreSQL catalogs for every way a role
+  could be misconfigured; it was cut back because a role created by this script on a
+  fresh database cannot have those grants, and the audit kept growing.
+- No deployed role or credential exists yet; the owner runs the setup in
+  `docs/runbooks/databases.md` per database. Observed on 2026-11-05: the
+  `railway.workspace` token reads projects in my workspace but not the LivX serving
+  project, which is in another Railway workspace. Tests pass against disposable local
+  PostgreSQL 18.6.
 
 ## 2026-11-05 — Claude Code auto mode trusts the PR review loop
 

@@ -750,7 +750,7 @@ Declared permissions: `SELECT-only role agent_readonly per database; secret tabl
 
 Consumers: `database.agents-sql`.
 
-Owner-only dotenv file (mode 600) with literal assignments. agents-sql prepare keeps a new URL pending in <target>-pending.url beside it with the prepared role SQL; agents-sql activate verifies the role and stores it, and set-url stores an existing read-only URL after the same check. Rotate with prepare, the role SQL, then activate.
+Owner-only dotenv file (mode 600) with literal assignments. agents-sql prepare keeps a new URL pending in <target>-pending.url beside it with the prepared role SQL; after a superuser runs that SQL, agents-sql activate verifies the role and stores the URL. Rotate the same way.
 
 [Update and recovery instructions](../docs/runbooks/databases.md).
 

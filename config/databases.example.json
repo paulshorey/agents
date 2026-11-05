@@ -2,22 +2,13 @@
   "schema_version": 1,
   "targets": {
     "example-production": {
-      "description": "Example target. Copy this file to local/databases.json and replace the placeholders with the project's documented public endpoint. 'withheld' lists whole tables ('*') and columns the role must not read; the tool refuses to run if it can. 'other_databases' lists other databases in the cluster the role may connect to after the owner audited them; the stock postgres/template1 need no listing because the tool audits them itself, and other unlisted ones are refused.",
+      "description": "Example target. Copy this file to local/databases.json (mode 600) and replace the placeholders with the project's public endpoint. Keys are fixed; an unknown key is refused.",
       "profile": "postgres.livx-readonly",
       "variable": "LIVX_PRODUCTION_READONLY_DATABASE_URL",
       "host": "db.example.invalid",
       "port": 5432,
       "database": "railway",
-      "docs": "Project migration runbook",
-      "withheld": {
-        "users": [
-          "password",
-          "api_token"
-        ],
-        "user_auth_tokens": "*"
-      },
-      "allowed_routines": [],
-      "other_databases": []
+      "docs": "Project migration runbook"
     }
   }
 }
