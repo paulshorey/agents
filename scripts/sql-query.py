@@ -38,6 +38,11 @@ LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
 # pinned sslrootcert. Weaker modes are allowed only for loopback test databases.
 STRONG_SSL_MODES = {'require', 'verify-ca', 'verify-full'}
 SESSION_OPTIONS = '-c default_transaction_read_only=on -c statement_timeout=30s -c idle_in_transaction_session_timeout=60s'
+# Built-in routines with effects a read-only transaction and rollback cannot undo.
+SIDE_EFFECT_ROUTINES = ('pg_logical_emit_message',)
+# Statement types a query may start with; everything else (transaction
+# control, SET, DO, CALL, LOCK, PREPARE TRANSACTION...) is rejected.
+READ_STATEMENTS = {'select', 'with', 'table', 'values', 'show', 'explain'}
 USER_SCHEMAS = ("n.nspname NOT IN ('pg_catalog','information_schema') "
                 "AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'")
 # One row, '|'-separated: elevated|owns|can_write|can_create|memberships|grant_options|
@@ -73,7 +78,8 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable)::text,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    WHERE p.prosecdef AND {USER_SCHEMAS} AND has_function_privilege(current_user, p.oid, 'EXECUTE')
+    WHERE ((p.prosecdef AND {USER_SCHEMAS}) OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r})))
+      AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
 FROM pg_roles r WHERE r.rolname=current_user
@@ -211,21 +217,47 @@ def run_psql(env, args, capture=True, timeout=120):
 
 
 def withheld_sql(withheld):
-    """Names of withheld tables/columns the role can still read (identifiers pre-validated).
-    CASE branches run in order, so privilege functions never see a missing relation."""
-    checks = []
+    """Withheld tables/columns the role can still read, directly, through any
+    inheritance or partition descendant, or through a view or materialized view
+    built on them (views run with their owner's privileges unless they are
+    security_invoker). Identifiers are pre-validated by load_targets."""
+    rows = []
     for table, columns in sorted(withheld.items()):
-        rel = f"'public.{table}'"
-        if columns == '*':
-            checks.append(f"CASE WHEN to_regclass({rel}) IS NULL THEN NULL "
-                          f"WHEN has_any_column_privilege(current_user, {rel}, 'SELECT') THEN '{table}' END")
-        else:
-            for column in columns:
-                checks.append(
-                    f"CASE WHEN NOT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' "
-                    f"AND table_name='{table}' AND column_name='{column}') THEN NULL "
-                    f"WHEN has_column_privilege(current_user, {rel}, '{column}', 'SELECT') THEN '{table}.{column}' END")
-    return "SELECT concat_ws(',', " + ', '.join(checks) + ')' if checks else ''
+        for column in (columns if isinstance(columns, list) else [None]):
+            rows.append(f"('{table}', {'NULL' if column is None else repr(column)}::text)")
+    if not rows:
+        return ''
+    return f"""
+WITH RECURSIVE secrets(tbl, col) AS (VALUES {', '.join(rows)}),
+tree AS (
+  SELECT s.col, c.oid AS relid FROM secrets s
+    JOIN pg_class c ON c.relname=s.tbl JOIN pg_namespace n ON n.oid=c.relnamespace AND n.nspname='public'
+  UNION SELECT t.col, i.inhrelid FROM tree t JOIN pg_inherits i ON i.inhparent=t.relid
+),
+readable AS (
+  SELECT t.relid::regclass::text || coalesce('.'||t.col, '') AS name FROM tree t
+  WHERE CASE WHEN t.col IS NULL THEN has_any_column_privilege(current_user, t.relid, 'SELECT')
+    WHEN NOT EXISTS(SELECT 1 FROM pg_attribute a WHERE a.attrelid=t.relid AND a.attname=t.col AND NOT a.attisdropped) THEN false
+    ELSE has_column_privilege(current_user, t.relid, t.col, 'SELECT') END
+),
+views(relid) AS (
+  SELECT r.ev_class FROM tree t
+    JOIN pg_depend d ON d.refclassid='pg_class'::regclass AND d.refobjid=t.relid
+      AND (t.col IS NULL OR d.refobjsubid=(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid=t.relid AND a.attname=t.col))
+    JOIN pg_rewrite r ON d.classid='pg_rewrite'::regclass AND d.objid=r.oid
+  WHERE r.ev_class<>t.relid
+  UNION SELECT r.ev_class FROM views v
+    JOIN pg_depend d ON d.refclassid='pg_class'::regclass AND d.refobjid=v.relid
+    JOIN pg_rewrite r ON d.classid='pg_rewrite'::regclass AND d.objid=r.oid
+  WHERE r.ev_class<>v.relid
+),
+exposed AS (
+  SELECT DISTINCT c.oid::regclass::text || ' (view)' AS name FROM views v JOIN pg_class c ON c.oid=v.relid
+  WHERE has_any_column_privilege(current_user, c.oid, 'SELECT')
+    AND NOT (c.relkind='v' AND coalesce(array_to_string(c.reloptions, ',') ~* 'security_invoker=(true|on|yes|1)', false))
+)
+SELECT concat_ws(',', (SELECT string_agg(name, ',' ORDER BY name) FROM readable),
+  (SELECT string_agg(name, ',' ORDER BY name) FROM exposed))"""
 
 
 def guard(env, withheld=None):
@@ -247,7 +279,7 @@ def guard(env, withheld=None):
     if unsafe:
         problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
     if routines:
-        problems.append('can execute SECURITY DEFINER routines (' + routines
+        problems.append('can execute SECURITY DEFINER or WAL-writing routines (' + routines
                         + '); revoke their EXECUTE from PUBLIC and this role')
     for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
                                       (150000, 'has configuration parameter privileges', PARAMETER_SQL)):
@@ -335,6 +367,30 @@ def statement_count(text):
     return count + has_content
 
 
+def first_keyword(text):
+    """First word of backslash-free SQL after leading whitespace, comments and '('."""
+    i, n = 0, len(text)
+    while i < n:
+        if text[i].isspace() or text[i] == '(':
+            i += 1
+        elif text.startswith('--', i):
+            newline = text.find('\n', i)
+            i = n if newline == -1 else newline + 1
+        elif text.startswith('/*', i):
+            depth, i = 1, i + 2
+            while depth and i < n:
+                if text.startswith('/*', i):
+                    depth, i = depth + 1, i + 2
+                elif text.startswith('*/', i):
+                    depth, i = depth - 1, i + 2
+                else:
+                    i += 1
+        else:
+            match = re.match(r'[A-Za-z]+', text[i:])
+            return match.group(0).lower() if match else ''
+    return ''
+
+
 def wrapped_sql(text):
     """Run exactly one statement inside a READ ONLY transaction that has already
     taken a snapshot: PostgreSQL then refuses to switch it to read-write, and the
@@ -342,6 +398,8 @@ def wrapped_sql(text):
     object creation and DDL fail regardless of the role's grants."""
     if statement_count(text) != 1:
         raise SqlError('Provide exactly one SQL statement per query')
+    if first_keyword(text) not in READ_STATEMENTS:
+        raise SqlError('Only ' + ', '.join(sorted(k.upper() for k in READ_STATEMENTS)) + ' statements are allowed')
     return ('BEGIN TRANSACTION READ ONLY;\n'
             'SELECT 1 AS agents_sql_snapshot \\gset\n'
             + text.strip() + '\n;\nROLLBACK;\n')

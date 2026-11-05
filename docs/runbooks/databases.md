@@ -15,8 +15,12 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Safety model
 
-- The role has `SELECT` only, owns nothing, cannot create objects, and defaults to
-  read-only sessions with statement and idle timeouts. Secret tables and columns
+- The role has `SELECT` on base tables only (views and materialized views run with
+  their owner's privileges, so they are granted only after an audit), owns nothing,
+  cannot create objects, and defaults to read-only sessions with statement and idle
+  timeouts. The role SQL keeps no default privileges: re-run it after migrations add
+  tables. It also revokes `pg_logical_emit_message` from PUBLIC (non-transactional
+  WAL writes survive a rollback). Secret tables and columns
   (`user_auth_tokens`, `password_reset_tokens`, `users.password`, `users.api_token`,
   `device_push_tokens.token`, `membership_offers.code`, `get_deals.qr_token`) are
   withheld. New tables become readable by default; extend the withheld list in
@@ -25,8 +29,10 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - `agents-sql` refuses a stored URL whose host, port or database differs from the
   target, and refuses any role that is elevated, owns or can create objects, has
   non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
-- Each target's `withheld` list (tables or columns) must be unreadable; the tool
-  checks effective privileges, so a column grant or `pg_read_all_data` is refused.
+- Each target's `withheld` list (tables or columns) must be unreadable directly,
+  through inheritance or partition descendants, and through any view or
+  materialized view built on them (security-invoker views excepted). Checks use
+  effective privileges, so a column grant or `pg_read_all_data` is refused.
   Any role membership is refused.
 - The URL is passed to `psql` through libpq environment variables only, with inherited
   `PG*`/`DATABASE_URL` settings dropped. SQL containing a backslash is rejected, so
@@ -38,14 +44,16 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   authenticated) is the practical baseline there; pin the exported root CA with
   `verify-ca` for authentication. Weaker modes are accepted only for loopback hosts.
 
-- Each `query` runs exactly one statement inside a `READ ONLY` transaction that has
-  already taken a snapshot, then rolls back. PostgreSQL refuses to switch that
+- Each `query` runs exactly one `SELECT`, `WITH`, `TABLE`, `VALUES`, `SHOW` or
+  `EXPLAIN` statement inside a `READ ONLY` transaction that has already taken a
+  snapshot, then rolls back. Transaction control (including `PREPARE TRANSACTION`),
+  `SET`, `DO`, `CALL` and `LOCK` are rejected before connecting. PostgreSQL refuses to switch that
   transaction to read-write, so writes, `nextval`, large-object creation, temp tables
   and DDL fail even if a grant was missed. Multi-statement input is rejected.
 - The role check also refuses ownership of any object (via `pg_shdepend`), grant
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
   executable `SECURITY DEFINER` routines in user schemas, `MAINTAIN` (PostgreSQL 17+)
-  and configuration-parameter privileges (15+).
+  and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
   changes, but any login role can create large objects or temp tables. Keep the file

@@ -4,7 +4,8 @@
 --
 -- Replace REPLACE_WITH_GENERATED_PASSWORD with a new random password (for example
 -- from `openssl rand -base64 32 | tr -d '/+='`). Never reuse the owner password.
--- Re-running is safe: it updates the password and grants.
+-- Re-running is safe: it updates the password and grants. Re-run it after
+-- migrations add tables: only base tables that exist now are granted.
 --
 -- Roles are cluster-wide. If two registered databases share one PostgreSQL
 -- cluster, they share this role and password: reuse the existing password (or
@@ -29,10 +30,37 @@ DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_readonly', cur
 GRANT USAGE ON SCHEMA public TO agent_readonly;
 -- PostgreSQL 15+ already denies this to PUBLIC; agents-sql refuses roles that can create.
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+-- Non-transactional WAL messages survive a rollback. PUBLIC can execute this
+-- built-in by default; the owner/superuser application connection is unaffected.
+DO $$
+DECLARE f regprocedure;
+BEGIN
+  FOR f IN SELECT oid::regprocedure FROM pg_proc WHERE proname = 'pg_logical_emit_message'
+    AND pronamespace = 'pg_catalog'::regnamespace LOOP
+    EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', f);
+  END LOOP;
+END $$;
 
--- Read every table, then withhold credentials and bearer codes.
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO agent_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_readonly;
+-- Read base tables (and partitions) only. Views and materialized views run with
+-- their owner's privileges and can expose withheld columns, so they are not
+-- granted; grant an audited view explicitly. No default privileges are kept, so
+-- future tables (and views) stay unreadable until this script is re-run.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM agent_readonly;
+DO $$
+DECLARE rel regclass;
+BEGIN
+  FOR rel IN SELECT c.oid::regclass FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('v', 'm') LOOP
+    EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
+  END LOOP;
+  FOR rel IN SELECT c.oid::regclass FROM pg_class c
+    WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p') LOOP
+    EXECUTE format('GRANT SELECT ON %s TO agent_readonly', rel);
+  END LOOP;
+END $$;
+
+-- Withhold credentials and bearer codes on each table and every inheritance or
+-- partition descendant (children have their own grants).
 DO $$
 DECLARE
   secret_tables text[] := ARRAY['user_auth_tokens', 'password_reset_tokens'];
@@ -40,22 +68,26 @@ DECLARE
   secret_columns jsonb := '{"users": ["password", "api_token"], "device_push_tokens": ["token"],
     "membership_offers": ["code"], "get_deals": ["qr_token"]}';
   t text;
+  rel regclass;
   cols text;
 BEGIN
-  FOREACH t IN ARRAY secret_tables LOOP
-    IF to_regclass('public.' || quote_ident(t)) IS NOT NULL THEN
-      EXECUTE format('REVOKE ALL ON public.%I FROM agent_readonly', t);
+  FOR t IN SELECT unnest(secret_tables) UNION SELECT jsonb_object_keys(secret_columns) LOOP
+    IF to_regclass('public.' || quote_ident(t)) IS NULL THEN
+      CONTINUE;
     END IF;
-  END LOOP;
-  FOR t IN SELECT jsonb_object_keys(secret_columns) LOOP
-    IF to_regclass('public.' || quote_ident(t)) IS NOT NULL THEN
-      SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position) INTO cols
-        FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = t
-          AND column_name NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t));
-      EXECUTE format('REVOKE ALL ON public.%I FROM agent_readonly', t);
-      EXECUTE format('GRANT SELECT (%s) ON public.%I TO agent_readonly', cols, t);
-    END IF;
+    FOR rel IN WITH RECURSIVE tree(oid) AS (
+        SELECT to_regclass('public.' || quote_ident(t))::oid
+        UNION SELECT i.inhrelid FROM pg_inherits i JOIN tree ON i.inhparent = tree.oid)
+      SELECT oid::regclass FROM tree LOOP
+      EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
+      IF secret_columns ? t THEN
+        SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO cols
+          FROM pg_attribute a
+          WHERE a.attrelid = rel AND a.attnum > 0 AND NOT a.attisdropped
+            AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t));
+        EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);
+      END IF;
+    END LOOP;
   END LOOP;
 END $$;
 

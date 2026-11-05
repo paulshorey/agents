@@ -154,6 +154,15 @@ class MetaCommandTests(unittest.TestCase):
         for text, count in [('SELECT $$a;b$$', 1), ("SELECT ';' -- x;", 1), ('/* ; */ SELECT 1;', 1), ('SELECT 1; SELECT 2', 2)]:
             self.assertEqual(sql.statement_count(text), count, text)
 
+    def test_allows_only_read_statement_types(self):
+        for text in ['/* c */ (SELECT 1)', 'WITH x AS (SELECT 1) SELECT * FROM x', 'EXPLAIN SELECT 1', 'show work_mem',
+                     'TABLE users', 'VALUES (1)']:
+            self.assertIn('BEGIN TRANSACTION READ ONLY', sql.wrapped_sql(text))
+        for text in ["PREPARE TRANSACTION 'g'", 'COMMIT', 'SET transaction_read_only = off', 'DO $$ BEGIN END $$',
+                     'CALL p()', 'LOCK users', "-- c\nprepare transaction 'x'", 'CREATE TEMP TABLE t (i int)']:
+            with self.assertRaises(sql.SqlError, msg=text):
+                sql.wrapped_sql(text)
+
     def test_query_command_never_starts_psql_for_meta_commands(self):
         with tempfile.TemporaryDirectory() as directory:
             script = Path(directory) / 'q.sql'
@@ -290,19 +299,51 @@ class LiveRoleTests(unittest.TestCase):
         self.addCleanup(self.admin, 'DROP SEQUENCE IF EXISTS public.probe_ro_seq')
         before = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SELECT count(*) FROM pg_largeobject_metadata'],
                                 capture_output=True, text=True, check=True).stdout
-        for statement in ['SET transaction_read_only = off', "SELECT lo_from_bytea(0, 'x')",
-                          'CREATE TEMP TABLE agent_probe_temp (id int)', "UPDATE public.users SET email='x'"]:
+        # Writes reachable from read statement types fail in the server-side read-only transaction.
+        for statement in ["SELECT set_config('transaction_read_only', 'off', true)", "SELECT lo_from_bytea(0, 'x')",
+                          "WITH gone AS (DELETE FROM public.users RETURNING 1) SELECT count(*) FROM gone",
+                          "SELECT pg_logical_emit_message(false, 'agents', 'probe')"]:
             with patch.object(sql, 'target', return_value=self.target), \
                     patch.object(sql, 'connection_url', return_value=self.readonly_url), \
                     patch('sys.stderr', new_callable=io.StringIO):
                 self.assertNotEqual(sql.main(['query', 'fixture', '-c', statement]), 0, statement)
-        with patch.object(sql, 'target', return_value=self.target), \
-                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
-                patch('sys.stderr', new_callable=io.StringIO):
-            self.assertEqual(sql.main(['query', 'fixture', '-c', 'COMMIT']), 0)
         after = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c', 'SELECT count(*) FROM pg_largeobject_metadata'],
                                capture_output=True, text=True, check=True).stdout
         self.assertEqual(before, after, 'no large object was created')
+
+    def test_refuses_views_and_child_tables_that_expose_withheld_secrets(self):
+        self.admin('CREATE VIEW public.agent_probe_view AS SELECT id, password FROM public.users; '
+                   'CREATE VIEW public.agent_probe_view2 AS SELECT id FROM public.agent_probe_view; '
+                   'CREATE TABLE public.agent_probe_child () INHERITS (public.user_auth_tokens)')
+        self.addCleanup(self.admin, 'DROP VIEW IF EXISTS public.agent_probe_view2, public.agent_probe_view; '
+                                    'DROP TABLE IF EXISTS public.agent_probe_child')
+        for grants, exposed in [('GRANT SELECT ON public.agent_probe_view TO agent_readonly', 'agent_probe_view'),
+                                ('GRANT SELECT ON public.agent_probe_view2 TO agent_readonly', 'agent_probe_view2'),
+                                ('GRANT SELECT ON public.agent_probe_child TO agent_readonly', 'agent_probe_child')]:
+            with self.subTest(exposed):
+                self.admin(grants)
+                with self.assertRaises(sql.SqlError) as raised:
+                    sql.guard(self.env(self.readonly_url), WITHHELD)
+                self.assertIn(exposed, str(raised.exception))
+                self.admin(grants.replace('GRANT SELECT', 'REVOKE ALL').replace(' TO ', ' FROM '))
+        sql.guard(self.env(self.readonly_url), WITHHELD)
+
+    def test_role_sql_withholds_secrets_on_child_tables(self):
+        self.admin('CREATE TABLE public.agent_probe_child2 () INHERITS (public.user_auth_tokens)')
+        self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.agent_probe_child2')
+        role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+        subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
+                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                       check=True, capture_output=True)
+        sql.guard(self.env(self.readonly_url), WITHHELD)
+
+    def test_refuses_wal_writing_routines(self):
+        role = self.scratch_role("DO $$ DECLARE f regprocedure; BEGIN FOR f IN SELECT oid::regprocedure FROM pg_proc "
+                                 "WHERE proname='pg_logical_emit_message' LOOP EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO {role}', f); "
+                                 "END LOOP; END $$;")
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('pg_logical_emit_message', str(raised.exception))
 
     def test_reads_allowed_columns_but_never_writes_or_reads_secrets(self):
         env = self.env(self.readonly_url)
