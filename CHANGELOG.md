@@ -4,6 +4,13 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — Codex uses the priority service tier
+
+- The active Codex config had `service_tier = "priority"`, but
+  `config/codex.defaults.toml` still managed `"default"`, so a full
+  `scripts/install.py --apply` would have switched Codex back. At Paul's request the
+  managed default is now `"priority"`; a full installation no longer changes it.
+
 ## 2026-11-05 — PR readiness status and required check on main
 
 - PRs #30 and #31 were merged while agents were still fixing review findings; the
