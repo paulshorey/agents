@@ -119,7 +119,7 @@ class ConnectionTests(unittest.TestCase):
         self.assertEqual(sql.libpq_environment(url(host='127.0.0.1', sslmode='disable'), local)['PGSSLMODE'], 'disable')
 
     def test_rejects_connections_that_do_not_match_the_target(self):
-        for bad in [url(host='other.example.test'), url(port=5432), url(database='other'), url(user=None),
+        for bad in [url(host='other.example.test'), url(port=5432), url(database='other'), url(user=None), url(user='analytics'),
                     url(application_name='x'), 'mysql://u:p@db.example.test:6543/railway', 'postgresql://[bad']:
             with self.assertRaises(sql.SqlError, msg=bad):
                 sql.libpq_environment(bad, TARGET)
@@ -344,13 +344,10 @@ class LiveRoleTests(unittest.TestCase):
     def env(self, connection):
         return sql.libpq_environment(connection, self.target)
 
-    def scratch_role(self, grants):
-        name = 'agent_probe_' + os.urandom(3).hex()
-        secret = 'probe' + os.urandom(6).hex()
-        self.admin(f"CREATE ROLE {name} LOGIN PASSWORD '{secret}'; GRANT USAGE ON SCHEMA public TO {name}; "
-                   + grants.format(role=name))
-        self.addCleanup(self.admin, f'DROP OWNED BY {name}; DROP ROLE {name}')
-        return self.role_url(name, secret)
+    def granted(self, grant, undo):
+        """Temporarily give agent_readonly an extra privilege it must never hold."""
+        self.admin(grant)
+        self.addCleanup(self.admin, undo)
 
     def query(self, text):
         result = sql.run_session(self.env(self.readonly_url), sql.query_script(text), ['-At'])
@@ -358,23 +355,34 @@ class LiveRoleTests(unittest.TestCase):
         self.assertEqual(problems, [])
         return result.returncode, result.stdout.strip(), rest
 
-    def test_verifies_the_read_only_role_and_refuses_the_owner(self):
+    def test_verifies_the_read_only_role_and_refuses_other_logins(self):
         self.assertEqual(sql.guard(self.env(self.readonly_url))['user'], 'agent_readonly')
-        with self.assertRaisesRegex(sql.SqlError, 'elevated'):
-            sql.guard(self.env(ADMIN_URL + '?sslmode=disable'))
+        for other in [ADMIN_URL + '?sslmode=disable', self.role_url('analytics', 'x')]:
+            with self.assertRaisesRegex(sql.SqlError, 'agent_readonly role'):
+                self.env(other)
 
-    def test_refuses_roles_that_could_write(self):
+    def test_refuses_the_role_when_it_could_write(self):
         safe = 'agent_probe_safe_' + os.urandom(3).hex()
-        self.admin(f'CREATE ROLE {safe} NOLOGIN')
-        self.addCleanup(self.admin, f'DROP ROLE IF EXISTS {safe}')
-        for grants, message in [('GRANT INSERT ON public.users TO {role};', 'can write'),
-                                ('GRANT UPDATE (email) ON public.users TO {role};', 'can write'),
-                                ('GRANT pg_write_all_data TO {role};', 'member'),
-                                ('CREATE SCHEMA agent_probe_s_{role} AUTHORIZATION {role};', 'owns'),
-                                ('GRANT CREATE ON SCHEMA public TO {role};', 'create'),
-                                (f'GRANT {safe} TO {{role}}; ALTER ROLE {{role}} SET role = {safe};', 'different role')]:
-            with self.subTest(grants=grants), self.assertRaisesRegex(sql.SqlError, message):
-                sql.guard(self.env(self.scratch_role(grants)))
+        schema = 'agent_probe_s_' + os.urandom(3).hex()
+        cases = [('GRANT INSERT ON public.users TO agent_readonly', 'REVOKE INSERT ON public.users FROM agent_readonly',
+                  'can write'),
+                 ('GRANT UPDATE (email) ON public.users TO agent_readonly',
+                  'REVOKE UPDATE (email) ON public.users FROM agent_readonly', 'can write'),
+                 ('GRANT pg_write_all_data TO agent_readonly', 'REVOKE pg_write_all_data FROM agent_readonly', 'member'),
+                 (f'CREATE SCHEMA {schema} AUTHORIZATION agent_readonly', f'DROP SCHEMA {schema}', 'owns'),
+                 ('GRANT CREATE ON SCHEMA public TO agent_readonly', 'REVOKE CREATE ON SCHEMA public FROM agent_readonly',
+                  'create'),
+                 (f'CREATE ROLE {safe} NOLOGIN; GRANT {safe} TO agent_readonly; ALTER ROLE agent_readonly SET role = {safe}',
+                  f'ALTER ROLE agent_readonly RESET role; DROP ROLE {safe}', 'agent_readonly login')]
+        for grant, undo, message in cases:
+            with self.subTest(grant=grant):
+                self.admin(grant)
+                try:
+                    with self.assertRaisesRegex(sql.SqlError, message):
+                        sql.guard(self.env(self.readonly_url))
+                finally:
+                    self.admin(undo)
+        sql.guard(self.env(self.readonly_url))
 
     def test_reads_allowed_columns_but_not_secrets(self):
         self.assertEqual(self.query('SELECT email FROM users WHERE id = 1')[:2], (0, 'member@example.invalid'))
@@ -389,9 +397,10 @@ class LiveRoleTests(unittest.TestCase):
             self.assertNotEqual(self.query(text)[0], 0, text)
 
     def test_refused_role_never_runs_the_query(self):
-        role = self.scratch_role('GRANT INSERT ON public.users TO {role};')
+        self.granted('GRANT INSERT ON public.users TO agent_readonly', 'REVOKE INSERT ON public.users FROM agent_readonly')
         started = time.monotonic()
-        with patch.object(sql, 'target', return_value=self.target), patch.object(sql, 'connection_url', return_value=role), \
+        with patch.object(sql, 'target', return_value=self.target), \
+                patch.object(sql, 'connection_url', return_value=self.readonly_url), \
                 patch('sys.stderr', new_callable=io.StringIO) as err:
             self.assertEqual(sql.main(['query', 'fixture', '-c', 'SELECT pg_sleep(5)']), 2)
         self.assertLess(time.monotonic() - started, 4)
@@ -447,6 +456,24 @@ class LiveRoleTests(unittest.TestCase):
             stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
             self.assertEqual(urllib.parse.unquote(urllib.parse.urlsplit(stored).password), password)
             self.assertFalse(setup.exists())
+
+
+    def test_role_sql_stops_on_layouts_that_would_expose_secrets(self):
+        other = 'other' + os.urandom(8).hex()
+        cases = [('GRANT SELECT ON public.users TO PUBLIC', 'REVOKE SELECT ON public.users FROM PUBLIC', 'PUBLIC can read'),
+                 ('CREATE TABLE public.agent_probe_child () INHERITS (public.user_auth_tokens)',
+                  'DROP TABLE public.agent_probe_child', 'inheritance'),
+                 ('GRANT CREATE ON SCHEMA public TO PUBLIC', 'REVOKE CREATE ON SCHEMA public FROM PUBLIC', 'PUBLIC can create')]
+        for change, undo, message in cases:
+            with self.subTest(change=change):
+                self.admin(change)
+                try:
+                    result = self.run_role_sql(secret=other)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(message, result.stderr)
+                finally:
+                    self.admin(undo)
+                sql.guard(self.env(self.readonly_url))  # nothing changed: the old password still works
 
 
 if __name__ == '__main__':

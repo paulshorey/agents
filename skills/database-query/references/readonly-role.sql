@@ -25,6 +25,11 @@ BEGIN
   IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
     RAISE EXCEPTION 'Run this as a superuser (Railway: the postgres user).';
   END IF;
+  -- PostgreSQL 14 (and clusters upgraded from it) lets PUBLIC create in schema public,
+  -- which agents-sql refuses; stop before changing anything.
+  IF has_schema_privilege('public', 'public', 'CREATE') THEN
+    RAISE EXCEPTION 'PUBLIC can create objects in schema public (PostgreSQL 14 default). Grant CREATE to the application roles that need it, run REVOKE CREATE ON SCHEMA public FROM PUBLIC, then re-run this script.';
+  END IF;
   IF verifier !~ '^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$' THEN
     RAISE EXCEPTION 'Run the copy that agents-sql prepare wrote, not this template (it needs a SCRAM verifier, never a cleartext password).';
   END IF;
@@ -67,6 +72,17 @@ DECLARE
   rel regclass;
   cols text;
 BEGIN
+  FOR t IN SELECT unnest(secret_tables) UNION SELECT jsonb_object_keys(secret_columns) LOOP
+    rel := to_regclass(format('public.%I', t));
+    CONTINUE WHEN rel IS NULL;
+    -- A PUBLIC grant or a parent/child table would still expose the secrets.
+    IF has_any_column_privilege('public', rel, 'SELECT') THEN
+      RAISE EXCEPTION 'PUBLIC can read %, which holds secrets; revoke that grant and re-run.', rel;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = rel OR inhparent = rel) THEN
+      RAISE EXCEPTION '% has inheritance or partition relatives; extend this script to withhold its secrets there.', rel;
+    END IF;
+  END LOOP;
   FOREACH t IN ARRAY secret_tables LOOP
     rel := to_regclass(format('public.%I', t));
     IF rel IS NOT NULL THEN

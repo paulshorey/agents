@@ -54,9 +54,10 @@ SELECT g.safe AS agents_sql_safe,
     g.usr, g.version) AS agents_sql_guard
 FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.creates THEN 'off' ELSE 'on' END AS safe
   FROM (SELECT
-    -- A persistent `SET role` would make this check a different role than the login.
+    -- Only the dedicated login, which readonly-role.sql grants and withholds for; a
+    -- persistent `SET role` would make this check a different role than the login.
     (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.rolreplication
-      OR session_user <> current_user) AS elevated,
+      OR session_user <> current_user OR current_user <> 'agent_readonly') AS elevated,
     -- Membership can confer any privilege (pg_read_all_data, pg_write_all_data, an owner role).
     EXISTS(SELECT 1 FROM pg_auth_members m WHERE m.member = r.oid) AS member,
     EXISTS(SELECT 1 FROM pg_shdepend d WHERE d.refclassid = 'pg_authid'::regclass
@@ -74,7 +75,7 @@ FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.cr
   FROM pg_roles r WHERE r.rolname = current_user) f) g \gset
 \warn AGENTS_SQL_GUARD :agents_sql_guard
 """
-PROBLEMS = ('has elevated role attributes or runs as a different role than the login',
+PROBLEMS = ('is not the dedicated agent_readonly login, or has elevated role attributes',
             'is a member of other roles', 'owns database objects',
             'can write to tables or sequences', 'can create objects')
 PASSWORD_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
@@ -165,8 +166,8 @@ def libpq_environment(url, entry):
     database = urllib.parse.unquote(parts.path.lstrip('/'))
     if (host, port, database) != (entry['host'], entry['port'], entry['database']):
         raise SqlError('Stored connection does not match the registered host, port and database for this target')
-    if not user or password is None:
-        raise SqlError('Stored connection must include the read-only role name and password')
+    if urllib.parse.unquote(user or '') != 'agent_readonly' or password is None:
+        raise SqlError('Stored connection must be for the agent_readonly role, with its password')
     query = urllib.parse.parse_qs(parts.query, keep_blank_values=True)
     if set(query) - {'sslmode', 'sslrootcert'} or any(len(v) != 1 for v in query.values()):
         raise SqlError('Only sslmode and sslrootcert options are allowed in the stored connection')
@@ -419,7 +420,9 @@ def command_prepare(args):
     print(f'Prepared a new password for {args.target}; any current credential stays active until you activate.\n'
           f'Run the prepared role SQL as a superuser (Railway: the postgres user); it contains a password verifier, '
           f'keep it private:\n'
-          f'  pbcopy < {setup}   # paste into the database SQL console, or: psql OWNER_URL -f {setup}\n'
+          f'  pbcopy < {setup}   # then paste into the database SQL console (Railway: Data tab), or\n'
+          f"  psql 'host=HOST port=PORT dbname={entry['database']} user=postgres sslmode=require' -f {setup}"
+          f'   # prompts for the password\n'
           f'Then run: agents-sql activate {args.target}  (verifies the role, stores it, deletes both files).')
     return 0
 
