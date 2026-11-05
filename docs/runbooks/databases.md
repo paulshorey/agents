@@ -20,8 +20,10 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   their owner's privileges, so they are granted only after an audit), owns nothing,
   cannot create objects, and defaults to read-only sessions with statement and idle
   timeouts. The role SQL keeps no default privileges: re-run it after migrations add
-  tables. It also revokes `pg_logical_emit_message` from PUBLIC (non-transactional
-  WAL writes survive a rollback). Secret tables and columns
+  tables; re-running also drops stale grants. It revokes `pg_logical_emit_message` from
+  PUBLIC (non-transactional WAL writes survive a rollback). If PUBLIC can still create
+  in schema `public` (PostgreSQL 14 or an upgraded database), it stops and asks the
+  owner to grant application roles explicitly first, rather than changing that ACL. Secret tables and columns
   (`user_auth_tokens`, `password_reset_tokens`, `users.password`, `users.api_token`,
   `device_push_tokens.token`, `membership_offers.code`, `get_deals.qr_token`) are
   withheld. New tables become readable by default; extend the withheld list in
@@ -33,7 +35,7 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants, and through any view or
   materialized view built on them, including whole-row references (security-invoker
-  views excepted). Verification queries pin `search_path` to `pg_catalog`. Checks use
+  views excepted), and through generated columns computed from them. Verification queries pin `search_path` to `pg_catalog`. Checks use
   effective privileges, so a column grant or `pg_read_all_data` is refused. Keys are
   `table` (schema `public`) or `schema.table`. A withheld relation or column that does
   not exist fails closed, so update the list when a migration renames one.

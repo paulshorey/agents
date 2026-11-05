@@ -56,7 +56,11 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
   EXISTS(SELECT 1 FROM pg_shdepend d WHERE d.refclassid='pg_authid'::regclass
     AND d.refobjid=r.oid AND d.deptype='o')::text,
   (EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-    WHERE {USER_SCHEMAS}
+    -- Every persistent schema, catalogs included: system catalogs are writable tables.
+    -- pg_settings is exempt: PostgreSQL grants PUBLIC UPDATE on it by default, and its
+    -- update rule only calls set_config() for the current session, like SET.
+    WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%'
+      AND c.oid <> 'pg_catalog.pg_settings'::regclass
       AND ((c.relkind IN ('r','p','v','m','f')
           AND (has_table_privilege(current_user, c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER')
             OR has_any_column_privilege(current_user, c.oid, 'INSERT, UPDATE')))
@@ -252,9 +256,19 @@ missing AS (
   WHERE b.relid IS NULL OR (b.col IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_attribute a
     WHERE a.attrelid=b.relid AND a.attname=b.col AND NOT a.attisdropped))
 ),
-tree AS (
+inherited AS (
   SELECT b.col, b.relid FROM base b WHERE b.relid IS NOT NULL
-  UNION SELECT t.col, i.inhrelid FROM tree t JOIN pg_inherits i ON i.inhparent=t.relid
+  UNION SELECT t.col, i.inhrelid FROM inherited t JOIN pg_inherits i ON i.inhparent=t.relid
+),
+-- Generated columns computed from a withheld column carry its value.
+tree AS (
+  SELECT col, relid FROM inherited
+  UNION SELECT g.attname::text, t.relid FROM inherited t
+    JOIN pg_attribute src ON src.attrelid=t.relid AND src.attname=t.col
+    JOIN pg_depend d ON d.classid='pg_attrdef'::regclass
+      AND d.refclassid='pg_class'::regclass AND d.refobjid=t.relid AND d.refobjsubid=src.attnum
+    JOIN pg_attrdef ad ON ad.oid=d.objid AND ad.adrelid=t.relid
+    JOIN pg_attribute g ON g.attrelid=t.relid AND g.attnum=ad.adnum AND g.attgenerated<>''
 ),
 readable AS (
   SELECT t.relid::regclass::text || coalesce('.'||t.col, '') AS name FROM tree t

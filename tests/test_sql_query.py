@@ -419,6 +419,50 @@ class LiveRoleTests(unittest.TestCase):
             sql.guard(self.env(role))
         self.assertIn('owns database objects', str(raised.exception))
 
+    def run_role_sql(self):
+        role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+        return subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
+                              input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                              capture_output=True)
+
+    def test_catalog_write_grants_are_not_effective_for_non_superusers(self):
+        # PostgreSQL denies catalog writes to non-superusers even with an explicit grant,
+        # and the guard scans effective privileges in every schema, catalogs included.
+        role = self.scratch_role('GRANT UPDATE ON pg_catalog.pg_description TO {role};')
+        sql.guard(self.env(role))
+        denied = sql.run_psql(self.env(role), ['-At', '-c',
+            "SET transaction_read_only = off; UPDATE pg_catalog.pg_description SET description = description WHERE false"])
+        self.assertNotEqual(denied.returncode, 0)
+        self.assertIn('permission denied', denied.stderr)
+
+    def test_role_sql_removes_stale_write_grants(self):
+        self.admin('GRANT INSERT, UPDATE (email) ON public.users TO agent_readonly')
+        with self.assertRaises(sql.SqlError):
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertEqual(self.run_role_sql().returncode, 0)
+        sql.guard(self.env(self.readonly_url), WITHHELD)
+
+    def test_role_sql_stops_instead_of_changing_public_create(self):
+        self.admin('GRANT CREATE ON SCHEMA public TO PUBLIC')
+        self.addCleanup(self.admin, 'REVOKE CREATE ON SCHEMA public FROM PUBLIC')
+        failed = self.run_role_sql()
+        self.assertNotEqual(failed.returncode, 0)
+        self.assertIn('PUBLIC can create objects in schema public', failed.stderr)
+        has_create = subprocess.run(['psql', '-X', '-At', ADMIN_URL, '-c',
+                                     "SELECT has_schema_privilege('public', 'public', 'CREATE')"],
+                                    capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(has_create, 't', 'the database-wide grant was left for the owner to change')
+
+    def test_withholds_generated_columns_derived_from_secrets(self):
+        self.admin('ALTER TABLE public.users ADD COLUMN password_copy text GENERATED ALWAYS AS (password) STORED')
+        self.addCleanup(self.admin, 'ALTER TABLE public.users DROP COLUMN IF EXISTS password_copy')
+        self.assertEqual(self.run_role_sql().returncode, 0)
+        sql.guard(self.env(self.readonly_url), WITHHELD)  # setup skipped the derived column
+        self.admin('GRANT SELECT (password_copy) ON public.users TO agent_readonly')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('password_copy', str(raised.exception))
+
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.device_push_tokens')

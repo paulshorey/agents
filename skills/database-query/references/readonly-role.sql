@@ -40,8 +40,16 @@ ALTER ROLE agent_readonly SET idle_in_transaction_session_timeout = '60s';
 
 DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO agent_readonly', current_database()); END $$;
 GRANT USAGE ON SCHEMA public TO agent_readonly;
--- PostgreSQL 15+ already denies this to PUBLIC; agents-sql refuses roles that can create.
-REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+-- PostgreSQL 15+ denies CREATE on schema public to PUBLIC. On an older or upgraded
+-- database PUBLIC may still have it; agents-sql refuses such a role, and revoking it
+-- here would also affect application roles, so stop and let the owner decide.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_namespace n, aclexplode(n.nspacl) a
+      WHERE n.nspname = 'public' AND a.grantee = 0 AND a.privilege_type = 'CREATE') THEN
+    RAISE EXCEPTION 'PUBLIC can create objects in schema public. Grant CREATE explicitly to the application roles that need it, run REVOKE CREATE ON SCHEMA public FROM PUBLIC, then re-run this script.';
+  END IF;
+END $$;
 -- Non-transactional WAL messages survive a rollback. PUBLIC can execute this
 -- built-in by default; the owner/superuser application connection is unaffected.
 DO $$
@@ -67,9 +75,13 @@ BEGIN
   END LOOP;
   FOR rel IN SELECT c.oid::regclass FROM pg_class c
     WHERE c.relnamespace = 'public'::regnamespace AND c.relkind IN ('r', 'p') LOOP
+    -- Drop any stale grant (table and column level) before granting SELECT.
+    EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
     EXECUTE format('GRANT SELECT ON %s TO agent_readonly', rel);
   END LOOP;
 END $$;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM agent_readonly;
+REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM agent_readonly;
 
 -- Withhold credentials and bearer codes on each table and every inheritance or
 -- partition descendant (children have their own grants).
@@ -93,10 +105,18 @@ BEGIN
       SELECT oid::regclass FROM tree LOOP
       EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
       IF secret_columns ? t THEN
+        -- Skip the secret columns and any generated column computed from them.
         SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO cols
           FROM pg_attribute a
           WHERE a.attrelid = rel AND a.attnum > 0 AND NOT a.attisdropped
-            AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t));
+            AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t))
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_attrdef ad
+                JOIN pg_depend d ON d.classid = 'pg_attrdef'::regclass AND d.objid = ad.oid
+                  AND d.refclassid = 'pg_class'::regclass AND d.refobjid = rel
+                JOIN pg_attribute src ON src.attrelid = rel AND src.attnum = d.refobjsubid
+              WHERE ad.adrelid = rel AND ad.adnum = a.attnum AND a.attgenerated <> ''
+                AND src.attname IN (SELECT jsonb_array_elements_text(secret_columns -> t)));
         IF cols IS NOT NULL THEN
           EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);
         END IF;
