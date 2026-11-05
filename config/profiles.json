@@ -4,6 +4,13 @@
       "provider": "cloudflare",
       "path": "~/.agents/local/credentials/cloudflare.env"
     },
+    "parallel.api": {
+      "provider": "parallel",
+      "path": "~/.secrets.sh",
+      "variables": [
+        "PARALLEL_API_KEY"
+      ]
+    },
     "railway.workspace": {
       "provider": "railway",
       "path": "~/.secrets.sh",

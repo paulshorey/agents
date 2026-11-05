@@ -220,6 +220,44 @@ class ParallelClientTest(unittest.TestCase):
         self.assertEqual(out["error"]["type"], "output_write_failed")
         self.assertEqual(out["run"]["run_id"], "trun_1")
 
+    def test_null_advanced_settings_with_max_results(self):
+        with open(self.searches, "w") as file:
+            json.dump({"searches": [{"objective": "A", "search_queries": ["a"], "advanced_settings": None}]}, file)
+        code, out, bodies, _ = run(["search", self.searches, "--max-results", "2"], [ok({"results": []})])
+        self.assertEqual(code, 0)
+        self.assertEqual(bodies[0][1]["advanced_settings"], {"max_results": 2})
+
+    def test_extract_refuses_existing_page_without_force(self):
+        pages = os.path.join(self.tmp.name, "pages")
+        response = {"results": [{"url": "https://a.test", "title": "A", "excerpts": [], "full_content": "new"}],
+                    "errors": []}
+        run(["extract", "https://a.test", "--out", pages], [ok(response)])
+        path = os.path.join(pages, "01-A.md")
+        with open(path, "w") as file:
+            file.write("earlier")
+        code, out, _, _ = run(["extract", "https://a.test", "--out", pages], [ok(response)])
+        self.assertEqual(code, 4)
+        self.assertEqual(out["errors"][0]["type"], "output_exists")
+        with open(path) as file:
+            self.assertEqual(file.read(), "earlier")
+        code, _, _, _ = run(["extract", "https://a.test", "--out", pages, "--force"], [ok(response)])
+        self.assertEqual(code, 0)
+
+    def test_deep_result_polls_without_internal_retries(self):
+        clock = [1000.0]
+        with patch.object(client.time, "time", lambda: clock[0]), \
+                patch.object(client.time, "sleep", lambda _: None), \
+                patch.object(client, "request") as request:
+            def fail(*args, **kwargs):
+                self.assertFalse(kwargs.get("retry", True))
+                clock[0] += 30
+                raise client.Failure({"status": 503, "message": "unavailable"})
+            request.side_effect = fail
+            code, document = client.wait_for_result("k", "trun_1", 60, None)
+        self.assertEqual(code, 4)
+        self.assertEqual(request.call_count, 2)
+        self.assertIn("deep result trun_1", document["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

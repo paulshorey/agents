@@ -38,6 +38,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.profiles](#configuration-profiles) | configuration | agents | config/profiles.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [tools.python](#tools-python) | tool | agents | local/python-packages | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [application.github-auth](#application-github-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [parallel.api-key](#parallel-api-key) | credential | agents | ~/.secrets.sh | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [application.parallel-connectors](#application-parallel-connectors) | integration | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [context.harnesses](#context-harnesses) | context | agents | docs/agent-harnesses.md, docs/runbooks/agent-customization.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.codex-execution](#application-codex-execution) | configuration | application | ~/.codex/rules/default.rules | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
@@ -108,7 +109,7 @@ Owner: **reference**.
 
 Location: `~/.secrets.sh`.
 
-Variable names: `RAILWAY_API_TOKEN`.
+Variable names: `RAILWAY_API_TOKEN`, `PARALLEL_API_KEY`.
 
 ~/.zshenv loads it for normal zsh; ~/.profile and ~/.bashrc load it for login/interactive Bash. Children inherit exports. Clean noninteractive Bash does not load these files and needs explicit injection or the registered profile loader. ~/.shortcuts.sh contains aliases/directory helpers, not Railway credentials or target selection.
 
@@ -493,6 +494,28 @@ Change sign-in through supported gh auth login/account selection or the connecto
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 
+<a id="parallel-api-key"></a>
+
+## parallel.api-key
+
+Parallel API key for web search, extraction, and deep research, read from the shell secrets file.
+
+Owner: **agents**.
+
+Location: `~/.secrets.sh`.
+
+Variable names: `PARALLEL_API_KEY`.
+
+Declared permissions: `Parallel account API access billed at API rates (Search, Extract, Task)`.
+
+Consumers: skills/engineering-research/scripts/parallel.py and parallel-deep-research's API fallback, plus parallel-cli and the last30days engine when they inherit the shell environment.
+
+parallel.py uses an inherited PARALLEL_API_KEY first; otherwise it reads only the literal assignment from ~/.secrets.sh (owner-only, mode 600, no expansions) and never executes the file. Never print the key.
+
+Create or rotate the key at platform.parallel.ai, then replace only the PARALLEL_API_KEY assignment in ~/.secrets.sh, preserving other lines. Verify with a one-query parallel.py search; exit 3 means missing or rejected.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
+
 <a id="application-parallel-connectors"></a>
 
 ## application.parallel-connectors
@@ -505,7 +528,7 @@ Codex uses the Parallel app connector. Paul added the claude.ai Parallel connect
 
 Connector grants are owned by each application account. Inventory does not inspect connector credentials.
 
-engineering-research's scripts/parallel.py (search, full-page extract, deep research) uses PARALLEL_API_KEY from shell.secrets and needs no connector or CLI.
+engineering-research's scripts/parallel.py (search, full-page extract, deep research) uses the parallel.api-key credential and needs no connector or CLI.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 

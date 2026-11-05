@@ -6,7 +6,7 @@ literal assignment in ~/.secrets.sh (override with PARALLEL_SECRETS_FILE); the
 file is parsed, never executed. Never prints the key.
 
   parallel.py search SEARCHES.json [--mode MODE] [--max-results N]
-  parallel.py extract URL... [--objective TEXT] [--out DIR] [--fresh]
+  parallel.py extract URL... [--objective TEXT] [--out DIR] [--fresh] [--force]
   parallel.py deep run QUESTION [--processor P] [--previous-interaction-id ID]
                                 [--wait SECONDS] [--out BASE] [--force]
   parallel.py deep result RUN_ID [--wait SECONDS] [--out BASE] [--force]
@@ -170,6 +170,8 @@ def load_searches(path):
                     or not isinstance(queries, list) or not queries
                     or not all(isinstance(q, str) and q.strip() for q in queries)):
                 raise ValueError("each search needs an objective and nonempty search_queries")
+            if not isinstance(item.get("advanced_settings") or {}, dict):
+                raise ValueError("advanced_settings must be an object or null")
         return searches
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
         emit({"error": {"type": "invalid_input", "message": str(error)}})
@@ -185,7 +187,9 @@ def cmd_search(args):
         if args.mode and "mode" not in body:
             body["mode"] = args.mode
         if args.max_results:
-            body.setdefault("advanced_settings", {}).setdefault("max_results", args.max_results)
+            settings = dict(body.get("advanced_settings") or {})
+            settings.setdefault("max_results", args.max_results)
+            body["advanced_settings"] = settings
         try:
             return {"index": index, "data": request(key, "POST", "/v1/search", body)[1]}
         except Failure as failure:
@@ -231,6 +235,10 @@ def cmd_extract(args):
         for item in data.get("results") or []:
             content = item.get("full_content") or ""
             path = os.path.join(out_dir, f"{len(pages) + 1:02d}-{slug(item.get('title') or item['url'])}.md")
+            if os.path.exists(path) and not args.force:
+                errors.append({"url": item["url"], "type": "output_exists",
+                               "message": f"Refusing to overwrite {path}; choose a new --out or pass --force"})
+                continue
             try:
                 with open(path, "w", encoding="utf-8") as file:
                     file.write(f"<!-- source: {item['url']} | title: {item.get('title') or ''} | published: {item.get('publish_date') or ''} -->\n\n")
@@ -273,22 +281,29 @@ def summarize(result, paths):
 def wait_for_result(key, run_id, wait, base, force=False):
     deadline = time.time() + wait
     while True:
-        chunk = int(max(1, min(60, deadline - time.time())))
+        remaining = deadline - time.time()
+        chunk = int(max(1, min(60, remaining)))
         try:
-            status, result = request(key, "GET", f"/v1/tasks/runs/{run_id}/result",
-                                     timeout=chunk + 60, query=f"?timeout={chunk}")
+            # No internal retries: the loop below owns retrying within the caller's deadline.
+            status, result = request(key, "GET", f"/v1/tasks/runs/{run_id}/result", retry=False,
+                                     timeout=max(5, remaining) + 10, query=f"?timeout={chunk}")
             base = base or os.path.join(tempfile.mkdtemp(prefix="parallel-deep-"), run_id)
         except Failure as failure:
             code = failure.info.get("status")
             if code == 404:
                 _, run = request(key, "GET", f"/v1/tasks/runs/{run_id}")
                 return 4, {"run": run, "error": failure.info}
-            if code != 408 or time.time() >= deadline:
-                if code == 408:
-                    return 5, {"run_id": run_id, "pending": True,
-                               "message": f"Still running; resume with: deep result {run_id} --wait SECONDS"}
-                return (3 if code in (401, 403) else 4), {"run_id": run_id, "error": failure.info}
-            continue
+            transient = code in (408, None) or code in RETRY_STATUSES
+            if transient and time.time() < deadline:
+                if code != 408:
+                    time.sleep(min(5.0, max(0.0, deadline - time.time())))
+                continue
+            if code == 408:
+                return 5, {"run_id": run_id, "pending": True,
+                           "message": f"Still running; resume with: deep result {run_id} --wait SECONDS"}
+            return (3 if code in (401, 403) else 4), {
+                "run_id": run_id, "error": failure.info,
+                "message": f"The run may still finish; resume with: deep result {run_id} --wait SECONDS"}
         try:
             return 0, summarize(result, save_result(base, result, force))
         except Failure as failure:
@@ -351,6 +366,7 @@ def main():
     extract.add_argument("--out", help="directory for page files (default: new temp directory)")
     extract.add_argument("--max-chars", type=int, help="truncate each page at this many characters")
     extract.add_argument("--fresh", action="store_true", help="refetch pages cached more than 10 minutes ago")
+    extract.add_argument("--force", action="store_true", help="overwrite existing page files in --out")
     extract.set_defaults(handler=cmd_extract)
 
     deep = sub.add_parser("deep", help="asynchronous deep research with a cited report")

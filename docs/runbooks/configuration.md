@@ -123,6 +123,11 @@ search, full-page extraction, and deep research. claude.ai connectors also load 
 Claude Desktop and Claude Code sessions on that account. Add or remove connectors in
 each app's connector settings; their grants stay application-owned.
 
+`parallel.api-key` records `PARALLEL_API_KEY`, the literal assignment in
+`~/.secrets.sh` (profile `parallel.api` in `config/profiles.json`). To rotate it,
+create a key at platform.parallel.ai, replace only that assignment, and verify with
+a one-query `scripts/parallel.py search`; exit 3 means the key is missing or rejected.
+
 ## Backup and restore
 
 Installer backup locations are returned by `--apply` and kept in ignored

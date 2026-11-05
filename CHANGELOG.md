@@ -22,6 +22,9 @@ Verification dates describe historical observations, not current readiness.
   failure with its command, exit code, and error, and mentions connectors or
   built-in search only as a fallback. `parallel-deep-research` now falls back to the
   script's `deep` command when `parallel-cli` is not installed.
+- Registered the existing `PARALLEL_API_KEY` assignment in `~/.secrets.sh` as
+  `parallel.api-key` (profile `parallel.api`) and listed it under `shell.secrets`.
+  The key itself was not changed or rotated.
 - Registered `application.parallel-connectors` for the Codex Parallel app and the
   claude.ai Parallel connector Paul added. claude.ai offered no sign-in step, so its
   authentication and limits are undetermined. The full Parallel Claude Code plugin
