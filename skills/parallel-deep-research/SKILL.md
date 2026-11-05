@@ -3,8 +3,8 @@ name: parallel-deep-research
 description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than a web search. For normal research/lookup requests, use available web-search tools instead. Supports follow-ups with a known prior Task interaction ID."
 user-invocable: true
 argument-hint: <topic>
-compatibility: Requires parallel-cli >= 0.9.3 and internet access.
-allowed-tools: Bash(parallel-cli:*)
+compatibility: Requires internet access and either parallel-cli >= 0.9.3 or python3 with the engineering-research skill's scripts/parallel.py.
+allowed-tools: Bash(parallel-cli:*) Bash(python3 *engineering-research/scripts/parallel.py *)
 metadata:
   author: parallel
 ---

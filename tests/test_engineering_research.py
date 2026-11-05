@@ -312,6 +312,22 @@ class ParallelClientTest(unittest.TestCase):
             code, _ = client.wait_for_result("k", "trun_1", 60, os.path.join(self.tmp.name, "r"))
         self.assertEqual((code, sleeps), (0, [20.0]))
 
+    def test_extract_rejects_nonpositive_max_chars(self):
+        for value in ("0", "-5"):
+            with patch.object(sys, "argv", ["parallel.py", "extract", "https://a.test", "--max-chars", value]), \
+                    patch.object(client, "request") as request, contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as exit_info:
+                    client.main()
+            self.assertEqual(exit_info.exception.code, 2)
+            request.assert_not_called()
+
+    def test_extract_unwritable_output_is_operational_failure(self):
+        blocker = os.path.join(self.tmp.name, "file")
+        with open(blocker, "w") as file:
+            file.write("x")
+        code, out, bodies, _ = run(["extract", "https://a.test", "--out", os.path.join(blocker, "pages")], [])
+        self.assertEqual((code, out["error"]["type"], bodies), (4, "output_write_failed", []))
+
 
 if __name__ == "__main__":
     unittest.main()

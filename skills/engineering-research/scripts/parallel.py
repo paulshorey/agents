@@ -214,7 +214,7 @@ def cmd_extract(args):
         os.makedirs(out_dir, exist_ok=True)
     except OSError as error:
         emit({"error": {"type": "output_write_failed", "message": str(error)}})
-        return 2
+        return 4
     settings = {"full_content": {"max_chars_per_result": args.max_chars} if args.max_chars else True}
     if args.fresh:
         settings["fetch_policy"] = {"max_age_seconds": 600, "disable_cache_fallback": True}
@@ -406,6 +406,8 @@ def main():
     args = parser.parse_args()
     if getattr(args, "max_results", None) is not None and args.max_results < 1:
         parser.error("--max-results must be positive")
+    if getattr(args, "max_chars", None) is not None and args.max_chars < 1:
+        parser.error("--max-chars must be positive")
     if getattr(args, "wait", 0) < 0:
         parser.error("--wait must be zero or positive")
     sys.exit(args.handler(args))
