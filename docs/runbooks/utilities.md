@@ -228,3 +228,30 @@ CI checks schema/references, generated-document freshness, unit tests, and tool 
 without local credential access or provider authentication. To restore on another
 machine, clone the repository, restore tools, inspect/install links, supply the registered
 credential profiles or complete native sign-in, then run local and authorized live checks.
+
+## PR readiness status
+
+`scripts/pr-ready.py` (symlinked into both PR skills' `scripts/` folders) sets the
+`agent/ready` commit status on a PR's head so the developer can see whether an
+agent is still working. It uses the same `gh` sign-in as `pr-context.py` and its
+fetcher for the `ready` verification.
+
+```sh
+python3 ~/.agents/scripts/pr-ready.py working 123 "fixing 4 Codex findings"   # pending
+python3 ~/.agents/scripts/pr-ready.py blocked 123 "choose keep or drop the cache" # failure
+python3 ~/.agents/scripts/pr-ready.py ready 123 --note "182 tests pass"        # success, or pending + exit 1
+python3 ~/.agents/scripts/pr-ready.py status 123
+```
+
+`ready` succeeds only when the PR is open, not a draft, GitHub has confirmed it is
+mergeable, no reviewer has requested changes, Codex's review of the head is clean,
+no review thread is unresolved, and every other check and status passes (reread
+just before posting); otherwise it marks the head pending with the unmet
+conditions. The success description names the base commit it was checked against.
+Exit code 3 means the account cannot create statuses on that repository (for
+example a fork PR); agents then report readiness in a PR comment.
+A new push leaves the new head without the status. On `paulshorey/agents`, `main`
+branch protection requires `agent/ready` (see the
+[configuration runbook](configuration.md#github-branch-protection)), so GitHub
+disables merging until it passes. Admins can still merge deliberately through
+GitHub's bypass option. Statuses are posted with the developer's `gh` account.
