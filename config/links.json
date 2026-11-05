@@ -29,6 +29,11 @@
       "source": "rules/git-workflow.mdc",
       "target": "~/.cursor/rules/git-workflow.mdc",
       "kind": "text"
+    },
+    {
+      "source": "skills",
+      "target": "~/.claude/skills",
+      "kind": "skills"
     }
   ]
 }

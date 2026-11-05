@@ -263,6 +263,13 @@ def local_checks(data, root=ROOT, home=None):
         elif 'link_index' in entry:
             link = read_data(root / 'config/links.json')['links'][entry['link_index']]
             target = install.expand(link['target'], home)
+            if link['kind'] == 'skills':
+                try:
+                    passed = not install.skill_changes(root, link, home)
+                except (OSError, ValueError):
+                    passed = False
+                record(entry['id'], passed, 'skill links current' if passed else 'skill links missing, different, or stale; run installer check')
+                continue
             passed = target.is_symlink() and target.resolve() == (root / link['source']).resolve()
             record(entry['id'], passed, 'link current' if passed else 'link missing or different; run installer check')
         elif entry.get('plugins'):

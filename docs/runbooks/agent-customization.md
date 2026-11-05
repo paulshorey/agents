@@ -28,9 +28,14 @@ than native auth files, raw prompt dumps, or full environment/config output.
   for conditional detail. Check existing skills before adding another. Imported
   skills retain source revisions and adaptation notes in `licenses/README.md`,
   alongside their preserved licenses. Skills need no inventory registration.
-- Claude Code discovers shared skills through per-skill symlinks in
-  `~/.claude/skills` (not managed by `config/links.json`). After adding a skill, run
-  `ln -s ~/.agents/skills/NAME ~/.claude/skills/NAME` and confirm it is listed.
+- Codex and Cursor read `~/.agents/skills` directly. Claude Code discovers each
+  shared skill through a per-skill link in `~/.claude/skills`, which
+  `scripts/install.py` owns (`configuration.claude-skills`). After adding,
+  renaming, or removing a skill, run
+  `python3 ~/.agents/scripts/install.py --only-link ~/.claude/skills`, review the
+  reported links, repeat with `--apply`, and confirm the skill is listed in a new
+  Claude Code session. Stale links are ones into `skills/` whose skill is gone, so
+  check which branch `~/.agents` has checked out before applying a removal.
 - Use repository `AGENTS.md` for project context and `rules/AGENTS.md` for the
   managed Codex global instructions. Cursor User Rules are application/account
   settings; creating a similarly named home file does not prove it loads.

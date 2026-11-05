@@ -548,5 +548,136 @@ enabled = true
                 install.load_defaults(root)
 
 
+
+class SkillLinkTests(unittest.TestCase):
+    SELECT = ['~/.claude/skills']
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root, self.home = Path(temporary.name) / 'agents', Path(temporary.name) / 'home'
+        (self.root / 'config').mkdir(parents=True)
+        self.home.mkdir()
+        for name in ('alpha', 'beta'):
+            (self.root / 'skills' / name).mkdir(parents=True)
+            (self.root / 'skills' / name / 'SKILL.md').write_text(f'---\nname: {name}\n---\n')
+        # Supporting folders without SKILL.md are not skills.
+        (self.root / 'skills/notes').mkdir()
+        (self.root / 'config/links.json').write_text(json.dumps({'links': [
+            {'source': 'skills', 'target': '~/.claude/skills', 'kind': 'skills'}]}))
+        self.skills = self.home / '.claude/skills'
+        self.elsewhere = self.home / 'elsewhere'
+        self.elsewhere.mkdir()
+
+    def check(self, apply=False):
+        return install.install(self.root, self.home, apply=apply, only_links=self.SELECT)
+
+    def assert_managed(self, *names):
+        for name in names:
+            entry = self.skills / name
+            self.assertTrue(entry.is_symlink())
+            self.assertEqual(entry.resolve(), (self.root / 'skills' / name).resolve())
+
+    def test_missing_parent_is_created_then_current_and_restorable(self):
+        planned = self.check()
+        self.assertEqual(planned['status'], 'needs_install')
+        self.assertEqual(sorted(planned['changes']),
+                         [f'Link needed: {self.skills / "alpha"}', f'Link needed: {self.skills / "beta"}'])
+        self.assertFalse((self.home / '.claude').exists())
+        self.assertFalse((self.root / 'local').exists())
+        installed = self.check(apply=True)
+        self.assertEqual(installed['status'], 'installed')
+        self.assert_managed('alpha', 'beta')
+        self.assertEqual(sorted(path.name for path in self.skills.iterdir()), ['alpha', 'beta'])
+        self.assertEqual(self.check(), {'status': 'current', 'links': 1})
+        install.restore(Path(installed['backup']))
+        self.assertEqual(list(self.skills.iterdir()), [])
+
+    def test_correct_links_are_current_and_unrelated_entries_untouched(self):
+        self.skills.mkdir(parents=True)
+        for name in ('alpha', 'beta'):
+            (self.skills / name).symlink_to(self.root / 'skills' / name)
+        (self.skills / 'synced').mkdir()
+        (self.skills / 'synced/SKILL.md').write_text('application-owned\n')
+        (self.skills / 'personal').symlink_to(self.elsewhere)
+        (self.skills / 'README').write_text('keep\n')
+        self.assertEqual(self.check(), {'status': 'current', 'links': 1})
+        self.assertEqual(self.check(apply=True), {'status': 'current', 'links': 1})
+        self.assertFalse((self.root / 'local').exists())
+        self.assertEqual((self.skills / 'synced/SKILL.md').read_text(), 'application-owned\n')
+        self.assertEqual(os.readlink(self.skills / 'personal'), str(self.elsewhere))
+        self.assertEqual((self.skills / 'README').read_text(), 'keep\n')
+
+    def test_wrong_target_is_reported_replaced_and_restored(self):
+        self.skills.mkdir(parents=True)
+        (self.skills / 'alpha').symlink_to(self.elsewhere)
+        (self.skills / 'beta').symlink_to(self.root / 'skills/beta')
+        self.assertEqual(self.check()['changes'], [f'Skill link has another target: {self.skills / "alpha"}'])
+        self.assertEqual(os.readlink(self.skills / 'alpha'), str(self.elsewhere))
+        installed = self.check(apply=True)
+        self.assert_managed('alpha', 'beta')
+        self.assertEqual(self.check()['status'], 'current')
+        install.restore(Path(installed['backup']))
+        self.assertEqual(os.readlink(self.skills / 'alpha'), str(self.elsewhere))
+        self.assert_managed('beta')
+
+    def test_stale_links_into_skills_are_removed_and_restorable(self):
+        self.skills.mkdir(parents=True)
+        (self.skills / 'alpha').symlink_to(self.root / 'skills/alpha')
+        (self.skills / 'beta').symlink_to(self.root / 'skills/beta')
+        (self.skills / 'retired').symlink_to(self.root / 'skills/retired')  # dangling: skill removed
+        (self.skills / 'notes').symlink_to(self.root / 'skills/notes')      # not a skill
+        (self.skills / 'personal').symlink_to(self.elsewhere)
+        # Aliases to an active skill, or into one, belong to the user.
+        (self.skills / 'my-alias').symlink_to(self.root / 'skills/alpha')
+        (self.skills / 'alpha-docs').symlink_to(self.root / 'skills/alpha/SKILL.md')
+        self.assertEqual(sorted(self.check()['changes']),
+                         [f'Stale skill link: {self.skills / "notes"}', f'Stale skill link: {self.skills / "retired"}'])
+        installed = self.check(apply=True)
+        self.assertEqual(sorted(path.name for path in self.skills.iterdir()),
+                         ['alpha', 'alpha-docs', 'beta', 'my-alias', 'personal'])
+        self.assertEqual(self.check()['status'], 'current')
+        install.restore(Path(installed['backup']))
+        self.assertEqual(os.readlink(self.skills / 'retired'), str(self.root / 'skills/retired'))
+        self.assert_managed('alpha', 'beta')
+
+    def test_restore_refuses_a_name_reused_after_stale_removal(self):
+        self.skills.mkdir(parents=True)
+        (self.skills / 'retired').symlink_to(self.root / 'skills/retired')
+        installed = self.check(apply=True)
+        (self.skills / 'retired').mkdir()
+        with self.assertRaisesRegex(ValueError, 'created after installation'):
+            install.restore(Path(installed['backup']))
+        self.assert_managed('alpha', 'beta')
+
+    def test_real_entries_with_skill_names_and_linked_directories_are_refused(self):
+        (self.skills / 'alpha').mkdir(parents=True)
+        (self.skills / 'alpha/SKILL.md').write_text('my own copy\n')
+        for apply in (False, True):
+            with self.subTest(apply=apply), self.assertRaisesRegex(ValueError, 'is not a link'):
+                self.check(apply=apply)
+        self.assertFalse((self.skills / 'beta').exists())
+        shutil.rmtree(self.skills)
+        self.skills.symlink_to(self.root / 'skills')
+        with self.assertRaisesRegex(ValueError, 'real directory'):
+            self.check(apply=True)
+        self.assertFalse((self.root / 'local').exists())
+
+    def test_missing_skills_source_fails_install_but_not_validation(self):
+        shutil.rmtree(self.root / 'skills')
+        links = json.loads((self.root / 'config/links.json').read_text())['links']
+        install.validate_links(self.root, links, self.home)
+        with self.assertRaisesRegex(ValueError, 'Missing managed source'):
+            self.check()
+
+    def test_other_links_cannot_target_inside_the_skill_directory(self):
+        (self.root / 'rules').mkdir()
+        (self.root / 'rules/rule.md').write_text('rule\n')
+        links = [{'source': 'skills', 'target': '~/.claude/skills', 'kind': 'skills'},
+                 {'source': 'rules/rule.md', 'target': '~/.claude/skills/rule.md', 'kind': 'text'}]
+        with self.assertRaisesRegex(ValueError, 'inside a skill link directory'):
+            install.validate_links(self.root, links, self.home)
+
+
 if __name__ == '__main__':
     unittest.main()
