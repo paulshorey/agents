@@ -177,6 +177,49 @@ class ParallelClientTest(unittest.TestCase):
         with open(base + ".md") as file:
             self.assertEqual(file.read(), "new")
 
+    def test_secrets_file_is_parsed_not_executed(self):
+        marker = os.path.join(self.tmp.name, "executed")
+        secrets = os.path.join(self.tmp.name, "secrets.sh")
+        with open(secrets, "w") as file:
+            file.write(f"touch {marker}\nexport OTHER_TOKEN=x\nexport PARALLEL_API_KEY='literal-key'\n")
+        os.chmod(secrets, 0o600)
+        self.assertEqual(client.read_literal(secrets, "PARALLEL_API_KEY"), "literal-key")
+        code, _, bodies, _ = run(["search", self.searches], [ok({"results": []}), ok({"results": []})],
+                                 env={"PARALLEL_API_KEY": "", "PARALLEL_SECRETS_FILE": secrets})
+        self.assertEqual(code, 0)
+        self.assertFalse(os.path.exists(marker))
+
+    def test_secrets_file_rejects_expansions_and_loose_permissions(self):
+        secrets = os.path.join(self.tmp.name, "secrets.sh")
+        with open(secrets, "w") as file:
+            file.write("export PARALLEL_API_KEY=$(security find-generic-password)\n")
+        os.chmod(secrets, 0o600)
+        with self.assertRaises(ValueError):
+            client.read_literal(secrets, "PARALLEL_API_KEY")
+        os.chmod(secrets, 0o644)
+        with self.assertRaises(ValueError):
+            client.read_literal(secrets, "PARALLEL_API_KEY")
+
+    def test_long_retry_after_is_reported_not_retried(self):
+        code, out, bodies, _ = run(["search", self.searches],
+                                   [http_error(429, retry_after="120"), ok({"results": []})])
+        self.assertEqual(code, 1)
+        self.assertEqual(len(bodies), 2)
+        failed = [s["error"] for s in out["searches"] if "error" in s]
+        self.assertEqual(failed[0]["retry_after"], "120")
+
+    def test_deep_result_write_failure_is_structured(self):
+        blocker = os.path.join(self.tmp.name, "file")
+        with open(blocker, "w") as file:
+            file.write("x")
+        result = {"run": {"run_id": "trun_1", "status": "completed"},
+                  "output": {"type": "text", "content": "c", "basis": []}}
+        code, out, _, _ = run(["deep", "result", "trun_1", "--out", os.path.join(blocker, "report")],
+                              [ok(result)])
+        self.assertEqual(code, 4)
+        self.assertEqual(out["error"]["type"], "output_write_failed")
+        self.assertEqual(out["run"]["run_id"], "trun_1")
+
 
 if __name__ == "__main__":
     unittest.main()

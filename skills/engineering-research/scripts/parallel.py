@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Parallel web research client: search, full-page extract, and deep research.
 
-Standard library only. Reads PARALLEL_API_KEY from the environment, or from
-~/.secrets.sh (override with PARALLEL_SECRETS_FILE) when unset. Never prints it.
+Standard library only. Reads PARALLEL_API_KEY from the environment, or else its
+literal assignment in ~/.secrets.sh (override with PARALLEL_SECRETS_FILE); the
+file is parsed, never executed. Never prints the key.
 
   parallel.py search SEARCHES.json [--mode MODE] [--max-results N]
   parallel.py extract URL... [--objective TEXT] [--out DIR] [--fresh]
@@ -23,7 +24,8 @@ import json
 import os
 import random
 import re
-import subprocess
+import shlex
+import stat
 import sys
 import tempfile
 import time
@@ -42,20 +44,33 @@ class Failure(Exception):
         self.info = info
 
 
+def read_literal(path, name):
+    """Read one literal NAME=value assignment without executing the file."""
+    info = os.stat(path)
+    if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+        raise ValueError(f"{path} must be owned by you and mode 600")
+    value = ""
+    with open(path, encoding="utf-8") as file:
+        for line in file:
+            match = re.fullmatch(r"\s*(?:export\s+)?([A-Z][A-Z0-9_]*)=(.*?)\s*", line.rstrip("\n"))
+            if not match or match[1] != name:
+                continue
+            parts = shlex.split(match[2], comments=True)
+            if len(parts) > 1 or any(token in match[2] for token in ("`", "$(", "${", "$")):
+                raise ValueError(f"{name} in {path} must be a literal value")
+            value = parts[0] if parts else ""
+    return value
+
+
 def load_key():
     key = os.environ.get("PARALLEL_API_KEY", "").strip()
-    if key:
-        return key
     path = os.path.expanduser(os.environ.get("PARALLEL_SECRETS_FILE", "~/.secrets.sh"))
-    if os.path.isfile(path):
+    if not key and os.path.isfile(path):
         try:
-            out = subprocess.run(
-                ["bash", "-c", 'source "$1" >/dev/null 2>&1; printf %s "${PARALLEL_API_KEY:-}"', "_", path],
-                capture_output=True, text=True, timeout=20, check=False,
-            )
-            key = out.stdout.strip()
-        except (OSError, subprocess.SubprocessError):
-            key = ""
+            key = read_literal(path, "PARALLEL_API_KEY").strip()
+        except (OSError, ValueError) as error:
+            emit({"error": {"type": "missing_key", "message": f"Cannot read PARALLEL_API_KEY: {error}"}})
+            sys.exit(3)
     if not key:
         emit({"error": {"type": "missing_key", "message": "PARALLEL_API_KEY is not set in the environment or the secrets file."}})
         sys.exit(3)
@@ -66,17 +81,23 @@ def emit(document):
     print(json.dumps(document, ensure_ascii=False, indent=2))
 
 
+MAX_RETRY_WAIT = 60.0
+
+
 def retry_delay(attempt, retry_after):
+    """Seconds to wait before retrying; None when the server asks for longer than MAX_RETRY_WAIT."""
+    delay = None
     if retry_after:
         try:
-            return min(60.0, max(0.0, float(retry_after)))
+            delay = max(0.0, float(retry_after))
         except ValueError:
             try:
-                parsed = email.utils.parsedate_to_datetime(retry_after)
-                return min(60.0, max(0.0, parsed.timestamp() - time.time()))
+                delay = max(0.0, email.utils.parsedate_to_datetime(retry_after).timestamp() - time.time())
             except (TypeError, ValueError, OverflowError):
-                pass
-    return min(30.0, 2 ** attempt + random.uniform(0, 1))
+                delay = None
+    if delay is None:
+        return min(30.0, 2 ** attempt + random.uniform(0, 1))
+    return delay if delay <= MAX_RETRY_WAIT else None
 
 
 def request(key, method, path, body=None, timeout=90, retry=True, query=""):
@@ -98,10 +119,13 @@ def request(key, method, path, body=None, timeout=90, retry=True, query=""):
             except (ValueError, AttributeError):
                 pass
             retry_after = error.headers.get("Retry-After") if error.headers else None
-            if retry and error.code in RETRY_STATUSES and attempt < MAX_RETRIES:
-                time.sleep(retry_delay(attempt, retry_after))
+            delay = retry_delay(attempt, retry_after)
+            if retry and error.code in RETRY_STATUSES and attempt < MAX_RETRIES and delay is not None:
+                time.sleep(delay)
                 attempt += 1
                 continue
+            if retry_after:
+                info["retry_after"] = retry_after
             info["attempts"] = attempt + 1
             raise Failure(info) from None
         except (urllib.error.URLError, TimeoutError, ConnectionError, ValueError) as error:
@@ -181,8 +205,12 @@ def slug(text, limit=60):
 
 def cmd_extract(args):
     key = load_key()
-    out_dir = args.out or tempfile.mkdtemp(prefix="parallel-extract-")
-    os.makedirs(out_dir, exist_ok=True)
+    try:
+        out_dir = args.out or tempfile.mkdtemp(prefix="parallel-extract-")
+        os.makedirs(out_dir, exist_ok=True)
+    except OSError as error:
+        emit({"error": {"type": "output_write_failed", "message": str(error)}})
+        return 2
     settings = {"full_content": {"max_chars_per_result": args.max_chars} if args.max_chars else True}
     if args.fresh:
         settings["fetch_policy"] = {"max_age_seconds": 600}
@@ -203,9 +231,13 @@ def cmd_extract(args):
         for item in data.get("results") or []:
             content = item.get("full_content") or ""
             path = os.path.join(out_dir, f"{len(pages) + 1:02d}-{slug(item.get('title') or item['url'])}.md")
-            with open(path, "w", encoding="utf-8") as file:
-                file.write(f"<!-- source: {item['url']} | title: {item.get('title') or ''} | published: {item.get('publish_date') or ''} -->\n\n")
-                file.write(content if content else "\n\n".join(item.get("excerpts") or []))
+            try:
+                with open(path, "w", encoding="utf-8") as file:
+                    file.write(f"<!-- source: {item['url']} | title: {item.get('title') or ''} | published: {item.get('publish_date') or ''} -->\n\n")
+                    file.write(content if content else "\n\n".join(item.get("excerpts") or []))
+            except OSError as error:
+                errors.append({"url": item["url"], "type": "output_write_failed", "message": str(error)})
+                continue
             pages.append({"url": item["url"], "title": item.get("title"), "publish_date": item.get("publish_date"),
                           "file": path, "full_content_chars": len(content),
                           "excerpts": item.get("excerpts") if args.objective else None})
@@ -260,7 +292,11 @@ def wait_for_result(key, run_id, wait, base, force=False):
         try:
             return 0, summarize(result, save_result(base, result, force))
         except Failure as failure:
-            return 2, {"run_id": run_id, "error": failure.info}
+            return 2, {"run": result.get("run"), "error": failure.info}
+        except OSError as error:
+            return 4, {"run": result.get("run"), "error": {
+                "type": "output_write_failed", "message": f"{error}; the run is complete, rerun "
+                f"deep result {run_id} with a writable --out"}}
 
 
 def cmd_deep(args):

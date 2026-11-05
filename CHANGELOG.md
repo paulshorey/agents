@@ -9,9 +9,10 @@ Verification dates describe historical observations, not current readiness.
 - Replaced `engineering-research`'s search-only helper with `scripts/parallel.py`,
   a stdlib client for Parallel's v1 Search, v1 Extract (full-page markdown saved to
   files), and Task API (asynchronous cited reports with resumable results). It
-  reads `PARALLEL_API_KEY` from the environment or `~/.secrets.sh`, retries rate
-  limits, server errors, and network failures twice without retrying deep-run
-  creation, and returns distinct exit codes. Live-tested search, extract (with a
+  reads `PARALLEL_API_KEY` from the environment or parses (never executes) its
+  literal assignment in `~/.secrets.sh`, retries rate limits, server errors, and
+  network failures twice without retrying deep-run creation or waiting past a
+  60-second `Retry-After`, refuses to overwrite reports, and returns distinct exit codes. Live-tested search, extract (with a
   failing URL), a `lite` deep run, and missing, invalid, and rejected keys.
 - Chose the API over `parallel-cli`: the CLI wraps the same APIs through the Python
   SDK and needs installation and upgrades in each environment, while the script
