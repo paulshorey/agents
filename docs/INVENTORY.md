@@ -21,6 +21,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.rules](#configuration-rules) | configuration | agents | rules/AGENTS.md → ~/.codex/AGENTS.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.claude-git-workflow](#configuration-claude-git-workflow) | configuration | agents | rules/git-workflow.md → ~/.claude/rules/git-workflow.md | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [configuration.cursor-git-workflow](#configuration-cursor-git-workflow) | configuration | agents | rules/git-workflow.mdc → ~/.cursor/rules/git-workflow.mdc | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [configuration.claude-skills](#configuration-claude-skills) | configuration | agents | skills → ~/.claude/skills | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [configuration.codex-defaults](#configuration-codex-defaults) | configuration | agents | config/codex.defaults.toml | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [cloudflare.mcp](#cloudflare-mcp) | integration | agents | config/mcp.json, scripts/mcp-headers.py | [docs/runbooks/cloudflare-token.md](../docs/runbooks/cloudflare-token.md) |
 | [railway.mcp](#railway-mcp) | integration | agents | config/mcp.json, scripts/railway-mcp.py | [docs/runbooks/railway.md](../docs/runbooks/railway.md) |
@@ -238,6 +239,22 @@ Source: `rules/git-workflow.mdc`. Installed at `~/.cursor/rules/git-workflow.mdc
 Install with scripts/install.py. The local user-rule file points to rules/git-workflow.md; account/team rules remain application-owned. User-rule files require a client supporting the documented ~/.cursor/rules entrypoint; verify selection in a fresh client session.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
+
+<a id="configuration-claude-skills"></a>
+
+## configuration.claude-skills
+
+Per-skill links that let Claude Code discover every shared skill.
+
+Owner: **agents**.
+
+Source: `skills`. Installed at `~/.claude/skills`. Installer kind: `skills`.
+
+scripts/install.py links ~/.claude/skills/NAME to skills/NAME for each skills/ directory with a SKILL.md, creating ~/.claude/skills when missing. It reports missing, other-target, and stale links (links into skills/ whose skill no longer exists), and --apply backs up, fixes, and removes them. Other files, directories, and links there stay untouched; a real file or directory with a skill's name is refused.
+
+Codex and Cursor read ~/.agents/skills directly and need no links. Run the installer after adding, renaming, or removing a skill, then confirm the skill is listed in a new Claude Code session.
+
+[Update and recovery instructions](../docs/runbooks/agent-customization.md).
 
 <a id="configuration-codex-defaults"></a>
 

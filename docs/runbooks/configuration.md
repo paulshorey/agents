@@ -97,6 +97,14 @@ Likewise, an existing text destination such as `~/.codex/AGENTS.md` or a Git/PR
 rule file whose content differs from its source is refused; merge it into the
 source or move it first, so installation never silently deactivates instructions.
 
+The `skills` link kind manages one link per shared skill (each `skills/NAME`
+directory with a `SKILL.md`) inside `~/.claude/skills`, creating the directory if
+needed. It reports missing links, links with another target, and stale links into
+`skills/` whose skill no longer exists; `--apply` backs them up, fixes them, and
+removes the stale ones, and restore puts them back. Other files, directories, and
+links in that directory are never touched. A real file or directory with a skill's
+name is refused, as is a `~/.claude/skills` that is itself a link.
+
 ## Plugin and authentication state
 
 `application.codex-plugins` records registered plugin toggles as metadata. Change

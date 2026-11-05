@@ -64,7 +64,7 @@ def validate_mcp(servers):
 
 
 def validate_links(root, definitions, home):
-    targets = set()
+    targets, directories = set(), set()
     fixed = {'codex': ('local/codex/config.toml', '~/.codex/config.toml'),
              'shell': ('local/shell/zprofile', '~/.zprofile')}
     if not isinstance(definitions, list):
@@ -74,7 +74,7 @@ def validate_links(root, definitions, home):
             raise ValueError('A managed link needs source, target, and kind.')
         if not all(isinstance(value, str) and value for value in link.values()):
             raise ValueError('Managed link fields must be nonempty strings.')
-        if link['kind'] not in ('codex', 'shell', 'json', 'text'):
+        if link['kind'] not in ('codex', 'shell', 'json', 'text', 'skills'):
             raise ValueError('Unsupported managed link kind.')
         source, raw = Path(link['source']), link['target']
         if not source.parts or source.is_absolute() or '..' in source.parts or not (root / source).resolve().is_relative_to(root.resolve()):
@@ -82,14 +82,60 @@ def validate_links(root, definitions, home):
         if link['kind'] in ('json', 'text') and (source.parts[0] in ('local', '.git')
                                                or 'node_modules' in source.parts or not (root / source).is_file()):
             raise ValueError('Shared text/JSON links require a shared source file, not ignored runtime or authentication state.')
+        if link['kind'] == 'skills' and (source.parts[0] in ('local', '.git') or (root / source).is_file()):
+            # A missing directory is reported by install, so validation stays independent of skills/.
+            raise ValueError('Skill links require a shared skills directory, not ignored runtime state or a file.')
         target = expand(raw, home)
         if not target.is_absolute() or '..' in target.parts or not target.is_relative_to(home):
             raise ValueError('Managed link targets must be absolute paths inside the selected home.')
         if target in targets:
             raise ValueError('Managed link targets must be unique.')
         targets.add(target)
+        if link['kind'] == 'skills':
+            directories.add(target)
         if link['kind'] in fixed and (link['source'], raw) != fixed[link['kind']]:
             raise ValueError('Codex and shell rendering have fixed source/target slots; add other files as generic links.')
+    if any(target != directory and target.is_relative_to(directory) for target in targets for directory in directories):
+        raise ValueError('Other managed links cannot be installed inside a skill link directory.')
+
+
+def skill_changes(root, link, home):
+    """Plan per-skill links: one entry per skills/NAME directory with a SKILL.md.
+
+    Only links whose own target lies inside the source directory are managed.
+    Other files, directories, and links in the destination are left alone.
+    """
+    source, directory = root / link['source'], expand(link['target'], home)
+    if not source.is_dir():
+        raise ValueError(f'Missing managed source: {source}')
+    if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+        raise ValueError(f'{directory} must be a real directory so per-skill links stay outside the repository.')
+    names = sorted(path.name for path in source.iterdir()
+                   if path.is_dir() and not path.name.startswith('.') and (path / 'SKILL.md').is_file())
+    changes = []
+    for name in names:
+        entry, wanted = directory / name, source / name
+        if entry.is_symlink():
+            if entry.resolve() != wanted.resolve():
+                changes.append(('replace', entry, wanted))
+        elif entry.exists():
+            raise ValueError(f'{entry} is not a link. Move it or merge it into {wanted} before installing.')
+        else:
+            changes.append(('create', entry, wanted))
+    if directory.is_dir():
+        managed = source.resolve()
+        for entry in sorted(directory.iterdir()):
+            # Resolve without requiring existence: a removed skill leaves a dangling link.
+            if (entry.name not in names and entry.is_symlink()
+                    and (entry.parent / os.readlink(entry)).resolve().is_relative_to(managed)):
+                changes.append(('remove', entry, None))
+    return changes
+
+
+def describe(change):
+    action, entry, _ = change
+    return {'create': 'Link needed', 'replace': 'Skill link has another target',
+            'remove': 'Stale skill link'}[action] + f': {entry}'
 
 
 def load_defaults(root):
@@ -165,8 +211,8 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
         definitions = [link for link in definitions if expand(link['target'], home) in selected]
         if not selected or len(definitions) != len(selected):
             raise ValueError('--only-link must select declared link targets.')
-        if any(link['kind'] not in ('text', 'json') for link in definitions):
-            raise ValueError('--only-link supports text/JSON links; use full installation for rendered settings.')
+        if any(link['kind'] not in ('text', 'json', 'skills') for link in definitions):
+            raise ValueError('--only-link supports text, JSON, and skill links; use full installation for rendered settings.')
     problems = []
     if only_links is None or any(link['source'] == 'config/mcp.json' for link in definitions):
         # Targeted installation must not link MCP JSON that full installation rejects.
@@ -186,8 +232,18 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
         shell_source = root / SHELL_RENDERED
         if shell_current != shell_desired or not shell_source.exists() or shell_source.read_text() != shell_desired:
             problems.append('Shell tool PATH hook needs rendering')
-    for link in definitions:
+    skills = {}
+    for index, link in enumerate(definitions):
         source, target = root / link['source'], expand(link['target'], home)
+        if link['kind'] == 'skills':
+            skills[index] = skill_changes(root, link, home)
+            problems.extend(describe(change) for change in skills[index])
+            parent = target
+            while skills[index] and not parent.exists():
+                parent = parent.parent
+            if skills[index] and apply and not os.access(parent, os.W_OK):
+                raise ValueError(f'Link destination is not writable: {parent}. No configuration changed.')
+            continue
         if not target.is_symlink() or target.resolve() != source.resolve():
             problems.append(f'Link needed: {target}')
             parent = target.parent
@@ -217,6 +273,17 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
     backup.mkdir(parents=True, mode=0o700)
     saved = []
     for index, link in enumerate(definitions):
+        if link['kind'] == 'skills':
+            for action, entry, wanted in skills[index]:
+                record = {'target': str(entry), 'existed': action != 'create'}
+                if action == 'remove':
+                    record['removed'] = True
+                else:
+                    record['source'] = str(wanted)
+                if action != 'create':
+                    record['symlink'] = os.readlink(entry)
+                saved.append(record)
+            continue
         target = expand(link['target'], home)
         record = {'target': str(target), 'source': str(root / link['source']), 'existed': target.exists() or target.is_symlink()}
         if target.is_symlink():
@@ -236,8 +303,20 @@ def install(root=ROOT, home=Path.home(), apply=False, only_links=None):
     if only_links is None:
         atomic_write(codex_source, desired)
         atomic_write(shell_source, shell_desired)
-    for link in definitions:
+    for index, link in enumerate(definitions):
         source, target = root / link['source'], expand(link['target'], home)
+        if link['kind'] == 'skills':
+            target.mkdir(parents=True, exist_ok=True)
+            for action, entry, wanted in skills[index]:
+                if action == 'remove':
+                    entry.unlink()
+                    continue
+                temporary = entry.with_name(entry.name + '.agents-link')
+                if temporary.exists() or temporary.is_symlink():
+                    raise ValueError(f'Unexpected temporary path: {temporary}')
+                temporary.symlink_to(wanted)
+                temporary.replace(entry)
+            continue
         target.parent.mkdir(parents=True, exist_ok=True)
         if target.is_symlink() and target.resolve() == source.resolve():
             continue
@@ -265,6 +344,11 @@ def restore(backup):
     rendered = {(root / path).resolve() for path in (CODEX_RENDERED, SHELL_RENDERED)}
     for record in records:
         target = Path(record['target'])
+        if record.get('removed'):
+            # A stale skill link the installer removed; something new now owns the name.
+            if target.exists() or target.is_symlink():
+                raise ValueError(f'Refusing to overwrite a path created after installation: {target}')
+            continue
         if not target.is_symlink() or target.resolve() != Path(record['source']).resolve():
             raise ValueError(f'Refusing to overwrite a config changed after installation: {target}')
         # Edits to an ignored rendered file would silently stop applying. Tracked
@@ -274,7 +358,8 @@ def restore(backup):
             raise ValueError('Installed configuration has newer edits; preserve or reconcile them before restoring.')
     for record in records:
         target = Path(record['target'])
-        target.unlink()
+        if not record.get('removed'):
+            target.unlink()
         if 'symlink' in record:
             if 'file' in record:
                 resolved = (target.parent / record['symlink']).resolve()
@@ -293,7 +378,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apply', action='store_true', help='Back up and install links; default checks only')
     parser.add_argument('--restore', type=Path, help='Restore one reported backup without overwriting later edits')
-    parser.add_argument('--only-link', action='append', help='Check/install only this declared text/JSON target; repeat to select more')
+    parser.add_argument('--only-link', action='append', help='Check/install only this declared text, JSON, or skill-directory target; repeat to select more')
     args = parser.parse_args()
     if args.restore and args.only_link:
         parser.error('--restore cannot be combined with --only-link')

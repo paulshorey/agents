@@ -4,6 +4,20 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — Installer owns Claude Code's per-skill links
+
+- Claude Code finds shared skills only through per-skill links in
+  `~/.claude/skills`. The 18 existing links were made by hand, so a fresh checkout
+  or restored machine had to recreate them with `ln -s`.
+- `config/links.json` gains a `skills` link kind, `skills` → `~/.claude/skills`
+  (inventory `configuration.claude-skills`). `scripts/install.py` derives the
+  skill list from `skills/`, creates the directory when missing, reports missing,
+  other-target, and stale links, and with `--apply` backs up, fixes, and restores
+  them. It leaves unrelated entries alone, including Claude's own `synced/` folder.
+  `--only-link ~/.claude/skills` checks or installs just these links.
+- `bin/agents-config check` reports the skill links' state. On this machine the
+  existing hand-made links already match, so installation changes nothing.
+
 ## 2026-11-05 — Claude Code auto mode trusts the PR review loop
 
 - Claude Code agents kept failing to reply to review comments and resolve threads.
