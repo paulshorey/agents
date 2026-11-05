@@ -20,8 +20,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    not a busy loop. Then fetch fresh PR context, including all comment, review,
    and thread pages. Codex has reviewed the head when the helper's `codex_review`
    reports `covers_head: true`, or when a Codex review's `commit_id` is that head.
-   Codex reacts 👀 to the PR while reviewing, posts its findings as review
-   comments, and reacts 👍 when it finds nothing. A reaction does not name a commit,
+   Codex reacts 👀 to the PR while reviewing and posts its findings as review
+   comments. A clean review posts nothing new: Codex only edits its existing
+   summary comment, which GitHub keeps at its original time. Read the helper's
+   `codex_review.outcome` and `summary` instead of comment timestamps. A reaction does not name a commit,
    and a review of an older head does not cover the current one; silence and
    passing CI do not prove review.
 3. **Handle every comment.** Address all new feedback since your last check: Codex
@@ -44,6 +46,10 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    the current head, yields no new valid, necessary fixes, and all handled feedback
    has verified replies and thread dispositions. Recheck required CI independently.
    Do not push again for an unchanged head just to revisit a rejected finding.
+   When `codex_review` reports `outcome: "clean"` with `covers_head: true`, print
+   its `clean_note`, then post that exact text once with a quoted heredoc (see
+   below) so the clean result is visible and timestamped on GitHub; skip it when
+   `clean_note_posted` is true. Never edit the note to add the Codex bot handle.
 
 If 30 minutes pass without a review of the current head, handle any feedback that
 did arrive, keep the head/push record, and report the review pending. If Codex
@@ -54,3 +60,37 @@ continues from step 3 when the review arrives. Do not request a review by commen
 claim a clean review, or merge on silence. If review fails, access is unavailable,
 or a fix needs an unresolved product decision, report the concrete blocker.
 Complete useful independent work while waiting.
+
+## Posting replies and resolving threads
+
+`gh` has no command to reply inside an inline thread or resolve one; use the API.
+Put the text in a quoted heredoc so it appears in the command, needs no escaping,
+and backticks are never run by the shell. Send one write per command, replies
+before resolutions, so one refusal does not block the rest. `gh api` defaults to
+github.com: for a GitHub Enterprise PR, set `HOST` to the PR URL's host (with any
+port) and use `--repo HOST/OWNER/REPO` for `gh pr comment`.
+
+```sh
+# Reply to an inline comment (its root comment ID from pr-context).
+gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'EOF'
+Fixed in abc1234: what changed, and the test or check that verifies it.
+EOF
+
+# Top-level PR comment: a reply to an ordinary comment or summary, or the clean note.
+gh pr comment PR --repo OWNER/REPO --body-file - <<'EOF'
+...
+EOF
+
+# Resolve a thread by its node ID (`threads[].id` in pr-context, `PRRT_...`).
+gh api --hostname HOST graphql -f id=PRRT_xxx -f query='mutation($id: ID!) {
+  resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }'
+```
+
+In Claude Code auto mode, the classifier allows new comments and replies only on
+a PR the user asked you to work on or one you opened in the session. By default
+it refuses resolving threads, reactions, editing or deleting comments, and any
+body it cannot see in the transcript, such as a file or pipe it did not write.
+If a write is refused, do not retry or reword it to get past the classifier.
+Finish the other work, then tell the user which replies and thread IDs are
+pending and that they can approve them or trust their repositories in the
+`autoMode` settings ([runbook](../../../docs/runbooks/agent-customization.md#claude-code-auto-mode-and-pr-writes)).

@@ -4,6 +4,21 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-05 — Claude Code auto mode trusts the PR review loop
+
+- Claude Code agents kept failing to reply to review comments and resolve threads.
+  The cause was the auto-mode classifier's built-in `External System Writes` rule,
+  not `gh` or the GitHub API: it refuses resolving threads, and bodies it can't see.
+- With Paul's approval, added `autoMode.environment` and `autoMode.allow` entries
+  to the application-owned `~/.claude/settings.json`. They trust repositories under
+  `github.com/paulshorey` and allow replies, PR comments, and thread resolution on
+  PRs the agent is working on, unless the text carries a bot or ChatOps command.
+  Both lists keep `"$defaults"`, so every built-in rule still applies (verified with
+  `claude auto-mode config`). `permissions.defaultMode` and allow rules are unchanged.
+- The review loop now gives exact reply and resolve commands; the
+  [agent-customization runbook](docs/runbooks/agent-customization.md#claude-code-auto-mode-and-pr-writes)
+  records the setting and how to undo it.
+
 ## 2026-11-04 — API-first engineering research for Codex and Claude Code
 
 - Replaced `engineering-research`'s search-only helper with `scripts/parallel.py`,

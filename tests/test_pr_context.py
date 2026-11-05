@@ -448,6 +448,57 @@ Keep the finding suffix.</details>'''
         broken = pr_context.codex_review([comment(1, "<!-- codex-review-state:v1 {oops} -->")], "abc")
         self.assertEqual((broken["state"], broken["covers_head"]), (None, False))
 
+    def test_codex_review_reports_clean_result_from_edited_summary(self):
+        body = (self.state("abc") + '\n| Code Review | Completed <relative-time datetime="2026-01-02T00:00:05Z">'
+                "</relative-time> |")
+        summary = {"id": 7, "body": body, "user": {"login": BOT}, "html_url": f"{URL}#issuecomment-7",
+                   "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-02T00:00:06Z"}
+        clean = pr_context.codex_review([summary], "abc")
+        self.assertEqual((clean["outcome"], clean["edited_in_place"], clean["completed_at"]),
+                         ("clean", True, "2026-01-02T00:00:05Z"))
+        self.assertIn("no new findings", clean["summary"])
+        self.assertIn("created 2026-01-01T00:00:00Z", clean["summary"])
+        self.assertIn("codex-clean-review-note:v1 abc", clean["clean_note"])
+        self.assertNotIn("@", clean["clean_note"].replace(URL, ""))
+        # An existing note for the head suppresses another one.
+        note = {"id": 8, "body": clean["clean_note"], "user": {"login": "agent"}}
+        noted = pr_context.codex_review([summary, note], "abc")
+        self.assertTrue(noted["clean_note_posted"])
+        self.assertNotIn("clean_note", noted)
+        # A quoted or code-formatted marker is discussion, not a posted note.
+        marker = "<!-- codex-clean-review-note:v1 abc -->"
+        for body in (f"Draft: `{marker}`", f"```\n{marker}\n```", f"    {marker}", f"See {marker}"):
+            with self.subTest(body=body):
+                quoted = {"id": 8, "body": body, "user": {"login": "agent"}}
+                self.assertFalse(pr_context.codex_review([summary, quoted], "abc")["clean_note_posted"])
+
+        def review(number, submitted, sha="abc"):
+            return {"id": number, "user": {"login": BOT}, "commit_id": sha, "submitted_at": submitted}
+
+        finding = {"id": 9, "user": {"login": BOT}, "pull_request_review_id": 50}
+        reply = {"id": 10, "user": {"login": BOT}, "pull_request_review_id": 50, "in_reply_to_id": 9}
+        # A Codex review submitted during this run means findings, never clean.
+        found = pr_context.codex_review([summary], "abc", [finding, reply],
+                                        [review(50, "2026-01-02T00:00:03Z")])
+        self.assertEqual((found["outcome"], found["findings_on_reviewed_commit"]), ("findings", 1))
+        self.assertNotIn("clean_note", found)
+        # Its comments may be deleted; the review object still marks findings.
+        deleted = pr_context.codex_review([summary], "abc", [], [review(50, "2026-01-02T00:00:03Z")])
+        self.assertEqual((deleted["outcome"], deleted["findings_on_reviewed_commit"]), ("findings", 0))
+        # An earlier run's review of the same commit doesn't make a later clean run dirty.
+        rerun = pr_context.codex_review([summary], "abc", [finding],
+                                        [review(50, "2026-01-01T00:00:00Z")])
+        self.assertEqual(rerun["outcome"], "clean")
+        # Reviews of other commits or from people are ignored.
+        other = pr_context.codex_review([summary], "abc", [finding], [
+            review(50, "2026-01-02T00:00:03Z", "old"),
+            {**review(51, "2026-01-02T00:00:03Z"), "user": {"login": "reviewer"}}])
+        self.assertEqual(other["outcome"], "clean")
+        # A clean review of an older commit says it does not cover the head.
+        stale = pr_context.codex_review([summary], "def")
+        self.assertIn("does not cover the current head def", stale["summary"])
+        self.assertNotIn("clean_note", stale)
+
     def test_resolved_or_outdated_thread_changes_invalidate_snapshot(self):
         for key in ("isResolved", "isOutdated", "id"):
             fixture = Fixture()
