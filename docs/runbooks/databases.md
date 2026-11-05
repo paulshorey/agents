@@ -21,8 +21,13 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   cannot create objects, and defaults to read-only sessions with statement and idle
   timeouts. The role SQL clears default privileges naming the role for every creator
   (global or per schema), and the check refuses any default privilege for the role or
-  PUBLIC, so future tables stay unreadable: re-run it after migrations add tables; re-running also drops stale grants. It revokes `pg_logical_emit_message` from
-  PUBLIC (non-transactional WAL writes survive a rollback). If PUBLIC can still create
+  PUBLIC, so future tables stay unreadable: re-run it after migrations add tables.
+  Re-running also drops stale table, sequence, routine and large-object grants. It
+  revokes `pg_logical_emit_message` from PUBLIC (non-transactional WAL writes survive
+  a rollback) after granting it explicitly to every existing role, so only
+  `agent_readonly` and roles created later lose it. Large objects cannot be withheld
+  individually, so any `SELECT`/`UPDATE` grant on one to the role or PUBLIC fails the
+  check. Credential writes hold a file lock. If PUBLIC can still create
   in schema `public` (PostgreSQL 14 or an upgraded database), it stops and asks the
   owner to grant application roles explicitly first, rather than changing that ACL. Secret tables and columns
   (`user_auth_tokens`, `password_reset_tokens`, `users.password`, `users.api_token`,
@@ -72,21 +77,25 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Owner setup (once per database)
 
-1. Generate and store the credential, which prints only a SCRAM-SHA-256 verifier:
+1. Generate and store the credential:
 
    ```sh
    ~/.agents/bin/agents-sql prepare livx-production
    ```
 
-   The password and URL go straight to the owner-only credential file; the
-   verifier cannot be used to log in, and statement logging never sees a password.
+   The password and URL go straight to the owner-only credential file. The role SQL,
+   with the password's SCRAM-SHA-256 verifier substituted, is written next to it as
+   `~/.agents/local/credentials/<target>-readonly-role.sql` (mode 600); nothing secret
+   is printed. The verifier cannot log in but allows offline password guessing, so
+   keep that file private and delete it after step 3.
    Roles are cluster-wide: if this database shares a cluster with another registered
    target, prepare once and copy that URL's password to the other target instead.
-2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
-   (one transaction; it covers schema `public`) as the database owner with
-   `REPLACE_WITH_SCRAM_VERIFIER` replaced by the printed verifier: in the hosting
-   provider's SQL console for that database (Railway: Postgres service → **Data**
-   tab), or with psql using its owner connection. Project, environment, service IDs
+2. Run that prepared copy of [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
+   (one transaction; it covers schema `public`) as the database owner: `pbcopy < FILE`
+   and paste into the hosting provider's SQL console for that database (Railway:
+   Postgres service → **Data** tab), or `psql OWNER_URL -f FILE`. It must run as a
+   superuser or a member of every role that created default privileges naming
+   `agent_readonly`; otherwise it names those roles and changes nothing. Project, environment, service IDs
    and public endpoints are in the project's private runbook (LivX:
    `~/git/livx/docs/database-migrations.md`). The script aborts on anything other
    than a verifier.
@@ -98,8 +107,9 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 `agents-sql set-url TARGET` remains for storing an existing read-only URL (hidden
 prompt; verified before saving). If a target has audited compiled extension routines
-(language `c`/`internal` outside `pg_catalog`, for example `pgcrypto`), list them as
-`"allowed_routines": ["schema.function"]` in its registry entry; anything unlisted,
+(language `c`/`internal` outside `pg_catalog` or installed there by an extension, for
+example `pgcrypto`), list each by full identity in its registry entry, e.g.
+`"allowed_routines": ["public.digest(text,text)"]`; an unlisted routine or overload,
 such as `dblink_exec`, is refused.
 
 An agent may run step 2 itself only with explicit authorization for that database
