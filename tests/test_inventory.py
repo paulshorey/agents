@@ -628,10 +628,14 @@ class SkillLinkTests(unittest.TestCase):
         (self.skills / 'retired').symlink_to(self.root / 'skills/retired')  # dangling: skill removed
         (self.skills / 'notes').symlink_to(self.root / 'skills/notes')      # not a skill
         (self.skills / 'personal').symlink_to(self.elsewhere)
+        # Aliases to an active skill, or into one, belong to the user.
+        (self.skills / 'my-alias').symlink_to(self.root / 'skills/alpha')
+        (self.skills / 'alpha-docs').symlink_to(self.root / 'skills/alpha/SKILL.md')
         self.assertEqual(sorted(self.check()['changes']),
                          [f'Stale skill link: {self.skills / "notes"}', f'Stale skill link: {self.skills / "retired"}'])
         installed = self.check(apply=True)
-        self.assertEqual(sorted(path.name for path in self.skills.iterdir()), ['alpha', 'beta', 'personal'])
+        self.assertEqual(sorted(path.name for path in self.skills.iterdir()),
+                         ['alpha', 'alpha-docs', 'beta', 'my-alias', 'personal'])
         self.assertEqual(self.check()['status'], 'current')
         install.restore(Path(installed['backup']))
         self.assertEqual(os.readlink(self.skills / 'retired'), str(self.root / 'skills/retired'))

@@ -124,10 +124,14 @@ def skill_changes(root, link, home):
             changes.append(('create', entry, wanted))
     if directory.is_dir():
         managed = source.resolve()
+        active = [(source / name).resolve() for name in names]
         for entry in sorted(directory.iterdir()):
+            if entry.name in names or not entry.is_symlink():
+                continue
             # Resolve without requiring existence: a removed skill leaves a dangling link.
-            if (entry.name not in names and entry.is_symlink()
-                    and (entry.parent / os.readlink(entry)).resolve().is_relative_to(managed)):
+            # Aliases to an active skill (or a path inside one) are the user's own.
+            resolved = (entry.parent / os.readlink(entry)).resolve()
+            if resolved.is_relative_to(managed) and not any(resolved.is_relative_to(skill) for skill in active):
                 changes.append(('remove', entry, None))
     return changes
 

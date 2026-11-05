@@ -250,7 +250,7 @@ Owner: **agents**.
 
 Source: `skills`. Installed at `~/.claude/skills`. Installer kind: `skills`.
 
-scripts/install.py links ~/.claude/skills/NAME to skills/NAME for each skills/ directory with a SKILL.md, creating ~/.claude/skills when missing. It reports missing, other-target, and stale links (links into skills/ whose skill no longer exists), and --apply backs up, fixes, and removes them. Other files, directories, and links there stay untouched; a real file or directory with a skill's name is refused.
+scripts/install.py links ~/.claude/skills/NAME to skills/NAME for each skills/ directory with a SKILL.md, creating ~/.claude/skills when missing. It reports missing, other-target, and stale links (links into skills/ whose skill no longer exists), and --apply backs up, fixes, and removes them. Other files, directories, and links there stay untouched, including aliases to an active skill; a real file or directory with a skill's name is refused.
 
 Codex and Cursor read ~/.agents/skills directly and need no links. Run the installer after adding, renaming, or removing a skill, then confirm the skill is listed in a new Claude Code session.
 
