@@ -41,7 +41,7 @@ This reuses the prior Task's context. A lighter processor (`lite-fast` or `base-
 
 Always use `--no-wait` to separate creation from bounded polling. Save the returned IDs immediately. If creation is interrupted or its response is lost, do not submit a replacement until you have checked whether the first task was created.
 
-Use `pro-fast` by default for exploratory research. Run `parallel-cli research processors` for the installed CLI's processor list and latency estimates; these are not deadlines. Choose `ultra` tiers only when explicitly requested and within the user's approved budget. Check [current pricing](https://parallel.ai/pricing) rather than quoting fixed cost multipliers.
+Use `pro-fast` by default for exploratory research. Run `parallel-cli research processors` for the installed CLI's processor list and latency estimates; these are not deadlines. Cost is not a constraint for this user's personal research: choose `ultra` tiers when the question needs more depth, and standard (non-fast) variants when freshness matters. Check [current pricing](https://parallel.ai/pricing) rather than quoting fixed cost multipliers.
 
 Fast variants prioritize speed and may use less fresh indexed data. Standard variants may suit freshness-sensitive work, but neither choice guarantees that every source was fetched live. State the relevant date or freshness requirement in the research prompt and check the returned evidence.
 
