@@ -15,6 +15,7 @@ timeout. Writes and migrations are out of scope; use the project's runbook.
 """
 import argparse
 import base64
+import fcntl
 import getpass
 import hashlib
 import hmac
@@ -37,6 +38,9 @@ EXAMPLE_REGISTRY = ROOT / 'config/databases.example.json'
 TARGET_NAME = re.compile(r'^[a-z][a-z0-9-]*$')
 IDENTIFIER = re.compile(r'^[a-z_][a-z0-9_]*$')
 RELATION = re.compile(r'^(?:[a-z_][a-z0-9_]*\.)?[a-z_][a-z0-9_]*$')  # table or schema.table
+# Full routine identity as regprocedure prints it with search_path pinned to pg_catalog,
+# e.g. public.digest(text,text). Overloads must each be listed.
+ROUTINE = re.compile(r'^[a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\([a-z0-9_ ,.\[\]]*\)$')
 LOOPBACK = {'127.0.0.1', 'localhost', '::1'}
 # Railway's public TCP proxy serves a self-signed certificate, so `require`
 # (encrypted, unauthenticated) is the default; verify-ca/verify-full need a
@@ -48,6 +52,8 @@ SIDE_EFFECT_ROUTINES = ('pg_logical_emit_message',)
 # Statement types a query may start with; everything else (transaction
 # control, SET, DO, CALL, LOCK, PREPARE TRANSACTION...) is rejected.
 READ_STATEMENTS = {'select', 'with', 'table', 'values', 'show', 'explain'}
+# schema.name(argument types), always schema-qualified even for pg_catalog routines.
+ROUTINE_IDENTITY = r"(n.nspname||'.'||p.proname||substring(p.oid::regprocedure::text from '\(.*\)$'))"
 USER_SCHEMAS = ("n.nspname NOT IN ('pg_catalog','information_schema') "
                 "AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'")
 # One row, '|'-separated: elevated|owns|can_write|can_create|memberships|grant_options|
@@ -70,8 +76,9 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
             OR has_any_column_privilege(current_user, c.oid, 'INSERT, UPDATE')))
         OR (c.relkind='S' AND has_sequence_privilege(current_user, c.oid, 'USAGE, UPDATE'))))
    OR EXISTS(SELECT 1 FROM pg_foreign_server s WHERE has_server_privilege(current_user, s.oid, 'USAGE'))
+   -- Large objects cannot be withheld individually, so any SELECT or UPDATE grant fails.
    OR EXISTS(SELECT 1 FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
-     WHERE a.grantee IN (r.oid, 0) AND a.privilege_type='UPDATE')
+     WHERE a.grantee IN (r.oid, 0) AND a.privilege_type IN ('SELECT', 'UPDATE'))
    OR current_setting('lo_compat_privileges')='on')::text,
   (has_database_privilege(current_user, current_database(), 'CREATE')
     OR EXISTS(SELECT 1 FROM pg_namespace n
@@ -91,7 +98,7 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
       UNION ALL SELECT srvacl FROM pg_foreign_server UNION ALL SELECT lanacl FROM pg_language
       UNION ALL SELECT datacl FROM pg_database WHERE datname=current_database()
     ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable))::text,
-  coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
+  coalesce((SELECT string_agg(name, ',') FROM (SELECT {ROUTINE_IDENTITY} AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
     WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
         OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal'))
@@ -99,8 +106,10 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
         OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL)
         -- Compiled extension routines (dblink_exec, aliases of restricted built-ins) can act
         -- outside the transaction; only a target's explicit allowed_routines may pass.
-        OR (n.nspname<>'pg_catalog' AND l.lanname IN ('c', 'internal')
-          AND NOT (n.nspname||'.'||p.proname = ANY(__ALLOWED_ROUTINES__::text[]))))
+        OR (l.lanname IN ('c', 'internal')
+          AND (n.nspname<>'pg_catalog' OR EXISTS(SELECT 1 FROM pg_depend e JOIN pg_extension x ON x.oid=e.refobjid
+            WHERE e.classid='pg_proc'::regclass AND e.objid=p.oid AND e.deptype='e' AND x.extname<>'plpgsql'))
+          AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[]))))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
@@ -108,7 +117,7 @@ FROM pg_roles r WHERE r.rolname=current_user
 """
 # Version-specific privileges that older servers cannot even parse.
 MAINTAIN_SQL = rf"""SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE {USER_SCHEMAS} AND c.relkind IN ('r','p','m')
+  WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%' AND c.relkind IN ('r','p','m')
     AND has_table_privilege(current_user, c.oid, 'MAINTAIN'))::text"""
 PARAMETER_SQL = """SELECT EXISTS(SELECT 1 FROM pg_parameter_acl p, aclexplode(p.paracl) a
   WHERE a.grantee IN ((SELECT oid FROM pg_roles WHERE rolname=current_user), 0))::text"""
@@ -146,8 +155,7 @@ def load_targets(path=None):
                     or not isinstance(target['port'], int) or not 1 <= target['port'] <= 65535):
                 raise ValueError()
             allowed = target.get('allowed_routines', [])
-            if not isinstance(allowed, list) or not all(isinstance(r, str) and RELATION.fullmatch(r) and '.' in r
-                                                        for r in allowed):
+            if not isinstance(allowed, list) or not all(isinstance(r, str) and ROUTINE.fullmatch(r) for r in allowed):
                 raise ValueError()
             withheld = target.get('withheld', {})
             if not isinstance(withheld, dict) or not all(
@@ -518,10 +526,20 @@ def command_query(args):
 
 
 def write_profile_value(path, variable, value):
-    """Atomically replace one literal assignment in an owner-only dotenv file."""
+    """Atomically replace one literal assignment in an owner-only dotenv file,
+    holding an exclusive lock so concurrent writers cannot lose an update."""
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
+    lock_fd = os.open(path.parent / f'.{path.name}.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        _replace_assignment(path, variable, value)
+    finally:
+        os.close(lock_fd)
+
+
+def _replace_assignment(path, variable, value):
     lines = []
     if path.exists():
         info = path.stat()
@@ -572,22 +590,43 @@ def scram_verifier(password, salt=None, iterations=4096):
 
 
 def command_prepare(args):
-    """Generate a password, store the target's URL privately and print only the
-    SCRAM verifier the owner pastes into readonly-role.sql."""
+    """Generate a password and store the target's URL privately. The SCRAM verifier
+    is never printed: it goes into an owner-only, ready-to-run copy of
+    readonly-role.sql that the owner pastes into the database's SQL console."""
     entry = target(args.target)
     hosting = _hosting()
     check_profile(entry, hosting)
     password = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789') for _ in range(32))
+    host = f"[{entry['host']}]" if ':' in entry['host'] else entry['host']
     query = '' if entry['host'] in LOOPBACK else '?sslmode=require'
-    url = (f"postgresql://agent_readonly:{password}@{entry['host']}:{entry['port']}/"
+    url = (f"postgresql://agent_readonly:{password}@{host}:{entry['port']}/"
            f"{urllib.parse.quote(entry['database'])}{query}")
     libpq_environment(url, entry)  # same validation as a stored URL
-    write_profile_value(hosting.resolve_profile(entry['profile']), entry['variable'], url)
-    print(f'Stored a new (not yet active) connection for {args.target}. As the database owner, run '
-          'skills/database-query/references/readonly-role.sql with REPLACE_WITH_SCRAM_VERIFIER set to:\n'
-          f'{scram_verifier(password)}\n'
-          f'Then verify with: agents-sql check {args.target}')
+    credentials = Path(hosting.resolve_profile(entry['profile'])).expanduser()
+    setup = credentials.parent / f'{args.target}-readonly-role.sql'
+    role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+    _write_private(setup, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', scram_verifier(password)))
+    write_profile_value(credentials, entry['variable'], url)
+    print(f'Stored a new (not yet active) connection for {args.target}.\n'
+          f'As the database owner, run the prepared setup (it contains a password verifier; keep it private):\n'
+          f'  pbcopy < {setup}   # then paste into the database SQL console, or: psql OWNER_URL -f {setup}\n'
+          f'Then verify with: agents-sql check {args.target}, and delete {setup}.')
     return 0
+
+
+def _write_private(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    os.chmod(path.parent, 0o700)
+    fd, temp = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as handle:
+            handle.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        if os.path.exists(temp):
+            os.unlink(temp)
+        raise
 
 
 def main(argv=None):

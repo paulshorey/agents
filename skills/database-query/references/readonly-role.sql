@@ -49,13 +49,21 @@ BEGIN
     RAISE EXCEPTION 'PUBLIC can create objects in schema public. Grant CREATE explicitly to the application roles that need it, run REVOKE CREATE ON SCHEMA public FROM PUBLIC, then re-run this script.';
   END IF;
 END $$;
--- Non-transactional WAL messages survive a rollback. PUBLIC can execute this
--- built-in by default; the owner/superuser application connection is unaffected.
+-- Non-transactional WAL messages survive a rollback, and PUBLIC can execute this
+-- built-in by default. Every existing role keeps its current access through an
+-- explicit grant; only agent_readonly (and roles created later) lose it.
 DO $$
-DECLARE f regprocedure;
+DECLARE
+  f regprocedure;
+  other name;
 BEGIN
-  FOR f IN SELECT oid::regprocedure FROM pg_proc WHERE proname = 'pg_logical_emit_message'
-    AND pronamespace = 'pg_catalog'::regnamespace LOOP
+  FOR f IN SELECT p.oid::regprocedure FROM pg_proc p WHERE p.proname = 'pg_logical_emit_message'
+    AND p.pronamespace = 'pg_catalog'::regnamespace
+    AND has_function_privilege('public', p.oid, 'EXECUTE') LOOP
+    FOR other IN SELECT rolname FROM pg_roles
+      WHERE rolname <> 'agent_readonly' AND rolname !~ '^pg_' LOOP
+      EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO %I', f, other);
+    END LOOP;
     EXECUTE format('REVOKE EXECUTE ON FUNCTION %s FROM PUBLIC', f);
   END LOOP;
 END $$;
@@ -65,10 +73,18 @@ END $$;
 -- granted; grant an audited view explicitly. No default privileges are kept, so
 -- future tables (and views) stay unreadable until this script is re-run.
 -- Clear default privileges naming this role for every creator, global or per schema.
+-- Changing another role's defaults requires membership in it (or superuser).
 DO $$
 DECLARE
   d record;
+  missing text;
 BEGIN
+  SELECT string_agg(DISTINCT pg_get_userbyid(da.defaclrole), ', ') INTO missing
+    FROM pg_default_acl da, aclexplode(da.defaclacl) a
+    WHERE a.grantee = 'agent_readonly'::regrole AND NOT pg_has_role(current_user, da.defaclrole, 'MEMBER');
+  IF missing IS NOT NULL THEN
+    RAISE EXCEPTION 'Default privileges for agent_readonly were created by %. Run this script as a superuser or a member of those roles.', missing;
+  END IF;
   FOR d IN SELECT pg_get_userbyid(da.defaclrole) AS owner, da.defaclnamespace::regnamespace AS nsp,
       CASE da.defaclobjtype WHEN 'r' THEN 'TABLES' WHEN 'S' THEN 'SEQUENCES' WHEN 'f' THEN 'FUNCTIONS'
         WHEN 'T' THEN 'TYPES' WHEN 'n' THEN 'SCHEMAS' WHEN 'L' THEN 'LARGE OBJECTS' END AS kind
@@ -94,6 +110,15 @@ BEGIN
   END LOOP;
 END $$;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM agent_readonly;
+-- Large objects cannot be withheld individually; drop any grant to this role.
+DO $$
+DECLARE lo oid;
+BEGIN
+  FOR lo IN SELECT l.oid FROM pg_largeobject_metadata l, aclexplode(l.lomacl) a
+    WHERE a.grantee = 'agent_readonly'::regrole LOOP
+    EXECUTE format('REVOKE ALL ON LARGE OBJECT %s FROM agent_readonly', lo);
+  END LOOP;
+END $$;
 REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM agent_readonly;
 
 -- Withhold credentials and bearer codes on each table, every inheritance or
