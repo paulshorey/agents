@@ -20,6 +20,48 @@ Verification dates describe historical observations, not current readiness.
   2026-11-05: the `railway.workspace` token reads projects in my workspace but not
   the LivX serving project, which is in another Railway workspace.
 
+## 2026-11-05 — Claude Code auto mode trusts the PR review loop
+
+- Claude Code agents kept failing to reply to review comments and resolve threads.
+  The cause was the auto-mode classifier's built-in `External System Writes` rule,
+  not `gh` or the GitHub API: it refuses resolving threads, and bodies it can't see.
+- With Paul's approval, added `autoMode.environment` and `autoMode.allow` entries
+  to the application-owned `~/.claude/settings.json`. They trust repositories under
+  `github.com/paulshorey` and allow replies, PR comments, and thread resolution on
+  PRs the agent is working on, unless the text carries a bot or ChatOps command.
+  Both lists keep `"$defaults"`, so every built-in rule still applies (verified with
+  `claude auto-mode config`). `permissions.defaultMode` and allow rules are unchanged.
+- The review loop now gives exact reply and resolve commands; the
+  [agent-customization runbook](docs/runbooks/agent-customization.md#claude-code-auto-mode-and-pr-writes)
+  records the setting and how to undo it.
+
+## 2026-11-04 — API-first engineering research for Codex and Claude Code
+
+- Replaced `engineering-research`'s search-only helper with `scripts/parallel.py`,
+  a stdlib client for Parallel's v1 Search, v1 Extract (full-page markdown saved to
+  files), and Task API (asynchronous cited reports with resumable results). It
+  reads `PARALLEL_API_KEY` from the environment or parses (never executes) its
+  literal assignment in `~/.secrets.sh`, retries rate limits, server errors, and
+  network failures twice without retrying deep-run creation or waiting past a
+  60-second `Retry-After`, refuses to overwrite reports, and returns distinct exit codes. Live-tested search, extract (with a
+  failing URL), a `lite` deep run, and missing, invalid, and rejected keys.
+- Chose the API over `parallel-cli`: the CLI wraps the same APIs through the Python
+  SDK and needs installation and upgrades in each environment, while the script
+  works unchanged in Codex and Claude Code. The CLI's extras (OAuth login,
+  enrichment, FindAll, Monitor) are outside this skill.
+- The skill uses the script by default, requires agents to report any script
+  failure with its command, exit code, and error, and mentions connectors or
+  built-in search only as a fallback. `parallel-deep-research` now falls back to the
+  script's `deep` command when `parallel-cli` is not installed.
+- Registered the existing `PARALLEL_API_KEY` assignment in `~/.secrets.sh` as
+  `parallel.api-key` (profile `parallel.api`) and listed it under `shell.secrets`.
+  The key itself was not changed or rotated.
+- Registered `application.parallel-connectors` for the Codex Parallel app and the
+  claude.ai Parallel connector Paul added. claude.ai offered no sign-in step, so its
+  authentication and limits are undetermined. The full Parallel Claude Code plugin
+  was not installed because it duplicates `parallel-deep-research` and needs
+  `parallel-cli`.
+
 ## 2026-11-04 — Guarded Claude Remote Control shortcut
 
 - Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating

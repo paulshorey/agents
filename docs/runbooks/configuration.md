@@ -116,6 +116,18 @@ connector settings to change sign-in within the current task's authorization.
 Native GitHub credentials/configuration remain application-owned under the CLI's
 normal store; do not copy them into shared config or print credential-store output.
 
+`application.parallel-connectors` records the Parallel connectors in the Codex app
+and claude.ai. `engineering-research` uses them only when its API script,
+`scripts/parallel.py`, fails; the script needs only `PARALLEL_API_KEY` and covers
+search, full-page extraction, and deep research. claude.ai connectors also load in
+Claude Desktop and Claude Code sessions on that account. Add or remove connectors in
+each app's connector settings; their grants stay application-owned.
+
+`parallel.api-key` records `PARALLEL_API_KEY`, the literal assignment in
+`~/.secrets.sh` (profile `parallel.api` in `config/profiles.json`). To rotate it,
+create a key at platform.parallel.ai, replace only that assignment, and verify with
+a one-query `scripts/parallel.py search`; exit 3 means the key is missing or rejected.
+
 ## Backup and restore
 
 Installer backup locations are returned by `--apply` and kept in ignored
