@@ -143,21 +143,23 @@ should write a file and query it rather than read truncated stdout. Fields:
   `commit_sha` is the captured head and its status is `completed`. A review
   without findings posts no review object, so this is its only commit-linked
   record. It is reported even though filtering drops the summary comment; `null`
-  means Codex has not posted one, and `state` is `null` if the marker is unreadable.
-  Codex edits that one comment in place for every review, so GitHub shows it at
-  its creation time. The helper therefore also reports `reviewed_commit`,
-  `status`, `completed_at` (from the summary table), `edited_in_place`,
-  `findings_on_reviewed_commit` (top-level inline comments in the Codex review of
-  that commit submitted within 2 minutes before completion; Codex submits it 2-4
-  seconds before, and a run takes minutes), and `outcome`
-  (`clean`, `findings`, a running status, or `unknown`). `findings` means that
-  run submitted a review object; the marker's `has_any_findings` covers the
-  whole PR, so it is not used to classify a run. The helper also gives
-  a plain-language `summary`. For a clean review of the head it adds
-  `clean_note`, a ready-to-post PR comment marked
-  `<!-- codex-clean-review-note:v1 SHA -->`; `clean_note_posted` is true once a
-  comment starting with that marker exists for the head (quoted or code examples
-  don't count).
+  means Codex has not posted one, and `state` is `null` if the marker is
+  unreadable. Codex edits that one comment in place for every review, so GitHub
+  shows it at its creation time. The helper therefore also reports
+  `reviewed_commit`, `status`, `completed_at` (from the summary table),
+  `edited_in_place`, `findings_on_reviewed_commit` (top-level inline comments in
+  the Codex review of that commit submitted within 2 minutes before completion;
+  Codex submits it 2-4 seconds before, and a run takes minutes), and `outcome`
+  (`clean`, `findings`, `ambiguous`, a running status, or `unknown`). `findings`
+  means that run submitted a review object; `ambiguous` means the only Codex
+  review of that commit came earlier than the window (an earlier run or a delayed
+  one), so read that review's findings instead of treating the run as clean; the
+  marker's `has_any_findings` covers the whole PR, so it is not used to classify a
+  run. The helper also gives a plain-language `summary`. For a clean review of the
+  head it adds `clean_note`, a ready-to-post PR comment marked
+  `<!-- codex-clean-review-note:v1 SHA -->`; `clean_note_posted` is true once a comment
+  starting with that marker exists for the head (quoted or code examples don't
+  count).
 - `pr_reactions`: actors/content/timestamps on the PR itself. Codex reacts `eyes`
   while reviewing and may react `+1` when a review finds nothing (it did not on a
   PR with earlier findings), but a reaction does not identify a reviewed commit;

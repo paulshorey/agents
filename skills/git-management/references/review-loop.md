@@ -23,22 +23,26 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    Codex reacts 👀 to the PR while reviewing and posts its findings as review
    comments. A clean review posts nothing new: Codex only edits its existing
    summary comment, which GitHub keeps at its original time. Read the helper's
-   `codex_review.outcome` and `summary` instead of comment timestamps. A reaction does not name a commit,
+   `codex_review.outcome` and `summary` instead of comment timestamps. If the
+   outcome is `ambiguous`, read the earlier Codex review of that commit and handle
+   its findings; never treat it as clean. A reaction does not name a commit,
    and a review of an older head does not cover the current one; silence and
    passing CI do not prove review.
 3. **Handle every comment.** Address all new feedback since your last check: Codex
    findings and comments from people requesting changes. Verify correctness,
    necessity, and scope against the current code. For valid, necessary findings,
-   fix, validate, commit, and push. Just before pushing, recheck that the PR is
-   still open (`pr.state`, `pr.merged`); the user may merge while you work. If it
-   was merged or closed, put the fixes on a new branch from the updated base, open
-   a new PR, and link it in the replies. Reply to **each** addressed comment with
-   the change, commit or contribution PR, and validation, even when one fix
-   addresses several comments. For unnecessary or incorrect suggestions, reply with
-   the concrete reason instead of changing code. Use the original inline thread;
-   for ordinary comments/review summaries, post a PR reply linking the original.
-   Verify each reply was posted; an existing reply for the same outcome need not be
-   duplicated.
+   fix, validate, commit, and push. The user may merge or close the PR while you
+   work, so check its state (`pr.state`, `pr.merged`) just before pushing, and
+   after pushing confirm that `pr.head.sha` is the pushed commit and the PR is
+   still open. If it was merged, put the fixes on a new branch from the updated
+   base, open a new PR, and link it in the replies. If it was closed without
+   merging, keep the fixes on the branch and ask the user before opening a
+   replacement PR. Reply to **each** addressed comment with the change, commit or
+   contribution PR, and validation, even when one fix addresses several comments.
+   For unnecessary or incorrect suggestions, reply with the concrete reason instead
+   of changing code. Use the original inline thread; for ordinary comments/review
+   summaries, post a PR reply linking the original. Verify each reply was posted;
+   an existing reply for the same outcome need not be duplicated.
 4. **Resolve handled threads.** After verification and reply, resolve inline
    threads whose finding was fixed or rejected with evidence. Ordinary comments
    cannot be marked resolved; the linked reply records their disposition. Leave
