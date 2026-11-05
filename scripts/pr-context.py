@@ -283,7 +283,9 @@ CODEX_COMPLETED_AT = re.compile(r'<relative-time datetime="([^"]+)"')
 CLEAN_NOTE = re.compile(r"<!-- codex-clean-review-note:v1 ([0-9a-f]+) -->")
 
 
-REVIEW_RUN_WINDOW = 600  # seconds between Codex submitting a review and marking it completed
+# Codex submits a run's review 2-4 s before marking the run completed, and a run takes
+# minutes, so an earlier run's review of the same commit can't fall inside this window.
+REVIEW_RUN_WINDOW = 120
 
 
 def parse_time(value):

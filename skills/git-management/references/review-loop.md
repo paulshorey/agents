@@ -65,21 +65,24 @@ Complete useful independent work while waiting.
 
 `gh` has no command to reply inside an inline thread or resolve one; use the API.
 Put the text in a quoted heredoc so it appears in the command, needs no escaping,
-and backticks are never run by the shell. Send one write per command, replies
-before resolutions, so one refusal does not block the rest. `gh api` defaults to
-github.com: for a GitHub Enterprise PR, set `HOST` to the PR URL's host (with any
-port) and use `--repo HOST/OWNER/REPO` for `gh pr comment`.
+and backticks are never run by the shell. Use a delimiter unique to that write,
+such as `REPLY_` plus a few random characters, and check that no line of the body
+equals it: a matching line ends the heredoc early and the rest runs as commands.
+Send one write per command, replies before resolutions, so one refusal does not
+block the rest. `gh api` defaults to github.com: for a GitHub Enterprise PR, set
+`HOST` to the PR URL's host (with any port) and use `--repo HOST/OWNER/REPO` for
+`gh pr comment`.
 
 ```sh
 # Reply to an inline comment (its root comment ID from pr-context).
-gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'EOF'
+gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'REPLY_k3v9'
 Fixed in abc1234: what changed, and the test or check that verifies it.
-EOF
+REPLY_k3v9
 
 # Top-level PR comment: a reply to an ordinary comment or summary, or the clean note.
-gh pr comment PR --repo OWNER/REPO --body-file - <<'EOF'
+gh pr comment PR --repo OWNER/REPO --body-file - <<'NOTE_p7qd'
 ...
-EOF
+NOTE_p7qd
 
 # Resolve a thread by its node ID (`threads[].id` in pr-context, `PRRT_...`).
 gh api --hostname HOST graphql -f id=PRRT_xxx -f query='mutation($id: ID!) {

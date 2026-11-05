@@ -148,7 +148,8 @@ should write a file and query it rather than read truncated stdout. Fields:
   its creation time. The helper therefore also reports `reviewed_commit`,
   `status`, `completed_at` (from the summary table), `edited_in_place`,
   `findings_on_reviewed_commit` (top-level inline comments in the Codex review of
-  that commit submitted within 10 minutes before completion), and `outcome`
+  that commit submitted within 2 minutes before completion; Codex submits it 2-4
+  seconds before, and a run takes minutes), and `outcome`
   (`clean`, `findings`, a running status, or `unknown`). `findings` means that
   run submitted a review object; the marker's `has_any_findings` covers the
   whole PR, so it is not used to classify a run. The helper also gives
