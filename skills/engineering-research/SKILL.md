@@ -11,9 +11,9 @@ Use this workflow for technical uncertainty or design choices. Understand the us
 
 Use this order for web searches:
 
-1. **Default: bundled `scripts/search.py` API helper** (see [Running the helper](#running-the-helper)).
-2. **Fallback: connected Parallel Search tools.** If the key or local execution is unavailable, discover the Parallel search and page-fetch tools directly. They use their own connection authentication; treat it as anonymous unless explicitly configured otherwise. Keep one session identifier across related calls and use small batches.
-3. **Last resort: another available search provider.** If Parallel cannot be used, briefly explain and continue with another provider. If web research is unavailable, identify unverified assumptions.
+1. **Default: bundled `scripts/search.py` API helper** (see [Running the helper](#running-the-helper)). It needs only Python, network access, and `PARALLEL_API_KEY`, not a plugin or connector, so it works in Codex and Claude Code alike.
+2. **Fallback: connected Parallel Search tools.** If the key or local execution is unavailable, discover the Parallel search and page-fetch tools directly (Codex: the Parallel app; Claude Code: the claude.ai Parallel connector, whose tools are named `mcp__claude_ai_<connector>__<tool>` and may need loading through tool search). They use their own connection authentication; treat it as anonymous unless explicitly configured otherwise. Signed-in calls bill the Parallel account at API rates. Keep one session identifier across related calls and use small batches.
+3. **Last resort: another available search provider**, such as Claude Code's built-in WebSearch, which returns only titles and URLs. If Parallel cannot be used, briefly explain and continue with another provider. If web research is unavailable, identify unverified assumptions.
 
 ## Running the helper
 
@@ -49,7 +49,7 @@ python3 "$SKILL_DIR/scripts/search.py" /absolute/path/to/searches.json
 
 - Check only whether the key is present; never print it, write it to the input file, or pass it as an argument. In other environments, use that environment's secret configuration.
 - The helper runs up to four requests concurrently, waits for all of them, and prints `{"searches": [...]}` with an indexed `data` or `error` entry per request. Each `data.results` item has `url`, `title`, `publish_date`, and `excerpts`. A nonzero exit can coexist with useful results. It does not retry.
-- Results are search excerpts, often under 1,000 characters. To read a full page, use a connected Parallel fetch tool, `parallel-cli extract` when installed, or the harness's own page fetcher (Claude Code: WebFetch).
+- Results are search excerpts, often under 1,000 characters. To read a full page, use a connected Parallel fetch tool (it can return full page markdown), `parallel-cli extract` when installed, or the harness's own page fetcher. Claude Code's WebFetch returns a separate model's answer to your prompt rather than the page, so ask it a specific question and quote-check consequential claims.
 - For HTTP errors, retry rules, and optional `parallel-cli` research jobs, read [references/parallel.md](references/parallel.md) — only when a request fails or you need those capabilities.
 
 ## Research and decide
@@ -60,4 +60,4 @@ python3 "$SKILL_DIR/scripts/search.py" /absolute/path/to/searches.json
 4. Compare the strongest supported options against the project's actual constraints. Explain relevant disagreements and remaining uncertainty. Separate sourced facts from your inference and recommendation; cite links near consequential claims. Do not choose by search rank, source count, or recency alone.
 5. Apply the decision to the implementation when implementation is requested. Verify behavior against the actual dependency versions and runtime. Stop research when the evidence supports the decision; continue only for unresolved questions that could materially change it.
 
-Scale the response to the task: a brief recommendation with sources for a small choice; a comparison of options, tradeoffs, and unresolved questions for a substantial design. Save bulky raw results in the project's scratch area when useful. Keep normal progress updates while requests run.
+Scale the response to the task: a brief recommendation with sources for a small choice; a comparison of options, tradeoffs, and unresolved questions for a substantial design. When the user explicitly asks for an exhaustive report, use `parallel-deep-research` (or, in Claude Code, the user-run `/deep-research` workflow). Save bulky raw results in the project's scratch area when useful. Keep normal progress updates while requests run.

@@ -38,6 +38,7 @@ Use `check --live` for registered provider reads. Checks never apply configurati
 | [configuration.profiles](#configuration-profiles) | configuration | agents | config/profiles.json | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [tools.python](#tools-python) | tool | agents | local/python-packages | [docs/runbooks/utilities.md](../docs/runbooks/utilities.md) |
 | [application.github-auth](#application-github-auth) | runtime | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
+| [application.parallel-connectors](#application-parallel-connectors) | integration | application | Application-managed | [docs/runbooks/configuration.md](../docs/runbooks/configuration.md) |
 | [context.harnesses](#context-harnesses) | context | agents | docs/agent-harnesses.md, docs/runbooks/agent-customization.md | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.codex-execution](#application-codex-execution) | configuration | application | ~/.codex/rules/default.rules | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
 | [application.cursor-cli](#application-cursor-cli) | configuration | application | ~/.cursor/cli-config.json | [docs/runbooks/agent-customization.md](../docs/runbooks/agent-customization.md) |
@@ -489,6 +490,22 @@ GitHub CLI uses its native credential store and configuration under ~/.config/gh
 Use gh api user --jq .login to confirm the CLI account without printing tokens. Agent GitHub connectors have their own selected connection; CLI authentication does not establish connector identity.
 
 Change sign-in through supported gh auth login/account selection or the connector settings within the current task authorization. Inventory does not inspect native credential values.
+
+[Update and recovery instructions](../docs/runbooks/configuration.md).
+
+<a id="application-parallel-connectors"></a>
+
+## application.parallel-connectors
+
+Parallel web search and fetch connectors in the Codex and Claude apps, used as the engineering-research fallback and full-page reader.
+
+Owner: **application**.
+
+Codex uses the Parallel app connector. Claude uses the claude.ai Parallel Search connector, chosen by Paul on 2026-11-04 and signed in through claude.ai (not yet verified from Claude Code at registration); claude.ai connectors also load in Claude Desktop and Claude Code sessions signed in to the same account.
+
+OAuth grants are owned by each application account. Signed-in calls bill the Parallel account at API rates; anonymous MCP use is free and rate-limited. Inventory does not inspect connector credentials.
+
+The skill's default search helper uses PARALLEL_API_KEY from shell.secrets and does not need a connector. Verify the Claude connector by finding its web_search and web_fetch tools in a new Claude Code session.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 

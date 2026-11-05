@@ -116,6 +116,15 @@ connector settings to change sign-in within the current task's authorization.
 Native GitHub credentials/configuration remain application-owned under the CLI's
 normal store; do not copy them into shared config or print credential-store output.
 
+`application.parallel-connectors` records the Parallel connectors that
+`engineering-research` uses as its fallback search and full-page reader: the Codex
+Parallel app and the claude.ai Parallel Search connector. claude.ai connectors also
+load in Claude Desktop and Claude Code sessions signed in to that account. Add,
+sign in, or remove them in each app's connector settings; their OAuth grants stay
+application-owned. To verify, open a new Claude Code session and confirm that its
+Parallel `web_search` and `web_fetch` tools are listed. The skill's default helper
+needs only `PARALLEL_API_KEY`, so the connectors are optional.
+
 ## Backup and restore
 
 Installer backup locations are returned by `--apply` and kept in ignored

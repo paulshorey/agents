@@ -4,6 +4,22 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-04 — Engineering research in Claude Code
+
+- Verified with Claude Code 2.1.316 that `engineering-research`'s default
+  Parallel Search helper runs unchanged: four concurrent searches returned
+  results using `PARALLEL_API_KEY` from `~/.secrets.sh`. No plugin is required.
+- Clarified the skill's provider order for Claude Code: the claude.ai Parallel
+  connector is the fallback, built-in WebSearch (titles and URLs only) is the last
+  resort, and WebFetch returns a model summary rather than the page. Exhaustive
+  reports go to `parallel-deep-research` or Claude Code's user-run `/deep-research`.
+- Registered `application.parallel-connectors` for the Codex Parallel app and the
+  claude.ai Parallel Search connector Paul chose to add. Its OAuth grant is
+  application-owned, and signed-in calls bill the Parallel account. Verification
+  from a new Claude Code session is pending. The full Parallel Claude Code plugin
+  was not installed because it duplicates `parallel-deep-research` and needs
+  `parallel-cli`.
+
 ## 2026-11-04 — Guarded Claude Remote Control shortcut
 
 - Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating
