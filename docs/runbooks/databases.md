@@ -27,7 +27,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   a rollback) after granting it explicitly to every existing role, so only
   `agent_readonly` and roles created later lose it. Large objects cannot be withheld
   individually, so any `SELECT`/`UPDATE` grant on one to the role or PUBLIC fails the
-  check. Credential writes hold a file lock. If PUBLIC can still create
+  check. Credential writes hold a file lock; `prepare` holds it across both the URL and
+  the prepared role SQL, so concurrent runs cannot pair one password with another's verifier. If PUBLIC can still create
   in schema `public` (PostgreSQL 14 or an upgraded database), it stops and asks the
   owner to grant application roles explicitly first, rather than changing that ACL. Secret tables and columns
   (`user_auth_tokens`, `password_reset_tokens`, `users.password`, `users.api_token`,
@@ -67,8 +68,9 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
   executable `SECURITY DEFINER` or untrusted-language (e.g. `plpython3u`) routines in
   any schema (stock PostgreSQL has none), granted default-restricted built-ins
-  (`pg_read_file`, `pg_ls_dir`, ...), compiled extension routines not listed in the
-  target's `allowed_routines`, foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
+  (`pg_read_file`, `pg_ls_dir`, ...), compiled routines that are not core built-ins
+  (any schema, including ones created in `pg_catalog` after `initdb`) unless listed in
+  the target's `allowed_routines`, foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
   and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
@@ -107,8 +109,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 `agents-sql set-url TARGET` remains for storing an existing read-only URL (hidden
 prompt; verified before saving). If a target has audited compiled extension routines
-(language `c`/`internal` outside `pg_catalog` or installed there by an extension, for
-example `pgcrypto`), list each by full identity in its registry entry, e.g.
+(language `c`/`internal` outside `pg_catalog`, for example `pgcrypto`, or created in
+`pg_catalog` after `initdb`, OID 16384 or above), list each by full identity in its registry entry, e.g.
 `"allowed_routines": ["public.digest(text,text)"]`; an unlisted routine or overload,
 such as `dblink_exec`, is refused.
 
@@ -118,8 +120,8 @@ and a credential that can reach its owner connection (see
 
 ## Rotate, revoke, add a target
 
-- Rotate: `agents-sql prepare TARGET`, re-run the role SQL with the new verifier, then
-  `agents-sql check TARGET`.
+- Rotate: `agents-sql prepare TARGET`, run the newly prepared
+  `<target>-readonly-role.sql` as the owner, then `agents-sql check TARGET`.
 - Revoke: `ALTER ROLE agent_readonly NOLOGIN;` (or `DROP OWNED BY agent_readonly; DROP ROLE agent_readonly;`)
   and delete the variable from the credential file.
 - Add a database: add a target to `local/databases.json`, register its variable

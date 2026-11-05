@@ -15,6 +15,7 @@ timeout. Writes and migrations are out of scope; use the project's runbook.
 """
 import argparse
 import base64
+import contextlib
 import fcntl
 import getpass
 import hashlib
@@ -106,9 +107,9 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
         OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL)
         -- Compiled extension routines (dblink_exec, aliases of restricted built-ins) can act
         -- outside the transaction; only a target's explicit allowed_routines may pass.
-        OR (l.lanname IN ('c', 'internal')
-          AND (n.nspname<>'pg_catalog' OR EXISTS(SELECT 1 FROM pg_depend e JOIN pg_extension x ON x.oid=e.refobjid
-            WHERE e.classid='pg_proc'::regclass AND e.objid=p.oid AND e.deptype='e' AND x.extname<>'plpgsql'))
+        -- OIDs from 16384 (FirstNormalObjectId) were created after initdb, so a compiled
+        -- routine there is never a core built-in, whatever its schema or extension.
+        OR (l.lanname IN ('c', 'internal') AND (n.nspname<>'pg_catalog' OR p.oid >= 16384)
           AND NOT ({ROUTINE_IDENTITY} = ANY(__ALLOWED_ROUTINES__::text[]))))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
@@ -525,18 +526,25 @@ def command_query(args):
     return result.returncode
 
 
-def write_profile_value(path, variable, value):
-    """Atomically replace one literal assignment in an owner-only dotenv file,
-    holding an exclusive lock so concurrent writers cannot lose an update."""
+@contextlib.contextmanager
+def profile_lock(path):
+    """Exclusive lock for an owner-only credential file and files written with it."""
     path = Path(path).expanduser()
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     lock_fd = os.open(path.parent / f'.{path.name}.lock', os.O_CREAT | os.O_RDWR, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
-        _replace_assignment(path, variable, value)
+        yield path
     finally:
         os.close(lock_fd)
+
+
+def write_profile_value(path, variable, value):
+    """Atomically replace one literal assignment in an owner-only dotenv file,
+    holding an exclusive lock so concurrent writers cannot lose an update."""
+    with profile_lock(path) as locked:
+        _replace_assignment(locked, variable, value)
 
 
 def _replace_assignment(path, variable, value):
@@ -605,8 +613,10 @@ def command_prepare(args):
     credentials = Path(hosting.resolve_profile(entry['profile'])).expanduser()
     setup = credentials.parent / f'{args.target}-readonly-role.sql'
     role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
-    _write_private(setup, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', scram_verifier(password)))
-    write_profile_value(credentials, entry['variable'], url)
+    # One lock covers both files, so the stored password and the prepared verifier always pair.
+    with profile_lock(credentials):
+        _write_private(setup, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', scram_verifier(password)))
+        _replace_assignment(credentials, entry['variable'], url)
     print(f'Stored a new (not yet active) connection for {args.target}.\n'
           f'As the database owner, run the prepared setup (it contains a password verifier; keep it private):\n'
           f'  pbcopy < {setup}   # then paste into the database SQL console, or: psql OWNER_URL -f {setup}\n'

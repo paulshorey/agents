@@ -1,8 +1,10 @@
+import base64
 import importlib.util
 import io
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import stat
 import subprocess
@@ -225,6 +227,24 @@ class PrepareTests(unittest.TestCase):
             self.assertIn('SCRAM-SHA-256$', setup.read_text())
             self.assertNotIn('SCRAM-SHA-256$', out.getvalue())
             self.assertNotIn(urllib.parse.urlsplit(stored).password, out.getvalue())
+
+
+    def test_concurrent_prepare_runs_keep_password_and_verifier_paired(self):
+        with tempfile.TemporaryDirectory() as directory:
+            FakeHosting.credentials = Path(directory) / 'db.env'
+            self.addCleanup(setattr, FakeHosting, 'credentials', None)
+            with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, '_hosting', return_value=FakeHosting), \
+                    patch('sys.stdout', new_callable=io.StringIO):
+                threads = [threading.Thread(target=sql.main, args=(['prepare', 'fixture'],)) for _ in range(8)]
+                for thread in threads:
+                    thread.start()
+                for thread in threads:
+                    thread.join()
+            stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
+            password = urllib.parse.unquote(urllib.parse.urlsplit(stored).password)
+            verifier = re.search(r"SCRAM-SHA-256\$4096:([^$]+)\$([^:]+):(\S+?)'", (Path(directory) / 'fixture-readonly-role.sql').read_text())
+            salt = base64.b64decode(verifier.group(1))
+            self.assertEqual(sql.scram_verifier(password, salt), verifier.group(0)[:-1])
 
 
 class CredentialFileTests(unittest.TestCase):
@@ -550,6 +570,13 @@ class LiveRoleTests(unittest.TestCase):
         with self.assertRaises(sql.SqlError) as raised:
             sql.guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower(text)'])
         self.assertIn('public.agent_probe_lower(text,text)', str(raised.exception))
+
+    def test_refuses_custom_compiled_routines_created_in_pg_catalog(self):
+        self.admin("CREATE FUNCTION pg_catalog.agent_probe_catalog(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'lower'")
+        self.addCleanup(self.admin, 'DROP FUNCTION pg_catalog.agent_probe_catalog(text)')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('pg_catalog.agent_probe_catalog(text)', str(raised.exception))
 
     def test_refuses_compiled_extension_routines_installed_in_pg_catalog(self):
         # Stock PostgreSQL blocks installing dblink into pg_catalog, so move one member there.

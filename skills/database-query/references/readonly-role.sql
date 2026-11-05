@@ -2,10 +2,12 @@
 -- owner (Railway's `postgres` user), for example in Railway's Postgres "Data" tab
 -- or with psql using that database's DATABASE_PUBLIC_URL.
 --
--- Replace REPLACE_WITH_SCRAM_VERIFIER (once, below BEGIN) with the SCRAM-SHA-256
--- verifier printed by `agents-sql prepare TARGET`, which also stores the matching
--- connection URL privately. Only the verifier reaches the server, so statement
--- logging never records a usable password. The script aborts on anything else.
+-- Do not edit this template: `agents-sql prepare TARGET` stores a new connection URL
+-- privately and writes a ready-to-run copy, with the password's SCRAM-SHA-256
+-- verifier in place of REPLACE_WITH_SCRAM_VERIFIER, to
+-- ~/.agents/local/credentials/TARGET-readonly-role.sql. Only the verifier reaches the
+-- server, so statement logging never records a usable password. The script aborts
+-- on anything else.
 -- Re-running is safe: it updates the password and grants. Re-run it after
 -- migrations add tables: only base tables that exist now are granted.
 --
@@ -25,7 +27,7 @@ DO $$
 DECLARE secret text := current_setting('agents.readonly_verifier');
 BEGIN
   IF secret !~ '^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$' THEN
-    RAISE EXCEPTION 'Set agents.readonly_verifier to the SCRAM-SHA-256 verifier printed by agents-sql prepare (never a cleartext password)';
+    RAISE EXCEPTION 'Set agents.readonly_verifier to the SCRAM-SHA-256 verifier from agents-sql prepare (run its prepared role SQL file, never a cleartext password)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_readonly') THEN
     CREATE ROLE agent_readonly LOGIN;

@@ -41,7 +41,8 @@ create anything, and the session defaults to read-only with a 30s statement time
 
 ## Setup and adding targets
 
-Owner steps (`agents-sql prepare TARGET`, run the role SQL with the printed SCRAM
-verifier, `agents-sql check TARGET`) and how to register another database:
+Owner steps (`agents-sql prepare TARGET`, which stores the credential and writes a
+private, ready-to-run `<target>-readonly-role.sql` that the owner runs; then
+`agents-sql check TARGET`) and how to register another database:
 [`docs/runbooks/databases.md`](../../docs/runbooks/databases.md). The role SQL is
 [`references/readonly-role.sql`](references/readonly-role.sql).
