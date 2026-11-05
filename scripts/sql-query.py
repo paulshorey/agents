@@ -67,7 +67,7 @@ FROM (SELECT f.*, CASE WHEN f.elevated OR f.member OR f.owns OR f.writes OR f.cr
         AND ((c.relkind IN ('r', 'p', 'v', 'm', 'f')
             AND (has_table_privilege(c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE')
               OR has_any_column_privilege(c.oid, 'INSERT, UPDATE')))
-          OR (c.relkind = 'S' AND has_sequence_privilege(c.oid, 'UPDATE')))) AS writes,
+          OR (c.relkind = 'S' AND has_sequence_privilege(c.oid, 'USAGE, UPDATE')))) AS writes,  -- USAGE allows nextval
     (has_database_privilege(current_database(), 'CREATE')
       OR EXISTS(SELECT 1 FROM pg_namespace n WHERE n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
         AND has_schema_privilege(n.oid, 'CREATE'))) AS creates,

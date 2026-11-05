@@ -50,9 +50,28 @@ ALTER ROLE agent_readonly SET idle_in_transaction_session_timeout = '60s';
 
 -- SELECT on base tables only. Views run with their owner's privileges and could
 -- expose withheld columns, so grant an audited view explicitly if one is needed.
+-- Clear any earlier grants (table, column and sequence level) in every schema first.
+DO $$
+DECLARE
+  nsp text;
+  rel regclass;
+  cols text;
+BEGIN
+  FOR nsp IN SELECT nspname FROM pg_namespace
+      WHERE nspname NOT IN ('pg_catalog', 'information_schema') AND nspname !~ '^pg_(toast|temp_|toast_temp_)' LOOP
+    EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA %I FROM agent_readonly', nsp);
+    EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA %I FROM agent_readonly', nsp);
+    IF nsp <> 'public' THEN
+      EXECUTE format('REVOKE ALL ON SCHEMA %I FROM agent_readonly', nsp);
+    END IF;
+  END LOOP;
+  FOR rel, cols IN SELECT a.attrelid::regclass, string_agg(quote_ident(a.attname), ', ')
+      FROM pg_attribute a WHERE a.attacl IS NOT NULL AND a.attnum > 0 AND NOT a.attisdropped
+      GROUP BY a.attrelid LOOP
+    EXECUTE format('REVOKE ALL (%s) ON %s FROM agent_readonly', cols, rel);
+  END LOOP;
+END $$;
 GRANT USAGE ON SCHEMA public TO agent_readonly;
-REVOKE ALL ON ALL TABLES IN SCHEMA public FROM agent_readonly;
-REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM agent_readonly;
 DO $$
 DECLARE rel regclass;
 BEGIN
@@ -79,6 +98,12 @@ BEGIN
     IF has_any_column_privilege('public', rel, 'SELECT') THEN
       RAISE EXCEPTION 'PUBLIC can read %, which holds secrets; revoke that grant and re-run.', rel;
     END IF;
+    -- Views run with their owner's privileges, so a PUBLIC-readable view over it leaks too.
+    IF EXISTS (SELECT 1 FROM pg_depend d JOIN pg_rewrite w ON d.classid = 'pg_rewrite'::regclass AND d.objid = w.oid
+        WHERE d.refclassid = 'pg_class'::regclass AND d.refobjid = rel AND w.ev_class <> rel
+          AND has_any_column_privilege('public', w.ev_class, 'SELECT')) THEN
+      RAISE EXCEPTION 'A view over % is readable by PUBLIC; revoke that grant and re-run.', rel;
+    END IF;
     IF EXISTS (SELECT 1 FROM pg_inherits WHERE inhrelid = rel OR inhparent = rel) THEN
       RAISE EXCEPTION '% has inheritance or partition relatives; extend this script to withhold its secrets there.', rel;
     END IF;
@@ -94,7 +119,8 @@ BEGIN
     CONTINUE WHEN rel IS NULL;
     SELECT string_agg(quote_ident(a.attname), ', ' ORDER BY a.attnum) INTO cols FROM pg_attribute a
       WHERE a.attrelid = rel AND a.attnum > 0 AND NOT a.attisdropped
-        AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t));
+        AND a.attname NOT IN (SELECT jsonb_array_elements_text(secret_columns -> t))
+        AND a.attgenerated = '';  -- a generated column may be computed from a secret
     EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
     IF cols IS NOT NULL THEN
       EXECUTE format('GRANT SELECT (%s) ON %s TO agent_readonly', cols, rel);

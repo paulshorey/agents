@@ -368,6 +368,8 @@ class LiveRoleTests(unittest.TestCase):
                   'can write'),
                  ('GRANT UPDATE (email) ON public.users TO agent_readonly',
                   'REVOKE UPDATE (email) ON public.users FROM agent_readonly', 'can write'),
+                 ('CREATE SEQUENCE IF NOT EXISTS public.agent_probe_seq; GRANT USAGE ON public.agent_probe_seq TO agent_readonly',
+                  'DROP SEQUENCE public.agent_probe_seq', 'can write'),
                  ('GRANT pg_write_all_data TO agent_readonly', 'REVOKE pg_write_all_data FROM agent_readonly', 'member'),
                  (f'CREATE SCHEMA {schema} AUTHORIZATION agent_readonly', f'DROP SCHEMA {schema}', 'owns'),
                  ('GRANT CREATE ON SCHEMA public TO agent_readonly', 'REVOKE CREATE ON SCHEMA public FROM agent_readonly',
@@ -463,7 +465,10 @@ class LiveRoleTests(unittest.TestCase):
         cases = [('GRANT SELECT ON public.users TO PUBLIC', 'REVOKE SELECT ON public.users FROM PUBLIC', 'PUBLIC can read'),
                  ('CREATE TABLE public.agent_probe_child () INHERITS (public.user_auth_tokens)',
                   'DROP TABLE public.agent_probe_child', 'inheritance'),
-                 ('GRANT CREATE ON SCHEMA public TO PUBLIC', 'REVOKE CREATE ON SCHEMA public FROM PUBLIC', 'PUBLIC can create')]
+                 ('GRANT CREATE ON SCHEMA public TO PUBLIC', 'REVOKE CREATE ON SCHEMA public FROM PUBLIC', 'PUBLIC can create'),
+                 ('CREATE VIEW public.agent_probe_view AS SELECT id, password FROM public.users; '
+                  'GRANT SELECT ON public.agent_probe_view TO PUBLIC', 'DROP VIEW public.agent_probe_view',
+                  'readable by PUBLIC')]
         for change, undo, message in cases:
             with self.subTest(change=change):
                 self.admin(change)
@@ -474,6 +479,18 @@ class LiveRoleTests(unittest.TestCase):
                 finally:
                     self.admin(undo)
                 sql.guard(self.env(self.readonly_url))  # nothing changed: the old password still works
+
+    def test_role_sql_clears_stale_and_derived_access(self):
+        schema = 'agent_probe_o_' + os.urandom(3).hex()
+        self.admin(f'CREATE SCHEMA {schema}; CREATE TABLE {schema}.notes (id int); '
+                   f'GRANT USAGE ON SCHEMA {schema} TO agent_readonly; GRANT SELECT ON {schema}.notes TO agent_readonly; '
+                   'GRANT SELECT (password) ON public.users TO agent_readonly; '
+                   'ALTER TABLE public.users ADD COLUMN password_copy text GENERATED ALWAYS AS (password) STORED')
+        self.addCleanup(self.admin, f'DROP SCHEMA {schema} CASCADE; ALTER TABLE public.users DROP COLUMN password_copy')
+        self.assertEqual(self.run_role_sql().returncode, 0)
+        for text in ['SELECT password FROM users', 'SELECT password_copy FROM users', f'SELECT * FROM {schema}.notes']:
+            self.assertNotEqual(self.query(text)[0], 0, text)
+        self.assertEqual(self.query('SELECT email FROM users WHERE id = 1')[:2], (0, 'member@example.invalid'))
 
 
 if __name__ == '__main__':
