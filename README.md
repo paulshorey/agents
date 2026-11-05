@@ -60,6 +60,7 @@ It does not send contact-form messages or modify infrastructure.
 | `config/inventory.json`, `config/inventory.schema.json` | Customization and credential references, validated without secret values |
 | `config/codex.defaults.toml` | Deliberately managed, non-secret Codex preferences |
 | `config/profiles.json` | Credential profile IDs and file locations shared by launchers and hosting |
+| `config/databases.example.json` | Format for `agents-sql` targets; real targets live in ignored `local/databases.json` |
 | `docs/INVENTORY.md`, `docs/runbooks/`, `CHANGELOG.md` | Generated inventory, update/recovery instructions, and meaningful change history |
 | `config/hosting/*.json` | Non-secret project IDs, branches, domains, and profile references |
 | `licenses/` | Provider licenses and imported-source update notes in `licenses/README.md` |
