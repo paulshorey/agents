@@ -47,7 +47,8 @@ review. The user converts PRs to drafts to park them and pause automatic review.
    has verified replies and thread dispositions. Recheck required CI independently.
    Do not push again for an unchanged head just to revisit a rejected finding.
    When `codex_review` reports `outcome: "clean"` with `covers_head: true`, post
-   its `clean_note` once as a PR comment (`gh pr comment <PR> --body-file`) so the
+   its `clean_note` once as a PR comment
+   (`jq -r '.codex_review.clean_note' <CONTEXT_FILE> | gh pr comment <PR> --body-file -`) so the
    clean result is visible and timestamped on GitHub; skip it when
    `clean_note_posted` is true. Never edit the note to add the Codex bot handle.
 

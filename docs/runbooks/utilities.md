@@ -147,12 +147,16 @@ should write a file and query it rather than read truncated stdout. Fields:
   Codex edits that one comment in place for every review, so GitHub shows it at
   its creation time. The helper therefore also reports `reviewed_commit`,
   `status`, `completed_at` (from the summary table), `edited_in_place`,
-  `findings_on_reviewed_commit` (Codex's top-level inline comments on that
-  commit), and `outcome` (`clean`, `findings`, a running status, or `unknown`),
-  plus a plain-language `summary`. For a clean review of the head it adds
+  `findings_on_reviewed_commit` (top-level inline comments in the Codex review of
+  that commit submitted within 10 minutes before completion), and `outcome`
+  (`clean`, `findings`, a running status, or `unknown`). `findings` means that
+  run submitted a review object; the marker's `has_any_findings` covers the
+  whole PR, so it is not used to classify a run. The helper also gives
+  a plain-language `summary`. For a clean review of the head it adds
   `clean_note`, a ready-to-post PR comment marked
   `<!-- codex-clean-review-note:v1 SHA -->`; `clean_note_posted` is true once a
-  note for the head exists.
+  comment starting with that marker exists for the head (quoted or code examples
+  don't count).
 - `pr_reactions`: actors/content/timestamps on the PR itself. Codex reacts `eyes`
   while reviewing and may react `+1` when a review finds nothing (it did not on a
   PR with earlier findings), but a reaction does not identify a reviewed commit;

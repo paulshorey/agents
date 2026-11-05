@@ -283,14 +283,40 @@ CODEX_COMPLETED_AT = re.compile(r'<relative-time datetime="([^"]+)"')
 CLEAN_NOTE = re.compile(r"<!-- codex-clean-review-note:v1 ([0-9a-f]+) -->")
 
 
-def codex_findings(sha, inline_comments):
-    """Codex's top-level inline findings posted against one reviewed commit."""
-    return sum(1 for c in inline_comments
-               if login(c.get("user")) in CODEX_BOTS and not c.get("in_reply_to_id")
-               and sha and (c.get("original_commit_id") or c.get("commit_id")) == sha)
+REVIEW_RUN_WINDOW = 600  # seconds between Codex submitting a review and marking it completed
 
 
-def codex_review(comments, head, inline_comments=()):
+def parse_time(value):
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+    except ValueError:
+        return None
+
+
+def codex_findings(sha, completed_at, inline_comments, reviews):
+    """Codex's review of `sha` submitted during the run that finished at completed_at.
+
+    Returns (review_found, top-level inline findings in that review). Codex marks
+    `has_any_findings` for the whole PR, not per review, so it can't classify a run.
+    A clean run posts no review object; an older review of the same commit is
+    outside the run window and doesn't count.
+    """
+    done = parse_time(completed_at)
+    run = None
+    for review in reviews:
+        submitted = parse_time(review.get("submitted_at"))
+        if (login(review.get("user")) in CODEX_BOTS and sha and review.get("commit_id") == sha
+                and done and submitted and 0 <= (done - submitted).total_seconds() <= REVIEW_RUN_WINDOW
+                and (run is None or submitted > parse_time(run.get("submitted_at")))):
+            run = review
+    if run is None:
+        return False, 0
+    count = sum(1 for c in inline_comments if c.get("pull_request_review_id") == run["id"]
+                and not c.get("in_reply_to_id"))
+    return True, count
+
+
+def codex_review(comments, head, inline_comments=(), reviews=()):
     """Codex's latest machine-readable review state, from its summary comment.
 
     A review without findings posts no review object, so this state is the only
@@ -322,19 +348,20 @@ def codex_review(comments, head, inline_comments=()):
     created, updated = comment.get("created_at"), comment.get("updated_at")
     completed = CODEX_COMPLETED_AT.search(comment.get("body") or "")
     completed_at = completed[1] if completed else updated
-    findings = codex_findings(sha, inline_comments)
+    reviewed, findings = codex_findings(sha, completed_at, inline_comments, reviews)
     if not sha or not status:
         outcome = "unknown"
     elif status != "completed":
         outcome = status
     else:
-        outcome = "findings" if findings else "clean"
+        # A review object from this run means findings, even if its comments were deleted.
+        outcome = "findings" if reviewed else "clean"
     edited = bool(created and updated and created != updated)
     short = (sha or "?")[:7]
     if outcome == "clean":
         summary = f"Codex completed a review of {short} at {completed_at} and posted no new findings."
     elif outcome == "findings":
-        summary = f"Codex completed a review of {short} at {completed_at} and posted {findings} inline finding(s)."
+        summary = f"Codex completed a review of {short} at {completed_at} and posted a review with {findings} inline finding(s)."
     else:
         summary = f"Codex review of {short} is {outcome} (summary updated {updated})."
     if edited:
@@ -342,8 +369,9 @@ def codex_review(comments, head, inline_comments=()):
                     " GitHub shows it at that original time, not as a new comment.")
     if sha != head:
         summary += f" It does not cover the current head {head[:7]}."
+    # Only a comment that starts with the marker counts; quoted or code examples don't.
     noted = any(m[1] == head for c in comments
-                if (m := CLEAN_NOTE.search(c.get("body") or "")))
+                if (m := CLEAN_NOTE.match(mask_markdown_code(c.get("body") or ""))))
     result = {
         "comment_id": comment["id"], "url": comment.get("html_url"),
         "created_at": created, "updated_at": updated, "edited_in_place": edited,
@@ -463,7 +491,7 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
         "pr": pr, "commits": commits, "files": files, "checks": checks,
         "statuses": statuses, "reviews": reviews, "comments": kept,
         "threads": threads, "filtering": filtering,
-        "codex_review": codex_review(issue_comments, head, inline_comments),
+        "codex_review": codex_review(issue_comments, head, inline_comments, raw_reviews),
         "pr_reactions": reactions(api, f"{api.prefix}/issues/{api.number}/reactions"),
     }
     if include_diff:

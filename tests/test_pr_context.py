@@ -465,12 +465,35 @@ Keep the finding suffix.</details>'''
         noted = pr_context.codex_review([summary, note], "abc")
         self.assertTrue(noted["clean_note_posted"])
         self.assertNotIn("clean_note", noted)
-        # Inline findings on the reviewed commit make the outcome "findings", never clean.
-        finding = {"id": 9, "user": {"login": BOT}, "original_commit_id": "abc"}
-        reply = {"id": 10, "user": {"login": BOT}, "original_commit_id": "abc", "in_reply_to_id": 9}
-        found = pr_context.codex_review([summary], "abc", [finding, reply])
+        # A quoted or code-formatted marker is discussion, not a posted note.
+        marker = "<!-- codex-clean-review-note:v1 abc -->"
+        for body in (f"Draft: `{marker}`", f"```\n{marker}\n```", f"    {marker}", f"See {marker}"):
+            with self.subTest(body=body):
+                quoted = {"id": 8, "body": body, "user": {"login": "agent"}}
+                self.assertFalse(pr_context.codex_review([summary, quoted], "abc")["clean_note_posted"])
+
+        def review(number, submitted, sha="abc"):
+            return {"id": number, "user": {"login": BOT}, "commit_id": sha, "submitted_at": submitted}
+
+        finding = {"id": 9, "user": {"login": BOT}, "pull_request_review_id": 50}
+        reply = {"id": 10, "user": {"login": BOT}, "pull_request_review_id": 50, "in_reply_to_id": 9}
+        # A Codex review submitted during this run means findings, never clean.
+        found = pr_context.codex_review([summary], "abc", [finding, reply],
+                                        [review(50, "2026-01-02T00:00:03Z")])
         self.assertEqual((found["outcome"], found["findings_on_reviewed_commit"]), ("findings", 1))
         self.assertNotIn("clean_note", found)
+        # Its comments may be deleted; the review object still marks findings.
+        deleted = pr_context.codex_review([summary], "abc", [], [review(50, "2026-01-02T00:00:03Z")])
+        self.assertEqual((deleted["outcome"], deleted["findings_on_reviewed_commit"]), ("findings", 0))
+        # An earlier run's review of the same commit doesn't make a later clean run dirty.
+        rerun = pr_context.codex_review([summary], "abc", [finding],
+                                        [review(50, "2026-01-01T00:00:00Z")])
+        self.assertEqual(rerun["outcome"], "clean")
+        # Reviews of other commits or from people are ignored.
+        other = pr_context.codex_review([summary], "abc", [finding], [
+            review(50, "2026-01-02T00:00:03Z", "old"),
+            {**review(51, "2026-01-02T00:00:03Z"), "user": {"login": "reviewer"}}])
+        self.assertEqual(other["outcome"], "clean")
         # A clean review of an older commit says it does not cover the head.
         stale = pr_context.codex_review([summary], "def")
         self.assertIn("does not cover the current head def", stale["summary"])
