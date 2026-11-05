@@ -4,19 +4,26 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
-## 2026-11-04 — Engineering research in Claude Code
+## 2026-11-04 — API-first engineering research for Codex and Claude Code
 
-- Verified with Claude Code 2.1.316 that `engineering-research`'s default
-  Parallel Search helper runs unchanged: four concurrent searches returned
-  results using `PARALLEL_API_KEY` from `~/.secrets.sh`. No plugin is required.
-- Clarified the skill's provider order for Claude Code: the claude.ai Parallel
-  connector is the fallback, built-in WebSearch (titles and URLs only) is the last
-  resort, and WebFetch returns a model summary rather than the page. Exhaustive
-  reports go to `parallel-deep-research` or Claude Code's user-run `/deep-research`.
+- Replaced `engineering-research`'s search-only helper with `scripts/parallel.py`,
+  a stdlib client for Parallel's v1 Search, v1 Extract (full-page markdown saved to
+  files), and Task API (asynchronous cited reports with resumable results). It
+  reads `PARALLEL_API_KEY` from the environment or `~/.secrets.sh`, retries rate
+  limits, server errors, and network failures twice without retrying deep-run
+  creation, and returns distinct exit codes. Live-tested search, extract (with a
+  failing URL), a `lite` deep run, and missing, invalid, and rejected keys.
+- Chose the API over `parallel-cli`: the CLI wraps the same APIs through the Python
+  SDK and needs installation and upgrades in each environment, while the script
+  works unchanged in Codex and Claude Code. The CLI's extras (OAuth login,
+  enrichment, FindAll, Monitor) are outside this skill.
+- The skill uses the script by default, requires agents to report any script
+  failure with its command, exit code, and error, and mentions connectors or
+  built-in search only as a fallback. `parallel-deep-research` now falls back to the
+  script's `deep` command when `parallel-cli` is not installed.
 - Registered `application.parallel-connectors` for the Codex Parallel app and the
-  claude.ai Parallel Search connector Paul chose to add. Its OAuth grant is
-  application-owned, and signed-in calls bill the Parallel account. Verification
-  from a new Claude Code session is pending. The full Parallel Claude Code plugin
+  claude.ai Parallel connector Paul added. claude.ai offered no sign-in step, so its
+  authentication and limits are undetermined. The full Parallel Claude Code plugin
   was not installed because it duplicates `parallel-deep-research` and needs
   `parallel-cli`.
 

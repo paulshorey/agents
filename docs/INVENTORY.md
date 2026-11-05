@@ -497,15 +497,15 @@ Change sign-in through supported gh auth login/account selection or the connecto
 
 ## application.parallel-connectors
 
-Parallel web search and fetch connectors in the Codex and Claude apps, used as the engineering-research fallback and full-page reader.
+Parallel connectors in the Codex and Claude apps, used only as an engineering-research fallback when its API script fails.
 
 Owner: **application**.
 
-Codex uses the Parallel app connector. Claude uses the claude.ai Parallel Search connector, chosen by Paul on 2026-11-04 and signed in through claude.ai (not yet verified from Claude Code at registration); claude.ai connectors also load in Claude Desktop and Claude Code sessions signed in to the same account.
+Codex uses the Parallel app connector. Paul added the claude.ai Parallel connector on 2026-11-04; claude.ai offered no sign-in step, and its authentication and rate limits are not yet determined. claude.ai connectors also load in Claude Desktop and Claude Code sessions on the same account.
 
-OAuth grants are owned by each application account. Signed-in calls bill the Parallel account at API rates; anonymous MCP use is free and rate-limited. Inventory does not inspect connector credentials.
+Connector grants are owned by each application account. Inventory does not inspect connector credentials.
 
-The skill's default search helper uses PARALLEL_API_KEY from shell.secrets and does not need a connector. Verify the Claude connector by finding its web_search and web_fetch tools in a new Claude Code session.
+engineering-research's scripts/parallel.py (search, full-page extract, deep research) uses PARALLEL_API_KEY from shell.secrets and needs no connector or CLI.
 
 [Update and recovery instructions](../docs/runbooks/configuration.md).
 

@@ -101,6 +101,12 @@ Avoid loading the whole report into context. Read only the relevant sections whe
 
 ## Setup
 
+If `parallel-cli` is not installed, or setup is outside the task's scope, use the
+shared `engineering-research` skill's `scripts/parallel.py deep run "QUESTION" --wait 600 --out BASE`
+instead. It calls the same Task API with `PARALLEL_API_KEY`, needs no installation,
+writes `BASE.md` and `BASE.json`, and resumes with `deep result RUN_ID`. Report why
+the CLI was not used.
+
 First run `command -v parallel-cli` and `parallel-cli --version` in the agent's
 terminal. Reuse the current project's documented installation and lockfile; a CLI
 in another project's virtual environment is not a shared installation. An existing
