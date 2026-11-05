@@ -34,6 +34,8 @@ def url(host='db.example.test', port=6543, database='railway', user='agent_reado
 
 
 class FakeHosting:
+    credentials = None
+
     class HostingError(Exception):
         pass
 
@@ -47,6 +49,10 @@ class FakeHosting:
     @staticmethod
     def profile_environment(profile, base=None, variables=None):
         return {}
+
+    @classmethod
+    def resolve_profile(cls, profile):
+        return cls.credentials
 
 
 class RegistryTests(unittest.TestCase):
@@ -74,6 +80,8 @@ class RegistryTests(unittest.TestCase):
                             {'ok': {**TARGET, 'withheld': {'users': ["pass'word"]}}},
                             {'ok': {**TARGET, 'withheld': {'a.b.c': '*'}}},
                             {'ok': {**TARGET, 'withheld': {'Auth.tokens': '*'}}},
+                            {'ok': {**TARGET, 'allowed_routines': ['no_schema']}},
+                            {'ok': {**TARGET, 'allowed_routines': ["public.x'y"]}},
                             {'ok': {**TARGET, 'profile': '/tmp/creds.env'}}]:
                 path.write_text(json.dumps({'schema_version': 1, 'targets': targets}))
                 path.chmod(0o600)
@@ -234,7 +242,7 @@ class LiveRoleTests(unittest.TestCase):
           INSERT INTO public.users VALUES (1, 'member@example.invalid', 'hash', 'tok') ON CONFLICT DO NOTHING;
         """)
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
-                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', cls.secret), text=True,
+                       input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(cls.secret)), text=True,
                        check=True, capture_output=True)
         cls.readonly_url = cls.role_url('agent_readonly', cls.secret)
 
@@ -382,13 +390,13 @@ class LiveRoleTests(unittest.TestCase):
             sql.guard(self.env(role))
         self.assertIn('foreign servers', str(raised.exception))
 
-    def test_role_sql_refuses_the_placeholder_password(self):
+    def test_role_sql_accepts_only_a_scram_verifier(self):
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
-        for unsafe in [role_sql, role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', 'short')]:
+        for unsafe in [role_sql, role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', 'a-cleartext-password-0123456789')]:
             failed = subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL], input=unsafe, text=True,
                                     capture_output=True)
             self.assertNotEqual(failed.returncode, 0)
-            self.assertIn('at least 20 characters', failed.stderr)
+            self.assertIn('SCRAM-SHA-256 verifier', failed.stderr)
         sql.guard(self.env(self.readonly_url), WITHHELD)  # the existing password still works
 
     def test_refuses_granted_file_reading_built_ins(self):
@@ -422,7 +430,7 @@ class LiveRoleTests(unittest.TestCase):
     def run_role_sql(self):
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
         return subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
-                              input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                              input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)), text=True,
                               capture_output=True)
 
     def test_catalog_write_grants_are_not_effective_for_non_superusers(self):
@@ -490,12 +498,42 @@ class LiveRoleTests(unittest.TestCase):
             sql.guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_kid': '*'})
         self.assertIn('agent_probe_parent', str(raised.exception))
 
+    def test_refuses_unlisted_compiled_extension_routines(self):
+        self.admin("CREATE FUNCTION public.agent_probe_lower(text) RETURNS text LANGUAGE internal IMMUTABLE STRICT AS 'lower'")
+        self.addCleanup(self.admin, 'DROP FUNCTION public.agent_probe_lower(text)')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('agent_probe_lower', str(raised.exception))
+        sql.guard(self.env(self.readonly_url), WITHHELD, ['public.agent_probe_lower'])
+
+    def test_prepare_stores_the_password_and_prints_only_a_working_verifier(self):
+        self.addCleanup(lambda: self.assertEqual(self.run_role_sql().returncode, 0))  # restore the class password
+        with tempfile.TemporaryDirectory() as directory:
+            FakeHosting.credentials = Path(directory) / 'db.env'
+            self.addCleanup(setattr, FakeHosting, 'credentials', None)
+            fixture = {**self.target, 'profile': 'postgres.fixture', 'variable': 'FIXTURE_DATABASE_URL'}
+            out = io.StringIO()
+            with patch.object(sql, 'target', return_value=fixture), patch.object(sql, '_hosting', return_value=FakeHosting), \
+                    patch('sys.stdout', out):
+                self.assertEqual(sql.main(['prepare', 'fixture']), 0)
+            stored = FakeHosting.credentials.read_text().strip().split('=', 1)[1].strip("'")
+            password = urllib.parse.unquote(urllib.parse.urlsplit(stored).password)
+            self.assertEqual(stat.S_IMODE(FakeHosting.credentials.stat().st_mode), 0o600)
+            self.assertNotIn(password, out.getvalue())
+            verifier = next(line for line in out.getvalue().splitlines() if line.startswith('SCRAM-SHA-256$'))
+            role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+            subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
+                           input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', verifier), text=True,
+                           check=True, capture_output=True)
+            self.assertEqual(sql.guard(sql.libpq_environment(stored + '?sslmode=disable', self.target), WITHHELD)['user'],
+                             'agent_readonly')
+
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.device_push_tokens')
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
-                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                       input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)), text=True,
                        check=True, capture_output=True)
         sql.guard(self.env(self.readonly_url), {**WITHHELD, 'device_push_tokens': ['token']})
 
@@ -504,7 +542,7 @@ class LiveRoleTests(unittest.TestCase):
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.agent_probe_child2')
         role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
         subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
-                       input=role_sql.replace('REPLACE_WITH_GENERATED_PASSWORD', self.secret), text=True,
+                       input=role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)), text=True,
                        check=True, capture_output=True)
         sql.guard(self.env(self.readonly_url), WITHHELD)
 

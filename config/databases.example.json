@@ -15,7 +15,8 @@
           "api_token"
         ],
         "user_auth_tokens": "*"
-      }
+      },
+      "allowed_routines": []
     }
   }
 }

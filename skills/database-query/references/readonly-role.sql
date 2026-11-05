@@ -2,10 +2,10 @@
 -- owner (Railway's `postgres` user), for example in Railway's Postgres "Data" tab
 -- or with psql using that database's DATABASE_PUBLIC_URL.
 --
--- Replace REPLACE_WITH_GENERATED_PASSWORD (once, below BEGIN) with a new random
--- password of at least 20 characters, for example from
--- `openssl rand -base64 32 | tr -d '/+='`. The script aborts if it is unchanged.
--- Never reuse the owner password.
+-- Replace REPLACE_WITH_SCRAM_VERIFIER (once, below BEGIN) with the SCRAM-SHA-256
+-- verifier printed by `agents-sql prepare TARGET`, which also stores the matching
+-- connection URL privately. Only the verifier reaches the server, so statement
+-- logging never records a usable password. The script aborts on anything else.
 -- Re-running is safe: it updates the password and grants. Re-run it after
 -- migrations add tables: only base tables that exist now are granted.
 --
@@ -19,14 +19,13 @@
 
 BEGIN;
 
--- Transaction-local; not stored anywhere after COMMIT.
-SET LOCAL agents.readonly_password = 'REPLACE_WITH_GENERATED_PASSWORD';
+SET LOCAL agents.readonly_verifier = 'REPLACE_WITH_SCRAM_VERIFIER';
 
 DO $$
-DECLARE secret text := current_setting('agents.readonly_password');
+DECLARE secret text := current_setting('agents.readonly_verifier');
 BEGIN
-  IF secret LIKE 'REPLACE' || '\_WITH\_%' OR length(secret) < 20 THEN
-    RAISE EXCEPTION 'Set agents.readonly_password to a new random password of at least 20 characters';
+  IF secret !~ '^SCRAM-SHA-256\$[0-9]+:[A-Za-z0-9+/=]+\$[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$' THEN
+    RAISE EXCEPTION 'Set agents.readonly_verifier to the SCRAM-SHA-256 verifier printed by agents-sql prepare (never a cleartext password)';
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_readonly') THEN
     CREATE ROLE agent_readonly LOGIN;

@@ -14,12 +14,16 @@ create or write anything. Sessions also default to read-only with a statement
 timeout. Writes and migrations are out of scope; use the project's runbook.
 """
 import argparse
+import base64
 import getpass
+import hashlib
+import hmac
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import stat
 import subprocess
@@ -92,7 +96,11 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
         OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal'))
         -- Built-ins PostgreSQL restricts by default (pg_read_file, pg_ls_dir, ...) carry an ACL.
-        OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL))
+        OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL)
+        -- Compiled extension routines (dblink_exec, aliases of restricted built-ins) can act
+        -- outside the transaction; only a target's explicit allowed_routines may pass.
+        OR (n.nspname<>'pg_catalog' AND l.lanname IN ('c', 'internal')
+          AND NOT (n.nspname||'.'||p.proname = ANY(__ALLOWED_ROUTINES__::text[]))))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
@@ -136,6 +144,10 @@ def load_targets(path=None):
                     or not re.fullmatch(r'[a-z][a-z0-9_-]*\.[a-z][a-z0-9_-]*', target['profile'])
                     or not re.fullmatch(r'[A-Z][A-Z0-9_]*', target['variable'])
                     or not isinstance(target['port'], int) or not 1 <= target['port'] <= 65535):
+                raise ValueError()
+            allowed = target.get('allowed_routines', [])
+            if not isinstance(allowed, list) or not all(isinstance(r, str) and RELATION.fullmatch(r) and '.' in r
+                                                        for r in allowed):
                 raise ValueError()
             withheld = target.get('withheld', {})
             if not isinstance(withheld, dict) or not all(
@@ -314,9 +326,11 @@ def guard_query(env, statement):
     return run_psql(env, ['-q', '-At', '-F', '|', '-c', 'SET search_path TO pg_catalog, pg_temp', '-c', statement])
 
 
-def guard(env, withheld=None):
-    """Refuse any role able to write, own or create objects, or read withheld secrets."""
-    result = guard_query(env, GUARD_SQL)
+def guard(env, withheld=None, allowed_routines=()):
+    """Refuse any role able to write, own or create objects, or read withheld secrets.
+    allowed_routines are pre-validated schema.name entries the owner audited."""
+    allowed = 'ARRAY[' + ', '.join(f"'{r}'" for r in allowed_routines) + ']'
+    result = guard_query(env, GUARD_SQL.replace('__ALLOWED_ROUTINES__', allowed))
     if result.returncode:
         raise SqlError('Could not connect or verify the role: ' + (result.stderr or result.stdout).strip()[:500])
     fields = result.stdout.strip().split('|')
@@ -334,8 +348,8 @@ def guard(env, withheld=None):
     if unsafe:
         problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
     if routines:
-        problems.append('can execute restricted built-in, SECURITY DEFINER, WAL-writing or untrusted-language routines ('
-                        + routines
+        problems.append('can execute restricted built-in, SECURITY DEFINER, WAL-writing, untrusted-language or '
+                        'unlisted compiled extension routines (' + routines
                         + '); revoke their EXECUTE from PUBLIC and this role')
     for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
                                       (150000, 'has configuration parameter privileges', PARAMETER_SQL)):
@@ -381,7 +395,7 @@ def command_targets(args):
 def command_check(args):
     entry = target(args.target)
     env = libpq_environment(connection_url(entry), entry)
-    print(summary(args.target, entry, guard(env, entry.get('withheld'))))
+    print(summary(args.target, entry, guard(env, entry.get('withheld'), entry.get('allowed_routines', []))))
     return 0
 
 
@@ -492,7 +506,7 @@ def command_query(args):
         sql_text = sys.stdin.read()
     sql_text = wrapped_sql(checked_sql(sql_text))
     env = libpq_environment(connection_url(entry), entry)
-    verified = guard(env, entry.get('withheld'))
+    verified = guard(env, entry.get('withheld'), entry.get('allowed_routines', []))
     print('-- ' + summary(args.target, entry, verified), file=sys.stderr)
     psql_args = (['--csv'] if args.csv else []) + ['-q', '-f', '-']
     try:
@@ -539,9 +553,40 @@ def command_set_url(args):
     hosting = _hosting()
     check_profile(entry, hosting)  # never overwrite an unrelated credential
     env = libpq_environment(value, entry)
-    verified = guard(env, entry.get('withheld'))  # never store a role that can write
+    verified = guard(env, entry.get('withheld'), entry.get('allowed_routines', []))  # never store a role that can write
     write_profile_value(hosting.resolve_profile(entry['profile']), entry['variable'], value)
     print('Stored. ' + summary(args.target, entry, verified))
+    return 0
+
+
+def scram_verifier(password, salt=None, iterations=4096):
+    """SCRAM-SHA-256 verifier PostgreSQL stores for a password (RFC 7677). The owner
+    sets the role with it, so the cleartext password never appears in SQL or logs.
+    Generated passwords are ASCII alphanumerics, which SASLprep leaves unchanged."""
+    salt = salt if salt is not None else os.urandom(16)
+    salted = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, iterations)
+    client_key = hmac.new(salted, b'Client Key', 'sha256').digest()
+    server_key = hmac.new(salted, b'Server Key', 'sha256').digest()
+    b64 = lambda data: base64.b64encode(data).decode()
+    return f'SCRAM-SHA-256${iterations}:{b64(salt)}${b64(hashlib.sha256(client_key).digest())}:{b64(server_key)}'
+
+
+def command_prepare(args):
+    """Generate a password, store the target's URL privately and print only the
+    SCRAM verifier the owner pastes into readonly-role.sql."""
+    entry = target(args.target)
+    hosting = _hosting()
+    check_profile(entry, hosting)
+    password = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789') for _ in range(32))
+    query = '' if entry['host'] in LOOPBACK else '?sslmode=require'
+    url = (f"postgresql://agent_readonly:{password}@{entry['host']}:{entry['port']}/"
+           f"{urllib.parse.quote(entry['database'])}{query}")
+    libpq_environment(url, entry)  # same validation as a stored URL
+    write_profile_value(hosting.resolve_profile(entry['profile']), entry['variable'], url)
+    print(f'Stored a new (not yet active) connection for {args.target}. As the database owner, run '
+          'skills/database-query/references/readonly-role.sql with REPLACE_WITH_SCRAM_VERIFIER set to:\n'
+          f'{scram_verifier(password)}\n'
+          f'Then verify with: agents-sql check {args.target}')
     return 0
 
 
@@ -560,10 +605,12 @@ def main(argv=None):
     query.add_argument('--timeout', type=int, default=120, help='Seconds before psql is stopped (default 120)')
     store = sub.add_parser('set-url', help='Verify and store a read-only connection URL from hidden input/stdin')
     store.add_argument('target')
+    prepare = sub.add_parser('prepare', help='Generate and store a new password; print the SCRAM verifier for the owner')
+    prepare.add_argument('target')
     args = parser.parse_args(argv)
     try:
         return {'targets': command_targets, 'check': command_check, 'query': command_query,
-                'set-url': command_set_url}[args.action](args)
+                'set-url': command_set_url, 'prepare': command_prepare}[args.action](args)
     except SqlError as error:
         print(f'agents-sql: {error}', file=sys.stderr)
         return 2

@@ -62,7 +62,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
   executable `SECURITY DEFINER` or untrusted-language (e.g. `plpython3u`) routines in
   any schema (stock PostgreSQL has none), granted default-restricted built-ins
-  (`pg_read_file`, `pg_ls_dir`, ...), foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
+  (`pg_read_file`, `pg_ls_dir`, ...), compiled extension routines not listed in the
+  target's `allowed_routines`, foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
   and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
@@ -71,33 +72,44 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 
 ## Owner setup (once per database)
 
-1. Generate a password (20+ characters; the script aborts on the placeholder):
-   `openssl rand -base64 32 | tr -d '/+='`. Roles are
-   cluster-wide: if this database shares a cluster with another registered target,
-   reuse that role's password (or update every affected URL together).
-2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql) (one
-   transaction; it covers schema `public`)
-   as the database owner with that password substituted: in the hosting provider's
-   SQL console for that database (Railway: Postgres service → **Data** tab), or with
-   psql using its owner connection. Project, environment and service IDs are in the
-   project's private runbook (LivX: `~/git/livx/docs/database-migrations.md`).
-3. Build the URL from the database's public host and port, documented in that same
-   runbook: `postgresql://agent_readonly:PASSWORD@HOST:PORT/DATABASE`.
-4. Store it without echo. The tool verifies the role before saving:
+1. Generate and store the credential, which prints only a SCRAM-SHA-256 verifier:
 
    ```sh
-   ~/.agents/bin/agents-sql set-url livx-production   # paste at the hidden prompt
+   ~/.agents/bin/agents-sql prepare livx-production
+   ```
+
+   The password and URL go straight to the owner-only credential file; the
+   verifier cannot be used to log in, and statement logging never sees a password.
+   Roles are cluster-wide: if this database shares a cluster with another registered
+   target, prepare once and copy that URL's password to the other target instead.
+2. Run [`readonly-role.sql`](../../skills/database-query/references/readonly-role.sql)
+   (one transaction; it covers schema `public`) as the database owner with
+   `REPLACE_WITH_SCRAM_VERIFIER` replaced by the printed verifier: in the hosting
+   provider's SQL console for that database (Railway: Postgres service → **Data**
+   tab), or with psql using its owner connection. Project, environment, service IDs
+   and public endpoints are in the project's private runbook (LivX:
+   `~/git/livx/docs/database-migrations.md`). The script aborts on anything other
+   than a verifier.
+3. Verify:
+
+   ```sh
    ~/.agents/bin/agents-sql check livx-production
    ```
 
-An agent may perform steps 1–4 itself only with explicit authorization for that
-database and a Railway credential that can read the project (see
-[Railway profiles](railway.md)); it must keep the owner URL and generated password
-in memory and never print them.
+`agents-sql set-url TARGET` remains for storing an existing read-only URL (hidden
+prompt; verified before saving). If a target has audited compiled extension routines
+(language `c`/`internal` outside `pg_catalog`, for example `pgcrypto`), list them as
+`"allowed_routines": ["schema.function"]` in its registry entry; anything unlisted,
+such as `dblink_exec`, is refused.
+
+An agent may run step 2 itself only with explicit authorization for that database
+and a credential that can reach its owner connection (see
+[Railway profiles](railway.md)); it must keep the owner URL in memory and never print it.
 
 ## Rotate, revoke, add a target
 
-- Rotate: re-run the role SQL with a new password, then `agents-sql set-url TARGET`.
+- Rotate: `agents-sql prepare TARGET`, re-run the role SQL with the new verifier, then
+  `agents-sql check TARGET`.
 - Revoke: `ALTER ROLE agent_readonly NOLOGIN;` (or `DROP OWNED BY agent_readonly; DROP ROLE agent_readonly;`)
   and delete the variable from the credential file.
 - Add a database: add a target to `local/databases.json`, register its variable
