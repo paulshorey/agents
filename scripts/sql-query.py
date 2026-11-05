@@ -82,7 +82,9 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
   coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
     WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
-        OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal')))
+        OR (NOT l.lanpltrusted AND l.lanname NOT IN ('c', 'internal'))
+        -- Built-ins PostgreSQL restricts by default (pg_read_file, pg_ls_dir, ...) carry an ACL.
+        OR (n.nspname='pg_catalog' AND p.proacl IS NOT NULL))
       AND has_function_privilege(current_user, p.oid, 'EXECUTE')
     ORDER BY 1 LIMIT 5) routines), ''),
   current_user, current_setting('server_version'), current_setting('server_version_num')
@@ -112,6 +114,10 @@ def load_targets(path=None):
     if not Path(path).exists():
         raise SqlError('No database targets are registered on this machine; copy config/databases.example.json '
                        'to local/databases.json and fill in the targets (docs/runbooks/databases.md)')
+    if Path(path).resolve() != EXAMPLE_REGISTRY.resolve():
+        info = Path(path).stat()
+        if info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) & 0o077:
+            raise SqlError(f'Target registry must be owned by you and mode 600 (chmod 600 {path})')
     try:
         data = json.loads(Path(path).read_text())
         if data.get('schema_version') != 1 or not isinstance(data.get('targets'), dict):
@@ -259,7 +265,8 @@ readable AS (
 views(relid) AS (
   SELECT r.ev_class FROM tree t
     JOIN pg_depend d ON d.refclassid='pg_class'::regclass AND d.refobjid=t.relid
-      AND (t.col IS NULL OR d.refobjsubid=(SELECT a.attnum FROM pg_attribute a WHERE a.attrelid=t.relid AND a.attname=t.col))
+      -- refobjsubid 0 is a whole-row reference (SELECT u FROM users u), which exposes every column.
+      AND (t.col IS NULL OR d.refobjsubid IN (0, (SELECT a.attnum FROM pg_attribute a WHERE a.attrelid=t.relid AND a.attname=t.col)))
     JOIN pg_rewrite r ON d.classid='pg_rewrite'::regclass AND d.objid=r.oid
   WHERE r.ev_class<>t.relid
   UNION SELECT r.ev_class FROM views v
@@ -277,9 +284,15 @@ SELECT concat_ws(',', (SELECT string_agg(name, ',' ORDER BY name) FROM readable)
   || '|' || coalesce((SELECT string_agg(name, ',' ORDER BY name) FROM missing), '')"""
 
 
+def guard_query(env, statement):
+    """Run a verification query with the catalogs pinned, so a role-level
+    search_path cannot shadow pg_catalog relations, functions or operators."""
+    return run_psql(env, ['-q', '-At', '-F', '|', '-c', 'SET search_path TO pg_catalog, pg_temp', '-c', statement])
+
+
 def guard(env, withheld=None):
     """Refuse any role able to write, own or create objects, or read withheld secrets."""
-    result = run_psql(env, ['-At', '-F', '|', '-c', GUARD_SQL])
+    result = guard_query(env, GUARD_SQL)
     if result.returncode:
         raise SqlError('Could not connect or verify the role: ' + (result.stderr or result.stdout).strip()[:500])
     fields = result.stdout.strip().split('|')
@@ -296,18 +309,19 @@ def guard(env, withheld=None):
     if unsafe:
         problems.append('is a member of other roles (' + ', '.join(unsafe) + ')')
     if routines:
-        problems.append('can execute SECURITY DEFINER, WAL-writing or untrusted-language routines (' + routines
+        problems.append('can execute restricted built-in, SECURITY DEFINER, WAL-writing or untrusted-language routines ('
+                        + routines
                         + '); revoke their EXECUTE from PUBLIC and this role')
     for minimum, label, statement in ((170000, 'has MAINTAIN on tables', MAINTAIN_SQL),
                                       (150000, 'has configuration parameter privileges', PARAMETER_SQL)):
         if int(version_num) >= minimum:
-            extra = run_psql(env, ['-At', '-c', statement])
+            extra = guard_query(env, statement)
             if extra.returncode:
                 raise SqlError('Could not verify the role: ' + (extra.stderr or extra.stdout).strip()[:500])
             if extra.stdout.strip() == 'true':
                 problems.append(label)
     if not problems and withheld:
-        readable = run_psql(env, ['-At', '-c', withheld_sql(withheld)])
+        readable = guard_query(env, withheld_sql(withheld))
         if readable.returncode:
             raise SqlError('Could not verify withheld columns: ' + (readable.stderr or readable.stdout).strip()[:500])
         exposed, _, missing = readable.stdout.strip().partition('|')

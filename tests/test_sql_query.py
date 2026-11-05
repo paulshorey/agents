@@ -76,6 +76,7 @@ class RegistryTests(unittest.TestCase):
                             {'ok': {**TARGET, 'withheld': {'Auth.tokens': '*'}}},
                             {'ok': {**TARGET, 'profile': '/tmp/creds.env'}}]:
                 path.write_text(json.dumps({'schema_version': 1, 'targets': targets}))
+                path.chmod(0o600)
                 with self.assertRaises(sql.SqlError, msg=targets):
                     sql.load_targets(path)
 
@@ -83,7 +84,11 @@ class RegistryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'databases.json'
             path.write_text(json.dumps({'schema_version': 1, 'targets': {'ok': {**TARGET, 'withheld': {'auth.tokens': '*'}}}}))
+            path.chmod(0o600)
             self.assertIn('ok', sql.load_targets(path))
+            path.chmod(0o644)
+            with self.assertRaises(sql.SqlError):
+                sql.load_targets(path)
         self.assertIn("('auth', 'tokens', NULL::text)", sql.withheld_sql({'auth.tokens': '*'}))
         self.assertIn("('public', 'users', 'password'::text)", sql.withheld_sql({'users': ['password']}))
 
@@ -385,6 +390,34 @@ class LiveRoleTests(unittest.TestCase):
             self.assertNotEqual(failed.returncode, 0)
             self.assertIn('at least 20 characters', failed.stderr)
         sql.guard(self.env(self.readonly_url), WITHHELD)  # the existing password still works
+
+    def test_refuses_granted_file_reading_built_ins(self):
+        role = self.scratch_role('GRANT EXECUTE ON FUNCTION pg_read_file(text) TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('pg_read_file', str(raised.exception))
+
+    def test_refuses_whole_row_views_over_withheld_columns(self):
+        self.admin('CREATE VIEW public.agent_probe_rows AS SELECT u FROM public.users u; '
+                   'CREATE VIEW public.agent_probe_safe AS SELECT id, email FROM public.users; '
+                   'GRANT SELECT ON public.agent_probe_safe TO agent_readonly')
+        self.addCleanup(self.admin, 'DROP VIEW IF EXISTS public.agent_probe_rows, public.agent_probe_safe')
+        sql.guard(self.env(self.readonly_url), WITHHELD)  # a column-only view is fine
+        self.admin('GRANT SELECT ON public.agent_probe_rows TO agent_readonly')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('agent_probe_rows', str(raised.exception))
+
+    def test_role_search_path_cannot_shadow_the_catalogs(self):
+        role = self.scratch_role('CREATE SCHEMA agent_probe_shadow_{role} AUTHORIZATION {role}; '
+                                 'CREATE VIEW agent_probe_shadow_{role}.pg_shdepend AS SELECT * FROM pg_catalog.pg_shdepend WHERE false; '
+                                 'ALTER VIEW agent_probe_shadow_{role}.pg_shdepend OWNER TO {role}; '
+                                 'ALTER ROLE {role} SET search_path = agent_probe_shadow_{role}, pg_catalog;')
+        name = urllib.parse.urlsplit(role).username
+        self.addCleanup(self.admin, f'DROP SCHEMA IF EXISTS agent_probe_shadow_{name} CASCADE')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('owns database objects', str(raised.exception))
 
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')

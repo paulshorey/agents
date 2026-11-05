@@ -6,7 +6,8 @@ Agents query deployed databases with `~/.agents/bin/agents-sql` (skill
 [`config/databases.example.json`](../../config/databases.example.json)) names a
 credential profile, a variable, and the expected host, port and database. Real
 endpoints stay out of this public repository; copy them from the project's private
-runbook. This machine registers `livx-dev` and `livx-production`. Credentials are connection
+runbook. This machine registers `livx-dev` and `livx-production`. The registry must be
+owned by you and mode 600. Credentials are connection
 URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only file:
 
 | Profile | File | Variables |
@@ -31,7 +32,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
   through inheritance or partition descendants, and through any view or
-  materialized view built on them (security-invoker views excepted). Checks use
+  materialized view built on them, including whole-row references (security-invoker
+  views excepted). Verification queries pin `search_path` to `pg_catalog`. Checks use
   effective privileges, so a column grant or `pg_read_all_data` is refused. Keys are
   `table` (schema `public`) or `schema.table`. A withheld relation or column that does
   not exist fails closed, so update the list when a migration renames one.
@@ -55,7 +57,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - The role check also refuses ownership of any object (via `pg_shdepend`), grant
   options, sequence `USAGE`/`UPDATE`, foreign-server `USAGE`, large-object `UPDATE`,
   executable `SECURITY DEFINER` or untrusted-language (e.g. `plpython3u`) routines in
-  any schema (stock PostgreSQL has none), foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
+  any schema (stock PostgreSQL has none), granted default-restricted built-ins
+  (`pg_read_file`, `pg_ls_dir`, ...), foreign-data-wrapper `USAGE`, `MAINTAIN` (PostgreSQL 17+)
   and configuration-parameter privileges (15+), and EXECUTE on `pg_logical_emit_message`.
 - Residual risk: anyone who can read the credential file can connect without the
   tool and switch a session to read-write. The role's grants then still prevent data
