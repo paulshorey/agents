@@ -262,8 +262,8 @@ class ParallelClientTest(unittest.TestCase):
 
     def test_deep_run_definitive_rejection_is_not_ambiguous(self):
         code, out, _, _ = run(["deep", "run", "question", "--processor", "nope"], [http_error(403, "bad processor")])
-        self.assertEqual(code, 3)
-        self.assertNotEqual(out["error"].get("type"), "creation_ambiguous")
+        self.assertEqual(code, 2)
+        self.assertEqual(out["error"]["type"], "invalid_request")
 
     def test_falsey_advanced_settings_are_invalid(self):
         for value in (False, [], "", 0):
@@ -285,6 +285,32 @@ class ParallelClientTest(unittest.TestCase):
         _, _, bodies, _ = run(["extract", "https://a.test", "--fresh", "--out", self.tmp.name + "/p"], [ok(response)])
         self.assertEqual(bodies[0][1]["advanced_settings"]["fetch_policy"],
                          {"max_age_seconds": 600, "disable_cache_fallback": True})
+
+    def test_negative_wait_is_rejected_before_any_request(self):
+        stderr = io.StringIO()
+        with patch.object(sys, "argv", ["parallel.py", "deep", "run", "q", "--wait", "-1"]), \
+                patch.object(client, "request") as request, contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as exit_info:
+                client.main()
+        self.assertEqual(exit_info.exception.code, 2)
+        request.assert_not_called()
+
+    def test_result_polling_honors_retry_after(self):
+        clock, sleeps = [1000.0], []
+        result = {"run": {"run_id": "trun_1", "status": "completed"},
+                  "output": {"type": "text", "content": "c", "basis": []}}
+        responses = [client.Failure({"status": 429, "retry_after": "20"}), (200, result)]
+
+        def respond(*args, **kwargs):
+            item = responses.pop(0)
+            if isinstance(item, Exception):
+                raise item
+            return item
+        with patch.object(client.time, "time", lambda: clock[0]), \
+                patch.object(client.time, "sleep", sleeps.append), \
+                patch.object(client, "request", side_effect=respond):
+            code, _ = client.wait_for_result("k", "trun_1", 60, os.path.join(self.tmp.name, "r"))
+        self.assertEqual((code, sleeps), (0, [20.0]))
 
 
 if __name__ == "__main__":

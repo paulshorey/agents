@@ -296,7 +296,11 @@ def wait_for_result(key, run_id, wait, base, force=False):
             transient = code in (408, None) or code in RETRY_STATUSES
             if transient and time.time() < deadline:
                 if code != 408:
-                    time.sleep(min(5.0, max(0.0, deadline - time.time())))
+                    delay = retry_delay(0, failure.info.get("retry_after"))
+                    if delay is None or delay > deadline - time.time():
+                        return 4, {"run_id": run_id, "error": failure.info,
+                                   "message": f"Server asked to wait longer than --wait allows; resume with: deep result {run_id} --wait SECONDS"}
+                    time.sleep(max(delay, 1.0))
                 continue
             if code == 408:
                 return 5, {"run_id": run_id, "pending": True,
@@ -339,6 +343,11 @@ def cmd_deep(args):
             try:
                 run = request(key, "POST", "/v1/tasks/runs", body, retry=False)[1]
             except Failure as failure:
+                if failure.info.get("status") == 403:
+                    emit({"error": {**failure.info, "type": "invalid_request",
+                                    "message": f"Run rejected (403, usually an invalid processor): {failure.info.get('message')}"}})
+                    print(describe(failure.info), file=sys.stderr)
+                    return 2
                 if failure.info.get("status") is None or failure.info["status"] >= 500:
                     emit({"error": {**failure.info, "type": "creation_ambiguous",
                                     "message": "The run may have been created and billed, but its ID was lost "
@@ -397,6 +406,8 @@ def main():
     args = parser.parse_args()
     if getattr(args, "max_results", None) is not None and args.max_results < 1:
         parser.error("--max-results must be positive")
+    if getattr(args, "wait", 0) < 0:
+        parser.error("--wait must be zero or positive")
     sys.exit(args.handler(args))
 
 
