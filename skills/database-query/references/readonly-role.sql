@@ -21,6 +21,9 @@
 -- Everything runs in one transaction: any error leaves the previous grants intact.
 
 BEGIN;
+-- Resolve every unqualified name in the catalogs, never in a schema another role
+-- can write to, while this runs with role-management privileges.
+SET LOCAL search_path TO pg_catalog, pg_temp;
 
 SET LOCAL agents.readonly_verifier = 'REPLACE_WITH_SCRAM_VERIFIER';
 

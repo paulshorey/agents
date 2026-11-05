@@ -61,8 +61,8 @@ SIDE_EFFECT_ROUTINES = ('pg_logical_emit_message',)
 READ_STATEMENTS = {'select', 'with', 'table', 'values', 'show', 'explain'}
 # schema.name(argument types), always schema-qualified even for pg_catalog routines.
 ROUTINE_IDENTITY = r"(n.nspname||'.'||p.proname||substring(p.oid::regprocedure::text from '\(.*\)$'))"
-USER_SCHEMAS = ("n.nspname NOT IN ('pg_catalog','information_schema') "
-                "AND n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast%'")
+# Session temp schemas are exactly pg_temp_N / pg_toast_temp_N ('_' is a LIKE
+# wildcard, so a LIKE filter would also skip persistent schemas such as pgxtemp_x).
 # One row of named fields; guard_script() joins them into the AGENTS_SQL_GUARD line.
 # Checks use effective privileges (direct, PUBLIC and inherited), so a grant at
 # table, column, sequence, server or large-object level is caught. Ownership
@@ -75,7 +75,7 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
     -- Every persistent schema, catalogs included: system catalogs are writable tables.
     -- pg_settings is exempt: PostgreSQL grants PUBLIC UPDATE on it by default, and its
     -- update rule only calls set_config() for the current session, like SET.
-    WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%'
+    WHERE n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
       AND c.oid <> 'pg_catalog.pg_settings'::regclass
       AND ((c.relkind IN ('r','p','v','m','f')
           AND (has_table_privilege(current_user, c.oid, 'INSERT, UPDATE, DELETE, TRUNCATE, TRIGGER')
@@ -88,7 +88,7 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
    OR current_setting('lo_compat_privileges')='on')::text AS writes,
   (has_database_privilege(current_user, current_database(), 'CREATE')
     OR EXISTS(SELECT 1 FROM pg_namespace n
-      WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%'
+      WHERE n.nspname !~ '^pg_(toast_)?temp_[0-9]+$'
       AND has_schema_privilege(current_user, n.oid, 'CREATE'))
     OR EXISTS(SELECT 1 FROM pg_foreign_data_wrapper w
       WHERE has_foreign_data_wrapper_privilege(current_user, w.oid, 'USAGE')))::text AS creates,
@@ -129,7 +129,7 @@ FROM pg_roles r WHERE r.rolname=current_user
 """
 # Version-specific privileges that older servers cannot even parse.
 MAINTAIN_SQL = """SELECT EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%' AND c.relkind IN ('r','p','m')
+  WHERE n.nspname !~ '^pg_(toast_)?temp_[0-9]+$' AND c.relkind IN ('r','p','m')
     AND has_table_privilege(current_user, c.oid, 'MAINTAIN'))::text"""
 PARAMETER_SQL = """SELECT EXISTS(SELECT 1 FROM pg_parameter_acl p, aclexplode(p.paracl) a
   WHERE a.grantee IN ((SELECT oid FROM pg_roles WHERE rolname=current_user), 0))::text"""
@@ -567,7 +567,9 @@ def checked_sql(text):
                        'Use chr(92) for a literal backslash.')
     if not text.strip():
         raise SqlError('No SQL was provided')
-    return text
+    # PostgreSQL ends a -- comment at CR as well as LF; normalize so the scanner
+    # and psql see the same lines.
+    return text.replace('\r\n', '\n').replace('\r', '\n')
 
 
 def command_query(args):
@@ -597,12 +599,21 @@ def command_query(args):
     return result.returncode
 
 
+def _private_parent(path):
+    """Create a missing parent directory as mode 700; leave an existing one as it is
+    (a profile such as ~/.secrets.sh lives in a directory other programs own)."""
+    try:
+        path.parent.mkdir(parents=True, mode=0o700)
+    except FileExistsError:
+        return
+    os.chmod(path.parent, 0o700)  # mkdir's mode is masked by the umask
+
+
 @contextlib.contextmanager
 def profile_lock(path):
     """Exclusive lock for an owner-only credential file and files written with it."""
     path = Path(path).expanduser()
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    _private_parent(path)
     lock_fd = os.open(path.parent / f'.{path.name}.lock', os.O_CREAT | os.O_RDWR, 0o600)
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX)
@@ -626,8 +637,10 @@ def _replace_assignment(path, variable, value):
             raise SqlError(f'Credential file must be owned by you and mode 600: {path}')
         lines = [line for line in path.read_text().splitlines()
                  if not re.match(rf'^(?:export\s+)?{re.escape(variable)}=', line.strip())]
-    if any(c in value for c in "'\n\r"):
-        raise SqlError('Connection value contains unsupported characters')
+    # Mirror hosting.profile_environment, which refuses these even inside quotes.
+    if any(c in value for c in ("'", '\n', '\r', '`', '$(', '${')):
+        raise SqlError("Connection value contains characters the credential file cannot hold (' ` $( ${ or a newline); "
+                       'use a password without them')
     lines.append(f"{variable}='{value}'")
     fd, temp = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name)
     try:
@@ -726,8 +739,7 @@ def command_activate(args):
 
 
 def _write_private(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    _private_parent(path)
     fd, temp = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name)
     try:
         os.fchmod(fd, 0o600)

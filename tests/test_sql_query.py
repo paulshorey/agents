@@ -200,6 +200,15 @@ class MetaCommandTests(unittest.TestCase):
         for text, count in [('SELECT $$a;b$$', 1), ("SELECT ';' -- x;", 1), ('/* ; */ SELECT 1;', 1), ('SELECT 1; SELECT 2', 2)]:
             self.assertEqual(sql.statement_count(text), count, text)
 
+    def test_carriage_return_ends_a_line_comment(self):
+        text = 'SELECT 1 --x\r; ROLLBACK; SET default_transaction_read_only=off; SELECT lo_create(0)'
+        with patch.object(sql, 'target', return_value=TARGET), patch.object(sql, 'connection_url') as connection, \
+                patch.object(sql.subprocess, 'Popen') as run, patch('sys.stderr', new_callable=io.StringIO):
+            self.assertEqual(sql.main(['query', 'fixture', '-c', text]), 2)
+        connection.assert_not_called()
+        run.assert_not_called()
+        self.assertNotIn('\r', sql.checked_sql('SELECT 1 --x\r\n'))
+
     def test_allows_only_read_statement_types(self):
         for text in ['/* c */ (SELECT 1)', 'WITH x AS (SELECT 1) SELECT * FROM x', 'EXPLAIN SELECT 1', 'show work_mem',
                      'TABLE users', 'VALUES (1)']:
@@ -319,6 +328,21 @@ class CredentialFileTests(unittest.TestCase):
             sql.write_profile_value(path, 'A_URL', 'postgresql://a2')
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
             self.assertEqual(path.read_text(), "B_URL='postgresql://b'\nA_URL='postgresql://a2'\n")
+
+    def test_refuses_values_the_profile_loader_cannot_read(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for value in ['postgresql://u:p$(x)@h/d', 'postgresql://u:p${x}@h/d', 'postgresql://u:p`x`@h/d']:
+                with self.assertRaises(sql.SqlError, msg=value):
+                    sql.write_profile_value(Path(directory) / 'db.env', 'A_URL', value)
+
+    def test_leaves_an_existing_directory_mode_alone(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory).chmod(0o755)
+            sql.write_profile_value(Path(directory) / 'db.env', 'A_URL', 'postgresql://a')
+            self.assertEqual(stat.S_IMODE(Path(directory).stat().st_mode), 0o755)
+            nested = Path(directory) / 'new' / 'db.env'
+            sql.write_profile_value(nested, 'A_URL', 'postgresql://a')
+            self.assertEqual(stat.S_IMODE(nested.parent.stat().st_mode), 0o700)
 
     def test_refuses_a_group_readable_file(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -744,6 +768,28 @@ class LiveRoleTests(unittest.TestCase):
             guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn(name, str(raised.exception))
         guard(self.env(self.readonly_url), WITHHELD, other_databases=[name])  # audited and listed
+
+    def test_schemas_resembling_temp_names_are_still_audited(self):
+        schema = 'pgxtemp_' + os.urandom(3).hex()
+        self.admin(f'CREATE SCHEMA {schema}; CREATE TABLE {schema}.payload (id int)')
+        self.addCleanup(self.admin, f'DROP SCHEMA {schema} CASCADE')
+        role = self.scratch_role(f'GRANT USAGE ON SCHEMA {schema} TO {{role}}; GRANT UPDATE ON {schema}.payload TO {{role}};')
+        with self.assertRaises(sql.SqlError) as raised:
+            guard(self.env(role))
+        self.assertIn('can write', str(raised.exception))
+
+    def test_role_sql_ignores_the_invokers_search_path(self):
+        schema = 'agent_probe_evil_' + os.urandom(3).hex()
+        self.admin(f"CREATE SCHEMA {schema}; CREATE FUNCTION {schema}.current_setting(text) RETURNS text "
+                   f"LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'shadowed'; END $$")
+        self.addCleanup(self.admin, f'DROP SCHEMA {schema} CASCADE')
+        role_sql = (ROOT / 'skills/database-query/references/readonly-role.sql').read_text()
+        result = subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1', '-q', ADMIN_URL],
+                                input=f'SET search_path = {schema}, pg_catalog;\n'
+                                + role_sql.replace('REPLACE_WITH_SCRAM_VERIFIER', sql.scram_verifier(self.secret)),
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('shadowed', result.stderr)
 
     def test_refused_role_never_runs_the_query_in_the_same_session(self):
         role = self.scratch_role('GRANT INSERT ON public.users TO {role};')
