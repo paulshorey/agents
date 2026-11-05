@@ -66,11 +66,13 @@ Complete useful independent work while waiting.
 `gh` has no command to reply inside an inline thread or resolve one; use the API.
 Put the text in a quoted heredoc so it appears in the command, needs no escaping,
 and backticks are never run by the shell. Send one write per command, replies
-before resolutions, so one refusal does not block the rest.
+before resolutions, so one refusal does not block the rest. `gh api` defaults to
+github.com: for a GitHub Enterprise PR, set `HOST` to the PR URL's host (with any
+port) and use `--repo HOST/OWNER/REPO` for `gh pr comment`.
 
 ```sh
 # Reply to an inline comment (its root comment ID from pr-context).
-gh api -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'EOF'
+gh api --hostname HOST -X POST repos/OWNER/REPO/pulls/PR/comments/COMMENT_ID/replies -F body=@- <<'EOF'
 Fixed in abc1234: what changed, and the test or check that verifies it.
 EOF
 
@@ -80,7 +82,7 @@ gh pr comment PR --repo OWNER/REPO --body-file - <<'EOF'
 EOF
 
 # Resolve a thread by its node ID (`threads[].id` in pr-context, `PRRT_...`).
-gh api graphql -f id=PRRT_xxx -f query='mutation($id: ID!) {
+gh api --hostname HOST graphql -f id=PRRT_xxx -f query='mutation($id: ID!) {
   resolveReviewThread(input: {threadId: $id}) { thread { isResolved } } }'
 ```
 

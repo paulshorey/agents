@@ -131,7 +131,8 @@ every built-in rule in that section:
 }
 ```
 
-Check the result with `claude auto-mode config`. Without this, a user can
+Paul approved and applied this block on 2026-11-05. Check the result with
+`claude auto-mode config`; remove the `autoMode` key to undo it. Without this, a user can
 approve one refused action under `/permissions` → **Recently blocked**, or name
 the exact action in a message (for example, "reply to the three findings on
 PR 31 and resolve their threads"), which the classifier treats as explicit intent.
