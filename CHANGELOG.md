@@ -4,6 +4,33 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-04 — API-first engineering research for Codex and Claude Code
+
+- Replaced `engineering-research`'s search-only helper with `scripts/parallel.py`,
+  a stdlib client for Parallel's v1 Search, v1 Extract (full-page markdown saved to
+  files), and Task API (asynchronous cited reports with resumable results). It
+  reads `PARALLEL_API_KEY` from the environment or parses (never executes) its
+  literal assignment in `~/.secrets.sh`, retries rate limits, server errors, and
+  network failures twice without retrying deep-run creation or waiting past a
+  60-second `Retry-After`, refuses to overwrite reports, and returns distinct exit codes. Live-tested search, extract (with a
+  failing URL), a `lite` deep run, and missing, invalid, and rejected keys.
+- Chose the API over `parallel-cli`: the CLI wraps the same APIs through the Python
+  SDK and needs installation and upgrades in each environment, while the script
+  works unchanged in Codex and Claude Code. The CLI's extras (OAuth login,
+  enrichment, FindAll, Monitor) are outside this skill.
+- The skill uses the script by default, requires agents to report any script
+  failure with its command, exit code, and error, and mentions connectors or
+  built-in search only as a fallback. `parallel-deep-research` now falls back to the
+  script's `deep` command when `parallel-cli` is not installed.
+- Registered the existing `PARALLEL_API_KEY` assignment in `~/.secrets.sh` as
+  `parallel.api-key` (profile `parallel.api`) and listed it under `shell.secrets`.
+  The key itself was not changed or rotated.
+- Registered `application.parallel-connectors` for the Codex Parallel app and the
+  claude.ai Parallel connector Paul added. claude.ai offered no sign-in step, so its
+  authentication and limits are undetermined. The full Parallel Claude Code plugin
+  was not installed because it duplicates `parallel-deep-research` and needs
+  `parallel-cli`.
+
 ## 2026-11-04 — Guarded Claude Remote Control shortcut
 
 - Replaced the external `~/.shortcuts.sh` cclaude alias with a function delegating

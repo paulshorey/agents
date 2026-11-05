@@ -3,8 +3,8 @@ name: parallel-deep-research
 description: "ONLY use when user explicitly says 'deep research', 'exhaustive', 'comprehensive report', or 'thorough investigation'. Slower and more expensive than a web search. For normal research/lookup requests, use available web-search tools instead. Supports follow-ups with a known prior Task interaction ID."
 user-invocable: true
 argument-hint: <topic>
-compatibility: Requires parallel-cli >= 0.9.3 and internet access.
-allowed-tools: Bash(parallel-cli:*)
+compatibility: Requires internet access and either parallel-cli >= 0.9.3 or python3 with the engineering-research skill's scripts/parallel.py.
+allowed-tools: Bash(parallel-cli:*) Bash(python3 *engineering-research/scripts/parallel.py *)
 metadata:
   author: parallel
 ---
@@ -41,7 +41,7 @@ This reuses the prior Task's context. A lighter processor (`lite-fast` or `base-
 
 Always use `--no-wait` to separate creation from bounded polling. Save the returned IDs immediately. If creation is interrupted or its response is lost, do not submit a replacement until you have checked whether the first task was created.
 
-Use `pro-fast` by default for exploratory research. Run `parallel-cli research processors` for the installed CLI's processor list and latency estimates; these are not deadlines. Choose `ultra` tiers only when explicitly requested and within the user's approved budget. Check [current pricing](https://parallel.ai/pricing) rather than quoting fixed cost multipliers.
+Use `pro-fast` by default for exploratory research. Run `parallel-cli research processors` for the installed CLI's processor list and latency estimates; these are not deadlines. Cost is not a constraint for this user's personal research: choose `ultra` tiers when the question needs more depth, and standard (non-fast) variants when freshness matters. Check [current pricing](https://parallel.ai/pricing) rather than quoting fixed cost multipliers.
 
 Fast variants prioritize speed and may use less fresh indexed data. Standard variants may suit freshness-sensitive work, but neither choice guarantees that every source was fetched live. State the relevant date or freshness requirement in the research prompt and check the returned evidence.
 
@@ -100,6 +100,15 @@ Avoid loading the whole report into context. Read only the relevant sections whe
 **Remember the `interaction_id`:** use it for a related research or enrichment follow-up when context chaining is supported by the account.
 
 ## Setup
+
+If `parallel-cli` is not installed, or setup is outside the task's scope, use the
+shared `engineering-research` skill's `scripts/parallel.py` instead. It calls the same
+Task API with `PARALLEL_API_KEY` and needs no installation. Keep the same two steps:
+start with `deep run "$ARGUMENTS" [--processor P]` (no wait) and save the returned
+`run_id` and `interaction_id`; then poll with
+`deep result RUN_ID --wait 60 --out BASE-RUN_ID` (exit 5 means still running; repeat).
+It writes `BASE-RUN_ID.md` and `.json` and refuses existing files without `--force`.
+Report why the CLI was not used.
 
 First run `command -v parallel-cli` and `parallel-cli --version` in the agent's
 terminal. Reuse the current project's documented installation and lockfile; a CLI
