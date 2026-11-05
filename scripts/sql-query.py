@@ -70,19 +70,23 @@ SELECT (r.rolsuper OR r.rolcreaterole OR r.rolcreatedb OR r.rolbypassrls OR r.ro
      WHERE a.grantee IN (r.oid, 0) AND a.privilege_type='UPDATE')
    OR current_setting('lo_compat_privileges')='on')::text,
   (has_database_privilege(current_user, current_database(), 'CREATE')
-    OR EXISTS(SELECT 1 FROM pg_namespace n WHERE {USER_SCHEMAS}
+    OR EXISTS(SELECT 1 FROM pg_namespace n
+      WHERE n.nspname NOT LIKE 'pg_temp%' AND n.nspname NOT LIKE 'pg_toast_temp%'
       AND has_schema_privilege(current_user, n.oid, 'CREATE'))
     OR EXISTS(SELECT 1 FROM pg_foreign_data_wrapper w
       WHERE has_foreign_data_wrapper_privilege(current_user, w.oid, 'USAGE')))::text,
   coalesce((SELECT string_agg(g.rolname, ',' ORDER BY g.rolname) FROM pg_auth_members m
     JOIN pg_roles g ON g.oid=m.roleid WHERE m.member=r.oid), ''),
-  EXISTS(SELECT 1 FROM (
+  -- Grant options, plus default ACLs (any creator, any schema or global) that would
+  -- give this role or PUBLIC privileges on future objects.
+  (EXISTS(SELECT 1 FROM pg_default_acl d, aclexplode(d.defaclacl) a WHERE a.grantee IN (r.oid, 0))
+   OR EXISTS(SELECT 1 FROM (
       SELECT relacl AS acl FROM pg_class UNION ALL SELECT attacl FROM pg_attribute
       UNION ALL SELECT nspacl FROM pg_namespace UNION ALL SELECT proacl FROM pg_proc
       UNION ALL SELECT typacl FROM pg_type UNION ALL SELECT lomacl FROM pg_largeobject_metadata
       UNION ALL SELECT srvacl FROM pg_foreign_server UNION ALL SELECT lanacl FROM pg_language
       UNION ALL SELECT datacl FROM pg_database WHERE datname=current_database()
-    ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable)::text,
+    ) acls, aclexplode(acls.acl) a WHERE a.grantee=r.oid AND a.is_grantable))::text,
   coalesce((SELECT string_agg(name, ',') FROM (SELECT n.nspname||'.'||p.proname AS name
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_language l ON l.oid=p.prolang
     WHERE (p.prosecdef OR (n.nspname='pg_catalog' AND p.proname = ANY(ARRAY{list(SIDE_EFFECT_ROUTINES)!r}))
@@ -256,10 +260,16 @@ missing AS (
   WHERE b.relid IS NULL OR (b.col IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_attribute a
     WHERE a.attrelid=b.relid AND a.attname=b.col AND NOT a.attisdropped))
 ),
-inherited AS (
+-- Descendants have their own grants; ancestors return a child's rows when queried.
+down AS (
   SELECT b.col, b.relid FROM base b WHERE b.relid IS NOT NULL
-  UNION SELECT t.col, i.inhrelid FROM inherited t JOIN pg_inherits i ON i.inhparent=t.relid
+  UNION SELECT t.col, i.inhrelid FROM down t JOIN pg_inherits i ON i.inhparent=t.relid
 ),
+up AS (
+  SELECT b.col, b.relid FROM base b WHERE b.relid IS NOT NULL
+  UNION SELECT t.col, i.inhparent FROM up t JOIN pg_inherits i ON i.inhrelid=t.relid
+),
+inherited AS (SELECT col, relid FROM down UNION SELECT col, relid FROM up),
 -- Generated columns computed from a withheld column carry its value.
 tree AS (
   SELECT col, relid FROM inherited
@@ -317,7 +327,8 @@ def guard(env, withheld=None):
     problems = [label for label, flag in (
         ('has elevated role attributes', elevated), ('owns database objects', owns),
         ('can write to tables, columns, sequences, foreign servers or large objects', writes),
-        ('can create objects or foreign servers', creates), ('holds grant options', grantable)) if flag == 'true']
+        ('can create objects or foreign servers', creates),
+        ('holds grant options or default privileges on future objects', grantable)) if flag == 'true']
     # Any membership can confer reads or writes beyond the audited grants
     # (pg_read_all_data reads every secret column), so none are allowed.
     if unsafe:

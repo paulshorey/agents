@@ -463,6 +463,33 @@ class LiveRoleTests(unittest.TestCase):
             sql.guard(self.env(self.readonly_url), WITHHELD)
         self.assertIn('password_copy', str(raised.exception))
 
+    def test_refuses_create_on_any_persistent_schema(self):
+        role = self.scratch_role('GRANT CREATE ON SCHEMA information_schema TO {role};')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(role))
+        self.assertIn('can create', str(raised.exception))
+
+    def test_default_privileges_for_any_creator_are_refused_and_cleared(self):
+        self.admin('CREATE ROLE agent_probe_migrator; '
+                   'ALTER DEFAULT PRIVILEGES FOR ROLE agent_probe_migrator IN SCHEMA public GRANT SELECT ON TABLES TO agent_readonly; '
+                   'ALTER DEFAULT PRIVILEGES FOR ROLE postgres GRANT SELECT ON TABLES TO agent_readonly')
+        self.addCleanup(self.admin, 'ALTER DEFAULT PRIVILEGES FOR ROLE postgres REVOKE ALL ON TABLES FROM agent_readonly; '
+                                    'DROP OWNED BY agent_probe_migrator; DROP ROLE agent_probe_migrator')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), WITHHELD)
+        self.assertIn('default privileges', str(raised.exception))
+        self.assertEqual(self.run_role_sql().returncode, 0)
+        sql.guard(self.env(self.readonly_url), WITHHELD)
+
+    def test_readable_parent_exposes_a_withheld_child(self):
+        self.admin('CREATE TABLE public.agent_probe_parent (token text); '
+                   'CREATE TABLE public.agent_probe_kid () INHERITS (public.agent_probe_parent); '
+                   'GRANT SELECT ON public.agent_probe_parent TO agent_readonly')
+        self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.agent_probe_kid, public.agent_probe_parent')
+        with self.assertRaises(sql.SqlError) as raised:
+            sql.guard(self.env(self.readonly_url), {**WITHHELD, 'agent_probe_kid': '*'})
+        self.assertIn('agent_probe_parent', str(raised.exception))
+
     def test_role_sql_handles_tables_with_only_secret_columns(self):
         self.admin('CREATE TABLE IF NOT EXISTS public.device_push_tokens (token text)')
         self.addCleanup(self.admin, 'DROP TABLE IF EXISTS public.device_push_tokens')

@@ -19,8 +19,9 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
 - The role has `SELECT` on base tables only (views and materialized views run with
   their owner's privileges, so they are granted only after an audit), owns nothing,
   cannot create objects, and defaults to read-only sessions with statement and idle
-  timeouts. The role SQL keeps no default privileges: re-run it after migrations add
-  tables; re-running also drops stale grants. It revokes `pg_logical_emit_message` from
+  timeouts. The role SQL clears default privileges naming the role for every creator
+  (global or per schema), and the check refuses any default privilege for the role or
+  PUBLIC, so future tables stay unreadable: re-run it after migrations add tables; re-running also drops stale grants. It revokes `pg_logical_emit_message` from
   PUBLIC (non-transactional WAL writes survive a rollback). If PUBLIC can still create
   in schema `public` (PostgreSQL 14 or an upgraded database), it stops and asks the
   owner to grant application roles explicitly first, rather than changing that ACL. Secret tables and columns
@@ -33,7 +34,8 @@ URLs for a dedicated `agent_readonly` role, stored in the profile's owner-only f
   target, and refuses any role that is elevated, owns or can create objects, has
   non-`SELECT` table grants, or belongs to other roles. An owner URL is never usable.
 - Each target's `withheld` list (tables or columns) must be unreadable directly,
-  through inheritance or partition descendants, and through any view or
+  through inheritance or partition descendants and ancestors (a parent returns its
+  children's rows), and through any view or
   materialized view built on them, including whole-row references (security-invoker
   views excepted), and through generated columns computed from them. Verification queries pin `search_path` to `pg_catalog`. Checks use
   effective privileges, so a column grant or `pg_read_all_data` is refused. Keys are

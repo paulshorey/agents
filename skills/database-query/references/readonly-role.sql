@@ -65,7 +65,21 @@ END $$;
 -- their owner's privileges and can expose withheld columns, so they are not
 -- granted; grant an audited view explicitly. No default privileges are kept, so
 -- future tables (and views) stay unreadable until this script is re-run.
-ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM agent_readonly;
+-- Clear default privileges naming this role for every creator, global or per schema.
+DO $$
+DECLARE
+  d record;
+BEGIN
+  FOR d IN SELECT pg_get_userbyid(da.defaclrole) AS owner, da.defaclnamespace::regnamespace AS nsp,
+      CASE da.defaclobjtype WHEN 'r' THEN 'TABLES' WHEN 'S' THEN 'SEQUENCES' WHEN 'f' THEN 'FUNCTIONS'
+        WHEN 'T' THEN 'TYPES' WHEN 'n' THEN 'SCHEMAS' WHEN 'L' THEN 'LARGE OBJECTS' END AS kind
+    FROM pg_default_acl da, aclexplode(da.defaclacl) a
+    WHERE a.grantee = 'agent_readonly'::regrole
+  LOOP
+    EXECUTE format('ALTER DEFAULT PRIVILEGES FOR ROLE %I %s REVOKE ALL ON %s FROM agent_readonly',
+      d.owner, CASE WHEN d.nsp::oid = 0 THEN '' ELSE format('IN SCHEMA %I', d.nsp) END, d.kind);
+  END LOOP;
+END $$;
 DO $$
 DECLARE rel regclass;
 BEGIN
@@ -83,8 +97,9 @@ END $$;
 REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM agent_readonly;
 REVOKE ALL ON ALL ROUTINES IN SCHEMA public FROM agent_readonly;
 
--- Withhold credentials and bearer codes on each table and every inheritance or
--- partition descendant (children have their own grants).
+-- Withhold credentials and bearer codes on each table, every inheritance or
+-- partition descendant (children have their own grants) and every ancestor
+-- (querying a parent returns its children's rows).
 DO $$
 DECLARE
   secret_tables text[] := ARRAY['user_auth_tokens', 'password_reset_tokens'];
@@ -99,10 +114,12 @@ BEGIN
     IF to_regclass('public.' || quote_ident(t)) IS NULL THEN
       CONTINUE;
     END IF;
-    FOR rel IN WITH RECURSIVE tree(oid) AS (
-        SELECT to_regclass('public.' || quote_ident(t))::oid
-        UNION SELECT i.inhrelid FROM pg_inherits i JOIN tree ON i.inhparent = tree.oid)
-      SELECT oid::regclass FROM tree LOOP
+    FOR rel IN WITH RECURSIVE
+        down(oid) AS (SELECT to_regclass('public.' || quote_ident(t))::oid
+          UNION SELECT i.inhrelid FROM pg_inherits i JOIN down ON i.inhparent = down.oid),
+        up(oid) AS (SELECT to_regclass('public.' || quote_ident(t))::oid
+          UNION SELECT i.inhparent FROM pg_inherits i JOIN up ON i.inhrelid = up.oid)
+      SELECT oid::regclass FROM down UNION SELECT oid::regclass FROM up LOOP
       EXECUTE format('REVOKE ALL ON %s FROM agent_readonly', rel);
       IF secret_columns ? t THEN
         -- Skip the secret columns and any generated column computed from them.
