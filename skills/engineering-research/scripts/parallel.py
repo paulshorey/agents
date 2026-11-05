@@ -7,8 +7,8 @@ Standard library only. Reads PARALLEL_API_KEY from the environment, or from
   parallel.py search SEARCHES.json [--mode MODE] [--max-results N]
   parallel.py extract URL... [--objective TEXT] [--out DIR] [--fresh]
   parallel.py deep run QUESTION [--processor P] [--previous-interaction-id ID]
-                                [--wait SECONDS] [--out BASE]
-  parallel.py deep result RUN_ID [--wait SECONDS] [--out BASE]
+                                [--wait SECONDS] [--out BASE] [--force]
+  parallel.py deep result RUN_ID [--wait SECONDS] [--out BASE] [--force]
   parallel.py deep status RUN_ID
 
 Every command prints one JSON document to stdout. Exit codes: 0 success,
@@ -71,9 +71,11 @@ def retry_delay(attempt, retry_after):
         try:
             return min(60.0, max(0.0, float(retry_after)))
         except ValueError:
-            parsed = email.utils.parsedate_to_datetime(retry_after)
-            if parsed:
+            try:
+                parsed = email.utils.parsedate_to_datetime(retry_after)
                 return min(60.0, max(0.0, parsed.timestamp() - time.time()))
+            except (TypeError, ValueError, OverflowError):
+                pass
     return min(30.0, 2 ** attempt + random.uniform(0, 1))
 
 
@@ -212,7 +214,11 @@ def cmd_extract(args):
 
 # ---------------------------------------------------------------- deep research
 
-def save_result(base, result):
+def save_result(base, result, force=False):
+    existing = [base + ext for ext in (".json", ".md") if os.path.exists(base + ext)]
+    if existing and not force:
+        raise Failure({"type": "output_exists", "message": f"Refusing to overwrite {', '.join(existing)}; "
+                       "choose a new --out or pass --force"})
     os.makedirs(os.path.dirname(os.path.abspath(base)), exist_ok=True)
     paths = {"json": base + ".json"}
     with open(paths["json"], "w", encoding="utf-8") as file:
@@ -232,7 +238,7 @@ def summarize(result, paths):
             "content_chars": len(output.get("content") or "") if isinstance(output.get("content"), str) else None}
 
 
-def wait_for_result(key, run_id, wait, base):
+def wait_for_result(key, run_id, wait, base, force=False):
     deadline = time.time() + wait
     while True:
         chunk = int(max(1, min(60, deadline - time.time())))
@@ -240,7 +246,6 @@ def wait_for_result(key, run_id, wait, base):
             status, result = request(key, "GET", f"/v1/tasks/runs/{run_id}/result",
                                      timeout=chunk + 60, query=f"?timeout={chunk}")
             base = base or os.path.join(tempfile.mkdtemp(prefix="parallel-deep-"), run_id)
-            return 0, summarize(result, save_result(base, result))
         except Failure as failure:
             code = failure.info.get("status")
             if code == 404:
@@ -251,9 +256,19 @@ def wait_for_result(key, run_id, wait, base):
                     return 5, {"run_id": run_id, "pending": True,
                                "message": f"Still running; resume with: deep result {run_id} --wait SECONDS"}
                 return (3 if code in (401, 403) else 4), {"run_id": run_id, "error": failure.info}
+            continue
+        try:
+            return 0, summarize(result, save_result(base, result, force))
+        except Failure as failure:
+            return 2, {"run_id": run_id, "error": failure.info}
 
 
 def cmd_deep(args):
+    existing = [args.out + ext for ext in (".json", ".md") if args.out and os.path.exists(args.out + ext)]
+    if existing and not args.force and args.action != "status":
+        emit({"error": {"type": "output_exists",
+                        "message": f"Refusing to overwrite {', '.join(existing)}; choose a new --out or pass --force"}})
+        return 2
     key = load_key()
     try:
         if args.action == "status":
@@ -274,7 +289,7 @@ def cmd_deep(args):
             run_id = run["run_id"]
         else:
             run_id = args.target
-        code, document = wait_for_result(key, run_id, args.wait or 60, args.out)
+        code, document = wait_for_result(key, run_id, args.wait or 60, args.out, args.force)
     except Failure as failure:
         code, document = (3 if failure.info.get("status") in (401, 403) else 4), {"error": failure.info}
     emit(document)
@@ -309,6 +324,7 @@ def main():
     deep.add_argument("--previous-interaction-id", help="continue from an earlier run's interaction_id")
     deep.add_argument("--wait", type=int, default=0, help="seconds to wait for the report (default: run 0, result 60)")
     deep.add_argument("--out", help="output base path; writes BASE.md and BASE.json (default: temp directory)")
+    deep.add_argument("--force", action="store_true", help="overwrite existing BASE.md and BASE.json")
     deep.set_defaults(handler=cmd_deep)
 
     args = parser.parse_args()

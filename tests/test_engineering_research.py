@@ -149,6 +149,34 @@ class ParallelClientTest(unittest.TestCase):
         with open(base + ".md") as file:
             self.assertEqual(file.read(), "Answer [1]")
 
+    def test_malformed_retry_after_falls_back_to_backoff(self):
+        code, out, bodies, _ = run(["search", self.searches],
+                                   [http_error(503, retry_after="not-a-date"), ok({"results": []}),
+                                    ok({"results": []})])
+        self.assertEqual(code, 0)
+        self.assertEqual(len(bodies), 3)
+
+    def test_deep_refuses_existing_report_before_creating_run(self):
+        base = os.path.join(self.tmp.name, "report")
+        with open(base + ".md", "w") as file:
+            file.write("earlier paid report")
+        code, out, bodies, _ = run(["deep", "run", "question", "--out", base], [])
+        self.assertEqual(code, 2)
+        self.assertEqual(out["error"]["type"], "output_exists")
+        self.assertEqual(bodies, [])
+        with open(base + ".md") as file:
+            self.assertEqual(file.read(), "earlier paid report")
+
+    def test_deep_force_overwrites_report(self):
+        base = os.path.join(self.tmp.name, "report")
+        with open(base + ".md", "w") as file:
+            file.write("old")
+        result = {"run": {"run_id": "trun_1"}, "output": {"type": "text", "content": "new", "basis": []}}
+        code, _, _, _ = run(["deep", "result", "trun_1", "--out", base, "--force"], [ok(result)])
+        self.assertEqual(code, 0)
+        with open(base + ".md") as file:
+            self.assertEqual(file.read(), "new")
+
 
 if __name__ == "__main__":
     unittest.main()
