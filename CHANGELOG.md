@@ -4,6 +4,17 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-06 — Standing self-merge authority for agents' own PRs
+
+- Paul granted agents standing authority to merge PRs they opened or contributed to in
+  `github.com/paulshorey` repositories once every required check passes, Codex's review
+  of the current head is clean with no unresolved threads, `pr-ready.py ready` succeeds and
+  the agent is confident; production promotions, holds, force pushes and protection
+  bypasses stay excluded (`git-management` → PR maintenance).
+- Claude Code's auto-mode classifier had refused `gh pr merge` on such PRs. Added a matching
+  `PR self-merge` rule to `autoMode.allow` in `~/.claude/settings.json` (keeping
+  `$defaults`) and documented it in the agent-customization runbook.
+
 ## 2026-11-05 — PR readiness status and required check on main
 
 - PRs #30 and #31 were merged while agents were still fixing review findings; the
