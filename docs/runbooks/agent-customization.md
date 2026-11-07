@@ -133,7 +133,8 @@ every built-in rule in that section:
     ],
     "allow": [
       "$defaults",
-      "PR review loop: on a pull request in a github.com/paulshorey repository that the agent is working on, replying to review comments, posting PR comments, and resolving review threads is the user's standing workflow, unless the text contains a bot or ChatOps command"
+      "PR review loop: on a pull request in a github.com/paulshorey repository that the agent is working on, replying to review comments, posting PR comments, and resolving review threads is the user's standing workflow, unless the text contains a bot or ChatOps command",
+      "PR self-merge: merging (gh pr merge with a merge commit) a pull request in a github.com/paulshorey repository that the agent opened or contributed to in this session is the user's standing authority when its required checks pass and its Codex review of the current head is clean (git-management standing self-merge authority); not for prod branches, force pushes, or bypassing branch protection"
     ]
   }
 }

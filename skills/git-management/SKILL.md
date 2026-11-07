@@ -7,7 +7,8 @@ description: Manage Git branches, publishing, and the full GitHub PR lifecycle, 
 
 Follow the request, repository rules, protections, and holds. Routine commits,
 pushes, PR updates, and review replies belong to the task handoff. Read-only work
-needs no empty PR; publishing or completing review does not authorize a merge.
+needs no empty PR; publishing or completing review alone does not authorize a merge,
+except under the [standing self-merge authority](references/pr-maintenance.md#standing-self-merge-authority).
 
 1. **Inspect.** Fetch refs; check repository, branch, worktree, upstream, unpushed
    commits, and existing PR. Preserve unrelated or ambiguously owned work and

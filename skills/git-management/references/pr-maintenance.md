@@ -19,10 +19,28 @@ maintenance within the primary task's scope.
    Report blockers with evidence and a concrete next step.
 4. **Merge only when ready and authorized.** Fetch fresh context; recheck the
    exact head, review coverage, checks/approvals, conflicts, substantive blockers,
-   replies, protections, and holds. A clean review does not authorize a merge or
-   automatically allow merging a same-run contribution. Verify the merge result.
+   replies, protections, and holds. Outside the standing authority below, a clean
+   review does not authorize a merge. Verify the merge result.
 5. **Synchronize safely.** After merging, fast-forward a clean `main`, or switch a
    clean merged-task branch to `main` and fast-forward. Preserve other active
    feature branches; integrate their base only when required. Never switch/reset
    a busy primary checkout merely because a review clone is clean. Verify each
    affected checkout before reporting its final branch and synchronization.
+
+## Standing self-merge authority
+
+Granted by the user on 2026-11-06 for repositories under `github.com/paulshorey`: an agent
+may merge a PR it opened or contributed to in the current task, without asking, when all of
+these hold for the exact current head:
+
+- every required check and status passes (including deploy previews), with no failures;
+- Codex's review covers the head with no new findings, there are no unresolved threads or
+  requested changes, and `pr-ready.py ready` has succeeded;
+- the PR is conflict-free and targets `main` or the agreed stack base;
+- the agent has run the relevant tests/builds itself and is confident it is ready;
+- no release, device, or user hold applies, and the user has not asked to review it first.
+
+It does not cover production promotions (`prod` branches; see production promotions),
+force pushes, merges that bypass branch protection, or other people's PRs. Merge with a
+merge commit, verify the result, sync checkouts as below, and report the merge.
+
