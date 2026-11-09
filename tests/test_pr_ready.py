@@ -78,6 +78,133 @@ class FakeApi:
                 {'context': 'agent/ready', 'state': 'success', 'description': 'new', 'updated_at': '2', 'id': 2}]
 
 
+GATE_STATUS = {'context': 'PR checks finished', 'state': 'pending',
+               'creator': {'login': 'github-actions[bot]'}}
+OBSERVER_CHECK = {'name': 'Observe PR check completion', 'status': 'in_progress',
+                  'app': {'slug': 'github-actions'}}
+
+
+class CompletionApi(FakeApi):
+    def __init__(self):
+        super().__init__()
+        self.merge = 'm' * 40
+        self.calls = []
+        self.base = 'b' * 40
+        self.tree = 'same-tree'
+        self.by_ref = {
+            HEAD: {'checks': [copy.deepcopy(OBSERVER_CHECK)], 'statuses': [copy.deepcopy(GATE_STATUS)]},
+            self.merge: {'checks': [{'name': 'test merge', 'status': 'completed', 'conclusion': 'success'}],
+                         'statuses': []},
+        }
+        self.runs = [{'name': 'PR completion', 'path': pr_ready.COMPLETION_WORKFLOW,
+                      'status': 'in_progress'}]
+
+    def api(self, path):
+        if '/git/commits/' in path:
+            sha = path.rsplit('/', 1)[-1]
+            return {'sha': sha, 'tree': {'sha': 'same-tree' if sha == HEAD else self.tree},
+                    'parents': [{'sha': HEAD}, {'sha': self.base}]}
+        return {**super().api(path), 'merge_commit_sha': self.merge, 'base': {'sha': self.base}}
+
+    def pages(self, path, key=None):
+        self.calls.append(path)
+        if key == 'workflow_runs':
+            return self.runs
+        ref = path.split('/commits/')[1].split('/')[0]
+        return self.by_ref[ref]['checks' if key == 'check_runs' else 'statuses']
+
+
+class CompletionObserverTests(unittest.TestCase):
+    def test_completion_observer_does_not_wait_on_agent_ready(self):
+        for state, conclusion in [('in_progress', None), ('completed', 'failure'), ('completed', 'cancelled')]:
+            checks = [{**OBSERVER_CHECK, 'status': state, 'conclusion': conclusion}]
+            self.assertEqual(pr_ready.readiness(changed(checks=checks, statuses=[GATE_STATUS])), [])
+        api = CompletionApi()
+        self.assertEqual(pr_ready.recheck(api, READY), [])
+        self.assertTrue(any(api.merge in path for path in api.calls))
+        self.assertEqual(sum('actions/runs?' in path for path in api.calls), 2)
+
+    def test_completion_names_alone_cannot_bypass_checks(self):
+        for creator in [None, {'login': 'other-app[bot]'}]:
+            self.assertTrue(pr_ready.readiness(changed(checks=[OBSERVER_CHECK], statuses=[
+                {**GATE_STATUS, 'creator': creator}])))
+        self.assertTrue(pr_ready.readiness(changed(checks=[
+            {**OBSERVER_CHECK, 'app': {'slug': 'another-app'}}], statuses=[GATE_STATUS])))
+        self.assertTrue(pr_ready.readiness(changed(checks=[
+            {'name': 'CI', 'status': 'completed', 'conclusion': 'failure'}], statuses=[GATE_STATUS])))
+
+    def test_pending_and_failed_test_merge_signals_still_block(self):
+        for state, conclusion in [('in_progress', None), ('completed', 'failure')]:
+            api = CompletionApi()
+            api.by_ref[api.merge]['checks'][0].update(status=state, conclusion=conclusion)
+            self.assertTrue(pr_ready.recheck(api, READY))
+        api = CompletionApi()
+        api.by_ref[api.merge]['statuses'] = [{'context': 'Railway', 'state': 'failure'}]
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_queued_workflow_blocks_before_check_registration(self):
+        api = CompletionApi()
+        api.runs.append({'name': 'CI', 'path': '.github/workflows/ci.yml', 'status': 'queued'})
+        self.assertTrue(any('workflow CI' in r for r in pr_ready.recheck(api, READY)))
+
+    def test_unobserved_merge_needs_verified_identical_tested_contents(self):
+        api = CompletionApi()
+        api.by_ref[api.merge]['checks'] = []
+        self.assertEqual(pr_ready.recheck(api, READY), [])
+        api.tree = 'untested-new-base-tree'
+        self.assertTrue(pr_ready.recheck(api, READY))
+        api.tree = None
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_identical_merge_tree_with_wrong_parents_stays_pending(self):
+        api = CompletionApi()
+        api.by_ref[api.merge]['checks'] = []
+        original = api.api
+        def wrong_parents(path):
+            result = original(path)
+            if path.endswith('/git/commits/' + api.merge):
+                result['parents'] = [{'sha': HEAD}, {'sha': 'old-base'}]
+            return result
+        api.api = wrong_parents
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_other_publishers_completion_status_on_merge_still_blocks(self):
+        for state in ['failure', 'pending']:
+            api = CompletionApi()
+            api.by_ref[api.merge]['statuses'] = [{**GATE_STATUS, 'state': state,
+                                                'creator': {'login': 'other-app[bot]'}}]
+            self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_superseded_workflows_do_not_hide_current_results_or_active_runs(self):
+        api = CompletionApi()
+        run = {'name': 'CI', 'workflow_id': 4, 'event': 'pull_request',
+               'path': '.github/workflows/ci.yml', 'status': 'completed'}
+        api.runs += [{**run, 'id': 1, 'conclusion': 'cancelled'},
+                     {**run, 'id': 2, 'conclusion': 'success'}]
+        self.assertEqual(pr_ready.recheck(api, READY), [])
+        api.runs.append({**run, 'id': 3, 'conclusion': 'failure'})
+        self.assertTrue(pr_ready.recheck(api, READY))
+        api.runs[-1]['conclusion'] = 'success'
+        api.runs.append({**run, 'id': 0, 'status': 'queued'})
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_absent_or_changed_test_merge_cannot_pass(self):
+        api = CompletionApi()
+        api.merge = None
+        self.assertTrue(pr_ready.recheck(api, READY))
+        api = CompletionApi()
+        original = api.api
+        calls = []
+        def change_merge(path):
+            calls.append(path)
+            result = original(path)
+            if len(calls) > 1:
+                result['merge_commit_sha'] = 'new-merge'
+            return result
+        api.api = change_merge
+        self.assertIn('the test-merge revision changed', pr_ready.recheck(api, READY))
+
+
 class CommandTests(unittest.TestCase):
     def run_main(self, argv, api=None, context=READY):
         posted = []

@@ -448,7 +448,7 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
     if len(files) != raw["changed_files"] or len(commits) != raw["commits"]:
         raise FetchError("PR file/commit counts changed or exceed API limits; inspect with git and rerun.")
     checks = [select(check, "id", "name", "status", "conclusion", "html_url", "head_sha",
-                     "started_at", "completed_at") for check in api.pages(
+                     "started_at", "completed_at", "app") for check in api.pages(
                          f"{api.prefix}/commits/{head}/check-runs?filter=latest", "check_runs")]
     # The statuses endpoint returns every update; keep each context's newest state
     # so an earlier pending/failure is never mistaken for the current result.
@@ -462,7 +462,7 @@ def fetch_context(api, include_diff=False, no_filter=False, include_hunks=False)
     for status in history:
         latest.setdefault(status.get("context"), status)
     statuses = [select(status, "id", "context", "state", "description", "target_url",
-                       "created_at", "updated_at") for status in latest.values()]
+                       "created_at", "updated_at", "creator") for status in latest.values()]
 
     comments = ([feedback(c, "issue") for c in issue_comments]
                 + [feedback(c, "inline", include_hunks) for c in inline_comments]

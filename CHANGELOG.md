@@ -4,6 +4,15 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-09 — Independent PR readiness verification
+
+- The readiness helper recognizes the GitHub Actions completion observer as a
+  derived signal and verifies its head/test-merge inputs directly. Pending agent
+  readiness and completion summaries can no longer wait on each other; observer
+  failures while inspecting another PR do not become application-quality failures.
+- PR context retains check publishers and status creators so other providers with
+  matching names remain subject to normal verification.
+
 ## 2026-11-05 — Codex uses the priority service tier
 
 - The active Codex config had `service_tier = "priority"`, but

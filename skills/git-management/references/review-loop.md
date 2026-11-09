@@ -95,7 +95,7 @@ on `paulshorey/agents` `main`, GitHub disables merging until it passes, so a PR
 cannot be merged while you are still fixing it. A new push leaves the new head
 without the status, which reads as not ready until you verify again. `ready`
 requires an open, non-draft, conflict-free PR, a clean Codex review of the head,
-no unresolved threads or requested changes, and passing checks and statuses, and
+no unresolved threads or requested changes, and passing quality checks and statuses, and
 it rereads checks and statuses just before posting. Never set success by any other
 means. If it exits 3, you cannot create statuses on that repository (for example a
 fork PR without push access upstream): post the readiness result as a PR comment
@@ -139,3 +139,8 @@ If a write is refused, do not retry or reword it to get past the classifier.
 Finish the other work, then tell the user which replies and thread IDs are
 pending and that they can approve them or trust their repositories in the
 `autoMode` settings ([runbook](../../../docs/runbooks/agent-customization.md#claude-code-auto-mode-and-pr-writes)).
+
+The readiness helper treats the GitHub Actions completion observer and its
+`PR checks finished` status as derived signals. For those repositories, it checks
+the underlying head and test-merge checks, statuses, and queued workflows directly
+to avoid waiting for a completion observer that is itself waiting for agent readiness.
