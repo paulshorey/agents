@@ -252,7 +252,10 @@ checks the underlying head and test-merge checks, statuses, and queued workflows
 itself. The derived completion status and GitHub Actions `Observe PR check
 completion` jobs do not gate agent readiness; they may be waiting for that very
 status, or observing other PRs. Other publishers and quality checks remain gates.
-A missing or changed test-merge revision prevents a successful readiness report. The success description names the base commit it was checked against.
+A missing or changed test-merge revision prevents a successful readiness report.
+An unobserved test-merge revision stays pending unless its Git tree matches the
+checked head and its parents match the current head/base. Superseded completed
+workflow executions do not hide the newest result; every active run still blocks. The success description names the base commit it was checked against.
 Exit code 3 means the account cannot create statuses on that repository (for
 example a fork PR); agents then report readiness in a PR comment.
 A new push leaves the new head without the status. On `paulshorey/agents`, `main`

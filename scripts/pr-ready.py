@@ -72,6 +72,11 @@ def has_completion_gate(statuses):
                for status in statuses)
 
 
+def is_completion_observer(check):
+    return (check.get('name') == COMPLETION_OBSERVER
+            and (check.get('app') or {}).get('slug') == 'github-actions')
+
+
 def check_reasons(checks, statuses, completion_gate=None):
     if completion_gate is None:
         completion_gate = has_completion_gate(statuses)
@@ -79,8 +84,7 @@ def check_reasons(checks, statuses, completion_gate=None):
     for check in checks:
         # The observer summarizes other checks and can fail while inspecting
         # another PR. Its result is not an application quality check.
-        if (completion_gate and check.get('name') == COMPLETION_OBSERVER
-                and (check.get('app') or {}).get('slug') == 'github-actions'):
+        if completion_gate and is_completion_observer(check):
             continue
         if check.get('status') != 'completed':
             reasons.append(f"check {check.get('name')} is {check.get('status')}")
@@ -91,7 +95,8 @@ def check_reasons(checks, statuses, completion_gate=None):
             continue
         # This derived completion signal may itself be waiting for agent/ready.
         # recheck independently validates head AND test-merge checks/workflows.
-        if completion_gate and status.get('context') == COMPLETION_GATE:
+        if (completion_gate and status.get('context') == COMPLETION_GATE
+                and (status.get('creator') or {}).get('login') == 'github-actions[bot]'):
             continue
         if status.get('state') != 'success':
             reasons.append(f"status {status.get('context')} is {status.get('state')}")
@@ -110,6 +115,29 @@ def latest_statuses(api, ref):
     return list(latest.values())
 
 
+def latest_workflows(runs):
+    """Keep the latest execution per workflow/event, plus every active run."""
+    latest, selected = set(), []
+    for run in sorted(runs, key=lambda r: (r.get('created_at') or '', r.get('id') or 0,
+                                          r.get('run_attempt') or 0), reverse=True):
+        identity = (run.get('workflow_id') or run.get('path') or run.get('id') or id(run),
+                    run.get('event'))
+        if identity not in latest or run.get('status') != 'completed':
+            selected.append(run)
+        latest.add(identity)
+    return selected
+
+
+def same_tested_tree(api, head, merge, base):
+    """Head CI also covers a merge with verified parents and identical contents."""
+    head_commit = api.api(f'{api.prefix}/git/commits/{head}')
+    merge_commit = api.api(f'{api.prefix}/git/commits/{merge}')
+    tree = (head_commit.get('tree') or {}).get('sha')
+    return (head_commit.get('sha') == head and merge_commit.get('sha') == merge
+            and bool(tree) and tree == (merge_commit.get('tree') or {}).get('sha')
+            and {head, base} <= {parent['sha'] for parent in merge_commit.get('parents', [])})
+
+
 def recheck(api, context):
     """Verify raw quality signals, independent of derived completion observers."""
     head = context['pr']['head']['sha']
@@ -119,6 +147,7 @@ def recheck(api, context):
     statuses = latest_statuses(api, head)
     completion_gate = has_completion_gate(statuses)
     merge = pull.get('merge_commit_sha')
+    base = (pull.get('base') or {}).get('sha')
     if completion_gate and not merge:
         return ['waiting for the test-merge revision to verify completion inputs']
     refs = list(dict.fromkeys([head, merge] if completion_gate else [head]))
@@ -128,15 +157,21 @@ def recheck(api, context):
         ref_statuses = statuses if ref == head else latest_statuses(api, ref)
         reasons += check_reasons(checks, ref_statuses, completion_gate)
         if completion_gate:
-            for run in api.pages(f'{api.prefix}/actions/runs?head_sha={ref}', 'workflow_runs'):
-                if run.get('path', '').split('@')[0] == COMPLETION_WORKFLOW:
-                    continue
+            runs = [run for run in api.pages(f'{api.prefix}/actions/runs?head_sha={ref}', 'workflow_runs')
+                    if (run.get('path') or '').split('@')[0] != COMPLETION_WORKFLOW]
+            merge_signals = (runs or any(not is_completion_observer(check) for check in checks)
+                             or any(status.get('context') not in {CONTEXT, COMPLETION_GATE}
+                                    for status in ref_statuses))
+            if ref == merge and not merge_signals and not same_tested_tree(api, head, merge, base):
+                reasons.append('waiting for test-merge quality signals or verified identical tested contents')
+            for run in latest_workflows(runs):
                 if run.get('status') != 'completed' or run.get('conclusion') not in GOOD_CHECKS:
                     reasons.append(f"workflow {run.get('name')} is {run.get('conclusion') or run.get('status')}")
     current = api.api(api.pull)
     if current['head']['sha'] != head or current.get('state') != 'open':
         reasons.append('the PR head changed or the PR is no longer open')
-    if completion_gate and current.get('merge_commit_sha') != merge:
+    if completion_gate and (current.get('merge_commit_sha') != merge
+                            or (current.get('base') or {}).get('sha') != base):
         reasons.append('the test-merge revision changed')
     return reasons
 

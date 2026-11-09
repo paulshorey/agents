@@ -89,6 +89,8 @@ class CompletionApi(FakeApi):
         super().__init__()
         self.merge = 'm' * 40
         self.calls = []
+        self.base = 'b' * 40
+        self.tree = 'same-tree'
         self.by_ref = {
             HEAD: {'checks': [copy.deepcopy(OBSERVER_CHECK)], 'statuses': [copy.deepcopy(GATE_STATUS)]},
             self.merge: {'checks': [{'name': 'test merge', 'status': 'completed', 'conclusion': 'success'}],
@@ -98,7 +100,11 @@ class CompletionApi(FakeApi):
                       'status': 'in_progress'}]
 
     def api(self, path):
-        return {**super().api(path), 'merge_commit_sha': self.merge}
+        if '/git/commits/' in path:
+            sha = path.rsplit('/', 1)[-1]
+            return {'sha': sha, 'tree': {'sha': 'same-tree' if sha == HEAD else self.tree},
+                    'parents': [{'sha': HEAD}, {'sha': self.base}]}
+        return {**super().api(path), 'merge_commit_sha': self.merge, 'base': {'sha': self.base}}
 
     def pages(self, path, key=None):
         self.calls.append(path)
@@ -140,6 +146,47 @@ class CompletionObserverTests(unittest.TestCase):
         api = CompletionApi()
         api.runs.append({'name': 'CI', 'path': '.github/workflows/ci.yml', 'status': 'queued'})
         self.assertTrue(any('workflow CI' in r for r in pr_ready.recheck(api, READY)))
+
+    def test_unobserved_merge_needs_verified_identical_tested_contents(self):
+        api = CompletionApi()
+        api.by_ref[api.merge]['checks'] = []
+        self.assertEqual(pr_ready.recheck(api, READY), [])
+        api.tree = 'untested-new-base-tree'
+        self.assertTrue(pr_ready.recheck(api, READY))
+        api.tree = None
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_identical_merge_tree_with_wrong_parents_stays_pending(self):
+        api = CompletionApi()
+        api.by_ref[api.merge]['checks'] = []
+        original = api.api
+        def wrong_parents(path):
+            result = original(path)
+            if path.endswith('/git/commits/' + api.merge):
+                result['parents'] = [{'sha': HEAD}, {'sha': 'old-base'}]
+            return result
+        api.api = wrong_parents
+        self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_other_publishers_completion_status_on_merge_still_blocks(self):
+        for state in ['failure', 'pending']:
+            api = CompletionApi()
+            api.by_ref[api.merge]['statuses'] = [{**GATE_STATUS, 'state': state,
+                                                'creator': {'login': 'other-app[bot]'}}]
+            self.assertTrue(pr_ready.recheck(api, READY))
+
+    def test_superseded_workflows_do_not_hide_current_results_or_active_runs(self):
+        api = CompletionApi()
+        run = {'name': 'CI', 'workflow_id': 4, 'event': 'pull_request',
+               'path': '.github/workflows/ci.yml', 'status': 'completed'}
+        api.runs += [{**run, 'id': 1, 'conclusion': 'cancelled'},
+                     {**run, 'id': 2, 'conclusion': 'success'}]
+        self.assertEqual(pr_ready.recheck(api, READY), [])
+        api.runs.append({**run, 'id': 3, 'conclusion': 'failure'})
+        self.assertTrue(pr_ready.recheck(api, READY))
+        api.runs[-1]['conclusion'] = 'success'
+        api.runs.append({**run, 'id': 0, 'status': 'queued'})
+        self.assertTrue(pr_ready.recheck(api, READY))
 
     def test_absent_or_changed_test_merge_cannot_pass(self):
         api = CompletionApi()
