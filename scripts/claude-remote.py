@@ -123,7 +123,7 @@ def active_servers(cwd):
 
 
 def claude_args(args):
-    base = ["remote-control", "--permission-mode", "bypassPermissions"]
+    base = ["remote-control", "--chrome", "--permission-mode", "bypassPermissions"]
     if args.session_id:
         session = args.session_id.removeprefix("https://claude.ai/code/").split("?", 1)[0]
         if not re.fullmatch(r"session_[A-Za-z0-9]+", session):
@@ -163,9 +163,9 @@ def select_claude(candidates=None):
             # One broken installation must not hide a working fallback.
             continue
         match = re.match(r"^(\d+)\.(\d+)\.(\d+)\b", version.stdout.strip())
-        if version.returncode == 0 and match and tuple(map(int, match.groups())) >= (2, 1, 200):
+        if version.returncode == 0 and match and tuple(map(int, match.groups())) >= (2, 1, 274):
             return candidate
-    raise RuntimeError("No compatible Claude CLI found. Remote Control resume requires Claude Code 2.1.200 or later.")
+    raise RuntimeError("No compatible Claude CLI found. Remote Control resume requires Claude Code 2.1.274 or later.")
 
 
 def run_child(command):

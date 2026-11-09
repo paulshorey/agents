@@ -82,7 +82,7 @@ sys.exit(int(os.environ['TEST_EXIT']))
         self.assertEqual(self.run_cli()[0], 0)
         self.assertEqual(self.run_cli("--server")[0], 0)
         for invocation in self.invocations():
-            self.assertEqual(invocation, ["remote-control", "--permission-mode", "bypassPermissions",
+            self.assertEqual(invocation, ["remote-control", "--chrome", "--permission-mode", "bypassPermissions",
                                           "--spawn", "same-dir"])
 
     def test_worktree_server_mode(self):
@@ -245,7 +245,7 @@ else:
         newer = str(self.bin / "claude")
         self.assertEqual(REMOTE.select_claude([str(self.bin / "claude-old"), newer]), newer)
         self.assertEqual(self.invocations(), [])
-        with self.assertRaisesRegex(RuntimeError, "2.1.200"):
+        with self.assertRaisesRegex(RuntimeError, "2.1.274"):
             REMOTE.select_claude([str(self.bin / "claude-old")])
 
     def test_unlaunchable_install_does_not_hide_compatible_fallback(self):

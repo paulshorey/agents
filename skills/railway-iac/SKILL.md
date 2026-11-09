@@ -17,7 +17,8 @@ and existing workflow files before choosing commands.
 2. Read [local connections and project map](references/local-connections.md) for
    this machine's profile, project and partial ownership, environment IDs,
    and CI secret names.
-3. For a failed deployment, read [deployment operations](references/deployment-operations.md)
+3. For a failed deployment, run `~/.agents/bin/railway-pr-diagnose --project <ID> <PR
+   number or environment>`, then read [deployment operations](references/deployment-operations.md)
    and identify the first failing stage before changing anything.
 4. For IaC changes, imports, or CI, read [authoring and CI](references/authoring-and-ci.md).
    Review the complete plan, apply the intended file, require a clean follow-up plan,
@@ -69,8 +70,9 @@ bash --noprofile --norc -c '
 
 Run repository plans in a shell with the same profile and explicit target, using
 its pinned CLI. A valid workspace token may return Unauthorized for `whoami`,
-account-wide `list`, or `link`; test a scoped project query before concluding the
-credential is invalid. IDs and token scope must agree before mutation.
+account-wide `list`, or `link`; never use those to decide whether a token works.
+Test a scoped project query before concluding the credential is invalid. IDs and
+token scope must agree before mutation.
 
 Never print credentials or returned secret values. Run secret-handling snippets
 under `bash --noprofile --norc -c '...'`, not the default zsh: zsh prints

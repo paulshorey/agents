@@ -81,6 +81,21 @@ Complete useful independent work while waiting. When you stop with work left or 
 decision needed, mark the head `blocked` with what the developer must do; never
 leave it `working` when nothing is running.
 
+## Plan and documentation PRs
+
+A PR that changes only plans or documentation gets at most three review rounds.
+After the third, stop pushing, list the remaining findings for the developer to
+decide, and mark the head `blocked`. Each round costs a push and rarely changes
+the decision, so correct factual errors and leave wording preferences to the
+developer.
+
+## Check-back prompts
+
+A timed check-back starts without this session's reasoning. Write its prompt as
+facts: the PR, head SHA, push time, and exact observations, plus the assumption to
+re-test. Never pass a conclusion forward as settled, such as "the token is
+rejected"; write what was observed and "re-test this assumption" instead.
+
 ## Readiness status
 
 ```sh

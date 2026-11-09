@@ -229,6 +229,25 @@ without local credential access or provider authentication. To restore on anothe
 machine, clone the repository, restore tools, inspect/install links, supply the registered
 credential profiles or complete native sign-in, then run local and authorized live checks.
 
+## Railway environment diagnosis
+
+`bin/railway-pr-diagnose` is a read-only report on one Railway environment, chosen
+by PR number (`<name>-pr-<N>`), environment name, or ID. It reads the
+`railway.workspace` profile without relying on the shell. For each service it
+prints the latest deployment, the step that stopped a failed deployment and its
+first error lines, volumes, and whether each variable is a reference, literal, or
+mixed value. Whole-value references show their target; values are never printed,
+and log lines have known values and credential-shaped text masked.
+
+```sh
+~/.agents/bin/railway-pr-diagnose --project <PROJECT_ID> 119
+~/.agents/bin/railway-pr-diagnose --project <PROJECT_ID> dev --json
+~/.agents/bin/railway-pr-diagnose --deployment <DEPLOYMENT_ID> --lines 5
+```
+
+Exit codes: 0 no problems detected, 1 problems listed, 2 query or credential
+failure, 3 no matching environment. `RAILWAY_PROJECT_ID` can replace `--project`.
+
 ## PR readiness status
 
 `scripts/pr-ready.py` (symlinked into both PR skills' `scripts/` folders) sets the

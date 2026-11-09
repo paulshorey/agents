@@ -99,6 +99,11 @@ def validate_links(root, definitions, home):
         raise ValueError('Other managed links cannot be installed inside a skill link directory.')
 
 
+# Claude Code only: a real directory holding this file is a deliberate Claude-specific
+# copy of a shared skill, so it replaces that skill's link instead of being an error.
+HARNESS_OVERRIDE = '.harness-override'
+
+
 def skill_changes(root, link, home):
     """Plan per-skill links: one entry per skills/NAME directory with a SKILL.md.
 
@@ -119,7 +124,8 @@ def skill_changes(root, link, home):
             if entry.resolve() != wanted.resolve():
                 changes.append(('replace', entry, wanted))
         elif entry.exists():
-            raise ValueError(f'{entry} is not a link. Move it or merge it into {wanted} before installing.')
+            if not ((entry / HARNESS_OVERRIDE).is_file() and (entry / 'SKILL.md').is_file()):
+                raise ValueError(f'{entry} is not a link. Move it or merge it into {wanted} before installing.')
         else:
             changes.append(('create', entry, wanted))
     if directory.is_dir():

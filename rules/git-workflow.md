@@ -6,3 +6,6 @@ Follow its review loop: keep PRs ready for review (never draft) so Codex reviews
 every push automatically, check back within 30 minutes, and reply to each comment,
 within the current request, repository protections, and release holds.
 `pr-management` is a compatibility entrypoint to the same workflow.
+
+Claude Code only: read `~/.claude/skills/git-management/SKILL.md` instead of the
+shared copy; it adapts this workflow to Claude's tools.
