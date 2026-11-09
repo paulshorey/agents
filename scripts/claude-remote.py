@@ -123,7 +123,7 @@ def active_servers(cwd):
 
 
 def claude_args(args):
-    base = ["remote-control", "--permission-mode", "bypassPermissions"]
+    base = ["remote-control", "--chrome", "--permission-mode", "bypassPermissions"]
     if args.session_id:
         session = args.session_id.removeprefix("https://claude.ai/code/").split("?", 1)[0]
         if not re.fullmatch(r"session_[A-Za-z0-9]+", session):

@@ -5,6 +5,14 @@ networking, storage, previews, production review, and failure diagnosis.
 
 ## Diagnose the failing stage first
 
+Run the read-only helper first. It reports each service's deployment, the step
+that stopped it, first error lines, volumes, and which variables are references,
+without printing values. Use `--deployment <ID>` to inspect an older failure.
+
+```bash
+~/.agents/bin/railway-pr-diagnose --project <PROJECT_ID> <PR_NUMBER_OR_ENVIRONMENT>
+```
+
 Record the exact project/environment/service/deployment IDs, source repository,
 branch, commit, failed stage, and the first useful error. The deployment ID is
 often the `id=` parameter in the user's URL. Compare the failed deployment with
@@ -162,6 +170,24 @@ universal settings.
 
 ## Failure patterns
 
+- **"Build Failed" with a successful build log:** the label can cover any step,
+  including pre-deploy. Read the deployment's events (`deploymentEvents`, or the
+  helper's failing step) before changing build settings.
+- **A service has no deployment in a preview:** it was skipped, so it has no
+  running container or volume, and private DNS names for it do not resolve. Start
+  it from the canvas **Deploy** action or a change in its watched paths. Agents
+  without browser control hand the canvas step to one that has it.
+- **A database URL is a literal in a preview:** it keeps the host and password it
+  was copied with. A private host resolves to that environment's own database, so
+  a copied password fails with `password authentication failed`. A literal also
+  hides the dependency from Focused PR Environments, which deploy a changed service's
+  referenced services and skip the rest. Database URLs must be references such as
+  `${{Postgres.DATABASE_URL}}`.
+- **A preview database has no data:** Railway copies configuration into PR
+  environments, not volume contents. Pre-deploy migrations run on an empty database.
+- **A command is accepted but nothing changes:** `railway volume add` and
+  `environmentPatchCommit` can return an ID without the expected attachment or
+  configuration change. Read the state back before redeploying.
 - **Initialization says config file not found:** the live service still points to
   removed `railway.json`/`railway.toml`; audit and clear the reference in affected
   persistent environments and existing previews, then apply IaC and verify.

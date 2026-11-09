@@ -4,6 +4,18 @@ Git history records tracked-file diffs. This log records meaningful configuratio
 credential-reference, provider-grant, and ownership changes without secret values.
 Verification dates describe historical observations, not current readiness.
 
+## 2026-11-09 — Evidence rules and Claude Code adaptations
+
+- Shared rules require proving a blocker, reading state back after a change, and
+  clearing a repeated blocker before follow-on work.
+- The review loop limits plan and documentation PRs to three rounds and requires
+  check-back prompts to carry facts rather than conclusions.
+- `bin/railway-pr-diagnose` reports Railway deployment steps, errors, volumes, and
+  variable reference status without printing values.
+- Claude Code keeps its own `git-management` copy, marked with `.harness-override`
+  so the installer leaves it in place, and registers the Railway MCP launcher.
+  `claude-remote` starts sessions with Claude in Chrome enabled.
+
 ## 2026-11-09 — Independent PR readiness verification
 
 - The readiness helper recognizes the GitHub Actions completion observer as a

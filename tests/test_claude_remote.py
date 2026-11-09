@@ -82,7 +82,7 @@ sys.exit(int(os.environ['TEST_EXIT']))
         self.assertEqual(self.run_cli()[0], 0)
         self.assertEqual(self.run_cli("--server")[0], 0)
         for invocation in self.invocations():
-            self.assertEqual(invocation, ["remote-control", "--permission-mode", "bypassPermissions",
+            self.assertEqual(invocation, ["remote-control", "--chrome", "--permission-mode", "bypassPermissions",
                                           "--spawn", "same-dir"])
 
     def test_worktree_server_mode(self):

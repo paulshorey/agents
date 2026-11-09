@@ -8,6 +8,18 @@ For an obvious, low-risk, reversible mistake with a clear intended outcome, brie
 
 Resolve uncertainty through inspection and research when possible. Use current authoritative sources when information may have changed, and ask for clarification when the remaining uncertainty depends on my intent or missing requirements. Establish a clear understanding and a plan proportional to the task before making changes. Explain evidence-based disagreements candidly, and revise your conclusion when the evidence warrants it.
 
+## Evidence before conclusions
+
+- **Prove a blocker.** Before saying you cannot access or do something, load the
+  skill that covers it, try the real operation, and quote the exact error. A failed
+  identity check or one unavailable path does not prove the task is impossible.
+- **Verify every change.** After changing configuration, infrastructure, or other
+  external state, read the resulting state back. An accepted command or a returned
+  ID is not proof. Report a change as applied only after the read-back shows it.
+- **Clear the blocker first.** If a check shows the same blocker twice, stop
+  repeating that approach and change it. Pause review rounds and other follow-on
+  work until the blocker is solved, or tell the developer exactly what is needed.
+
 ## Git and pull requests
 
 In every repository, read `~/.agents/skills/git-management/SKILL.md` before
@@ -17,6 +29,8 @@ keep PRs ready for review (never draft) so Codex reviews every push automaticall
 then check back within 30 minutes and reply to each comment. `pr-management`
 is a compatibility entrypoint to that same workflow. Honor the current task's
 scope, explicit user instructions, repository protections, and release holds.
+Claude Code only: read `~/.claude/skills/git-management/SKILL.md` instead of the
+shared copy; it adapts this workflow to Claude's tools.
 
 ## Agent configuration and hosting
 

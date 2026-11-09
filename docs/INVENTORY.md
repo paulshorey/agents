@@ -256,6 +256,8 @@ scripts/install.py links ~/.claude/skills/NAME to skills/NAME for each skills/ d
 
 Codex and Cursor read ~/.agents/skills directly and need no links. Run the installer after adding, renaming, or removing a skill, then confirm the skill is listed in a new Claude Code session.
 
+Claude Code only: a real directory at ~/.claude/skills/NAME containing .harness-override is a deliberate Claude-specific copy that the installer leaves in place. ~/.claude/skills/git-management is one; port workflow changes between it and skills/git-management.
+
 [Update and recovery instructions](../docs/runbooks/agent-customization.md).
 
 <a id="configuration-codex-defaults"></a>
@@ -299,6 +301,8 @@ Official native Railway MCP using the workspace token profile.
 Owner: **agents**.
 
 bin/railway-mcp selects railway.workspace by default and reads its token without relying on an inherited shell environment; another workspace requires an explicit profile.
+
+Claude Code registers this launcher at user scope with claude mcp add. Its list_variables tool returns raw values.
 
 [Update and recovery instructions](../docs/runbooks/railway.md).
 
@@ -795,6 +799,7 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [bin/agents-sql](../bin/agents-sql)
 - [bin/cf](../bin/cf)
 - [bin/railway-mcp](../bin/railway-mcp)
+- [bin/railway-pr-diagnose](../bin/railway-pr-diagnose)
 - [scripts/claude-remote.py](../scripts/claude-remote.py)
 - [scripts/hosting.py](../scripts/hosting.py)
 - [scripts/import-sms-profile.mjs](../scripts/import-sms-profile.mjs)
@@ -804,6 +809,7 @@ Derived from `bin/` and `scripts/`. See the utility runbook before executing a h
 - [scripts/pr-context.py](../scripts/pr-context.py)
 - [scripts/pr-ready.py](../scripts/pr-ready.py)
 - [scripts/railway-mcp.py](../scripts/railway-mcp.py)
+- [scripts/railway-pr-diagnose.py](../scripts/railway-pr-diagnose.py)
 - [scripts/run-cf.py](../scripts/run-cf.py)
 - [scripts/send-sms.mjs](../scripts/send-sms.mjs)
 - [scripts/set-cloudflare-token.py](../scripts/set-cloudflare-token.py)
