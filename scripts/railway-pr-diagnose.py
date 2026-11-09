@@ -19,7 +19,9 @@ from hosting import HostingError, profile_environment  # noqa: E402
 
 FAILED = {'FAILED', 'CRASHED'}
 BUILD_STEPS = {'SNAPSHOT_CODE', 'BUILD_IMAGE', 'PUBLISH_IMAGE'}
-DATABASE_SERVICE = re.compile(r'(?i)postgres|mysql|redis|mongo|clickhouse')
+DATABASE_SERVICE = re.compile(r'(?i)^(postgres(ql)?|mysql|maria(db)?|redis|valkey|mongo(db)?|clickhouse)$')
+AVAILABLE = {'SUCCESS', 'SLEEPING'}
+NOT_SECRET = {'true', 'false', 'yes', 'no', 'on', 'off', 'null', 'none'}
 DATABASE_URL = re.compile(r'(?i)(^|_)(DATABASE|DB|POSTGRES|PG|REDIS|MONGO|MYSQL)(_[A-Z0-9]+)*_(URL|URI)$')
 REFERENCE = re.compile(r'^\$\{\{\s*([^{}]+?)\s*\}\}$')
 ERROR_LINE = re.compile(r'(?i)\b(error|err!|fatal|failed|failure|exception|panic|traceback|'
@@ -44,6 +46,7 @@ UNRENDERED_QUERY = '''query($p: String!, $e: String!, $s: String) {
   variables(projectId: $p, environmentId: $e, serviceId: $s, unrendered: true) }'''
 RENDERED_QUERY = '''query($p: String!, $e: String!, $s: String) {
   variables(projectId: $p, environmentId: $e, serviceId: $s) }'''
+DEPLOYMENT_QUERY = '''query($id: String!) { deployment(id: $id) { status projectId environmentId serviceId } }'''
 LOGS_QUERY = '''query($id: String!) { %s(deploymentId: $id, limit: 500) { message severity } }'''
 
 
@@ -53,8 +56,10 @@ class DiagnosisError(Exception):
 
 def redact(text, masks=()):
     """Remove known variable values and credential-shaped strings from a log line."""
-    for value in sorted((m for m in masks if len(m) >= 6), key=len, reverse=True):
-        text = text.replace(value, MASK)
+    for value in sorted((m for m in masks if len(m) >= 2 and m.lower() not in NOT_SECRET), key=len, reverse=True):
+        # A short value is masked only as a whole word, so ordinary text stays readable.
+        text = text.replace(value, MASK) if len(value) >= 6 else re.sub(
+            rf'(?<![A-Za-z0-9_]){re.escape(value)}(?![A-Za-z0-9_])', MASK, text)
     text = URL_PASSWORD.sub(rf'\1:{MASK}@', text)
     text = BEARER.sub(f'Bearer {MASK}', text)
     text = JWT.sub(MASK, text)
@@ -80,11 +85,15 @@ def find_environment(environments, target):
     """Match a PR number to '<name>-pr-<N>', otherwise an exact name or ID."""
     if re.fullmatch(r'\d+', target):
         suffix = f'-pr-{target}'
-        return next((e for e in environments if e['name'].endswith(suffix)), None)
+        matches = [e for e in environments if e['name'].endswith(suffix)]
+        if len(matches) > 1:
+            raise DiagnosisError(f'PR {target} matches several environments; use a full name: '
+                                 + ', '.join(e['name'] for e in matches))
+        return matches[0] if matches else None
     return next((e for e in environments if target in (e['name'], e['id'])), None)
 
 
-def failing_step(events):
+def failing_step(events, failed=True):
     """Return (step, error) for the step that stopped a deployment."""
     ordered = sorted(events, key=lambda event: event.get('createdAt') or '')
     for event in ordered:
@@ -92,7 +101,13 @@ def failing_step(events):
         if error:
             return event['step'], error
     unfinished = [event for event in ordered if not event.get('completedAt')]
-    return (unfinished[-1]['step'], None) if unfinished else (None, None)
+    if unfinished:
+        return unfinished[-1]['step'], None
+    for event in reversed(ordered if failed else []):
+        payload = event.get('payload') or {}
+        if payload.get('reason') or payload.get('detail'):
+            return event['step'], payload.get('reason') or payload.get('detail')
+    return None, None
 
 
 def error_lines(logs, limit, masks=()):
@@ -137,7 +152,7 @@ def service_problems(service, statuses, buckets=()):
         if owner and owner != 'shared' and owner not in buckets:
             if owner not in statuses:
                 problems.append(f"{name}: {variable['name']} references {owner}, which is not in this environment.")
-            elif statuses[owner] != 'SUCCESS':
+            elif statuses[owner] not in AVAILABLE:
                 problems.append(f"{name}: {variable['name']} references {owner}, whose latest deployment "
                                 f'is {statuses[owner] or "missing"}.')
     return problems
@@ -165,9 +180,9 @@ class Railway:
         reply = json.loads(result.stdout)
         return reply.get('data', reply)
 
-    def inspect_deployment(self, deployment_id, lines, masks):
+    def inspect_deployment(self, deployment_id, lines, masks, failed=True):
         events = nodes(self.query(EVENTS_QUERY, id=deployment_id).get('deploymentEvents'))
-        step, error = failing_step(events)
+        step, error = failing_step(events, failed)
         sources = ['buildLogs'] if step in BUILD_STEPS else ['deploymentLogs'] if step else ['buildLogs', 'deploymentLogs']
         found = []
         for source in sources:
@@ -175,15 +190,25 @@ class Railway:
         return {'step': step, 'error': redact(error, masks)[:400] if error else None,
                 'errors': list(dict.fromkeys(found))[:lines]}
 
+    def variable_values(self, project_id, environment_id, service_id):
+        scope = {'p': project_id, 'e': environment_id, 's': service_id}
+        unrendered = self.query(UNRENDERED_QUERY, **scope).get('variables') or {}
+        rendered = self.query(RENDERED_QUERY, **scope).get('variables') or {}
+        return unrendered, [value for value in [*unrendered.values(), *rendered.values()] if isinstance(value, str)]
+
+    def report_deployment(self, deployment_id, lines):
+        """Report one deployment, masking its service's variable values like an environment report."""
+        deployment = self.query(DEPLOYMENT_QUERY, id=deployment_id)['deployment']
+        _, masks = self.variable_values(deployment['projectId'], deployment['environmentId'], deployment['serviceId'])
+        failed = deployment['status'] in FAILED
+        return {'status': deployment['status'], **self.inspect_deployment(deployment_id, lines, masks, failed)}
+
     def inspect_environment(self, project_id, environment_id, lines, buckets=()):
         environment = self.query(ENVIRONMENT_QUERY, id=environment_id)['environment']
         volumes = nodes(environment.get('volumeInstances'))
         services = []
         for instance in nodes(environment.get('serviceInstances')):
-            scope = {'p': project_id, 'e': environment_id, 's': instance['serviceId']}
-            unrendered = self.query(UNRENDERED_QUERY, **scope).get('variables') or {}
-            rendered = self.query(RENDERED_QUERY, **scope).get('variables') or {}
-            masks = [value for value in [*unrendered.values(), *rendered.values()] if isinstance(value, str)]
+            unrendered, masks = self.variable_values(project_id, environment_id, instance['serviceId'])
             shown, hidden = variable_report(unrendered)
             deployment = dict(instance['latestDeployment']) if instance.get('latestDeployment') else None
             if deployment:
@@ -238,9 +263,9 @@ def main(argv=None):
     try:
         railway = Railway(args.profile)
         if args.deployment:
-            result = railway.inspect_deployment(args.deployment, args.lines, [])
+            result = railway.report_deployment(args.deployment, args.lines)
             print(json.dumps(result, indent=2))
-            return 0
+            return 1 if result['status'] in FAILED else 0
         if not args.project or not args.target:
             parser.error('a target and --project (or RAILWAY_PROJECT_ID) are required')
         project = railway.query(PROJECT_QUERY, id=args.project)['project']

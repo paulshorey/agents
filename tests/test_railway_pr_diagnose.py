@@ -41,7 +41,11 @@ class RedactTests(unittest.TestCase):
         self.assertIn('connect postgres://app:', result)
 
     def test_short_masks_do_not_erase_ordinary_text(self):
-        self.assertEqual(diagnose.redact('build failed', ['a']), 'build failed')
+        self.assertEqual(diagnose.redact('build failed', ['a', 'true']), 'build failed')
+        self.assertEqual(diagnose.redact('abcdef is true', ['abc', 'true']), 'abcdef is true')
+
+    def test_short_values_are_masked_as_whole_words(self):
+        self.assertEqual(diagnose.redact('code abcde here', ['abcde']), f'code {diagnose.MASK} here')
 
     def test_jwt_and_long_tokens_are_masked(self):
         jwt = 'eyJhbGciOiJ.eyJzdWIiOiIx.c2lnbmF0dXJl'
@@ -65,6 +69,11 @@ class StepTests(unittest.TestCase):
         ]
         self.assertEqual(diagnose.failing_step(events), ('HEALTHCHECK', None))
 
+    def test_reason_identifies_a_completed_failed_step(self):
+        events = [{'step': 'HEALTHCHECK', 'createdAt': '1', 'completedAt': '2', 'payload': {'reason': 'timed out'}}]
+        self.assertEqual(diagnose.failing_step(events), ('HEALTHCHECK', 'timed out'))
+        self.assertEqual(diagnose.failing_step(events, failed=False), (None, None))
+
     def test_no_events_has_no_step(self):
         self.assertEqual(diagnose.failing_step([]), (None, None))
 
@@ -87,6 +96,11 @@ class EnvironmentTests(unittest.TestCase):
         self.assertEqual(diagnose.find_environment(self.ENVIRONMENTS, '11')['id'], 'e3')
         self.assertEqual(diagnose.find_environment(self.ENVIRONMENTS, '119')['id'], 'e2')
 
+    def test_ambiguous_pr_number_is_rejected(self):
+        environments = [{'id': 'a', 'name': 'web-pr-7'}, {'id': 'b', 'name': 'api-pr-7'}]
+        with self.assertRaises(diagnose.DiagnosisError):
+            diagnose.find_environment(environments, '7')
+
     def test_names_and_ids_match_exactly(self):
         self.assertEqual(diagnose.find_environment(self.ENVIRONMENTS, 'dev')['id'], 'e1')
         self.assertEqual(diagnose.find_environment(self.ENVIRONMENTS, 'e2')['name'], 'notes-pr-119')
@@ -108,6 +122,13 @@ class ProblemTests(unittest.TestCase):
     def test_database_without_volume_is_reported(self):
         result = diagnose.service_problems(service(name='Postgres'), {'Postgres': 'SUCCESS'})
         self.assertEqual(result, ['Postgres: database service has no volume in this environment.'])
+
+    def test_only_unambiguous_names_count_as_databases(self):
+        self.assertEqual(diagnose.service_problems(service(name='postgres-exporter'), {'postgres-exporter': 'SUCCESS'}), [])
+
+    def test_sleeping_dependency_is_available(self):
+        variables = [{'name': 'CACHE_URL', 'kind': 'reference', 'target': 'cache.URL'}]
+        self.assertEqual(diagnose.service_problems(service(variables=variables), {'app': 'SUCCESS', 'cache': 'SLEEPING'}), [])
 
     def test_literal_database_url_is_reported(self):
         variables = [{'name': 'DB_NOTES_URL', 'kind': 'literal', 'target': None}]

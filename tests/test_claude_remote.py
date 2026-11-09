@@ -245,7 +245,7 @@ else:
         newer = str(self.bin / "claude")
         self.assertEqual(REMOTE.select_claude([str(self.bin / "claude-old"), newer]), newer)
         self.assertEqual(self.invocations(), [])
-        with self.assertRaisesRegex(RuntimeError, "2.1.200"):
+        with self.assertRaisesRegex(RuntimeError, "2.1.274"):
             REMOTE.select_claude([str(self.bin / "claude-old")])
 
     def test_unlaunchable_install_does_not_hide_compatible_fallback(self):

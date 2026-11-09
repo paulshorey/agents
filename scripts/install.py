@@ -124,7 +124,7 @@ def skill_changes(root, link, home):
             if entry.resolve() != wanted.resolve():
                 changes.append(('replace', entry, wanted))
         elif entry.exists():
-            if not (entry / HARNESS_OVERRIDE).is_file():
+            if not ((entry / HARNESS_OVERRIDE).is_file() and (entry / 'SKILL.md').is_file()):
                 raise ValueError(f'{entry} is not a link. Move it or merge it into {wanted} before installing.')
         else:
             changes.append(('create', entry, wanted))

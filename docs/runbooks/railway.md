@@ -33,6 +33,19 @@ Record the replacement date, profile reference, affected consumers, and outcome 
 `CHANGELOG.md`. To recover, retrieve the value from your encrypted backup or issue
 a replacement through Railway. No value or OAuth store is backed up in Git.
 
+## Register the Railway MCP server for Claude Code
+
+`scripts/install.py` does not manage this registration. Add it at user scope, confirm
+it connects, and remove it the same way:
+
+```sh
+claude mcp add --scope user railway -- "$HOME/.agents/bin/railway-mcp"
+claude mcp list
+claude mcp remove --scope user railway
+```
+
+`claude mcp list` must show `railway` as connected. New sessions load its tools.
+
 ## Update project mappings
 
 `config/hosting/paul.json` owns Paul project/workspace/service/environment IDs,
