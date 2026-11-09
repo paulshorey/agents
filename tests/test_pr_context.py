@@ -133,6 +133,22 @@ class PrContextTests(unittest.TestCase):
         self.assertEqual(output["filtering"]["removed_comments"], 4)
         self.assertIn("+fixed", output["diff"])
 
+    def test_check_and_status_publishers_survive_context_selection(self):
+        fixture = Fixture()
+        original = fixture.gh
+        def published(*args, **kwargs):
+            result = original(*args, **kwargs)
+            if '/check-runs?' in args[-1]:
+                result[0]['check_runs'][0]['app'] = {'slug': 'github-actions'}
+            elif '/statuses?' in args[-1]:
+                result[0][0]['creator'] = {'login': 'github-actions[bot]'}
+            return result
+        with patch.object(pr_context, 'gh', side_effect=published):
+            output = pr_context.fetch_context(pr_context.GitHub(URL))
+        self.assertEqual(output['checks'][0]['app']['slug'], 'github-actions')
+        self.assertTrue(any(s.get('creator', {}).get('login') == 'github-actions[bot]'
+                            for s in output['statuses']))
+
     def test_default_thirty_item_pages_and_empty_pages_are_flattened(self):
         api = pr_context.GitHub(URL)
         for pages, expected in (([list(range(30)), [30]], 31), ([list(range(100)), []], 100), ([[]], 0)):
