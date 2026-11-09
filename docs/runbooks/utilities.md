@@ -245,9 +245,14 @@ python3 ~/.agents/scripts/pr-ready.py status 123
 
 `ready` succeeds only when the PR is open, not a draft, GitHub has confirmed it is
 mergeable, no reviewer has requested changes, Codex's review of the head is clean,
-no review thread is unresolved, and every other check and status passes (reread
-just before posting); otherwise it marks the head pending with the unmet
-conditions. The success description names the base commit it was checked against.
+no review thread is unresolved, and the quality checks and statuses pass (reread
+just before posting); otherwise it marks the head pending with the unmet conditions.
+For repositories with a GitHub Actions `PR checks finished` status, the helper
+checks the underlying head and test-merge checks, statuses, and queued workflows
+itself. The derived completion status and GitHub Actions `Observe PR check
+completion` jobs do not gate agent readiness; they may be waiting for that very
+status, or observing other PRs. Other publishers and quality checks remain gates.
+A missing or changed test-merge revision prevents a successful readiness report. The success description names the base commit it was checked against.
 Exit code 3 means the account cannot create statuses on that repository (for
 example a fork PR); agents then report readiness in a PR comment.
 A new push leaves the new head without the status. On `paulshorey/agents`, `main`

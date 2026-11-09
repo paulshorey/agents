@@ -25,6 +25,9 @@ import sys
 CONTEXT = 'agent/ready'
 SCRIPT = Path(__file__).resolve().parent / 'pr-context.py'
 GOOD_CHECKS = {'success', 'neutral', 'skipped'}
+COMPLETION_GATE = 'PR checks finished'
+COMPLETION_OBSERVER = 'Observe PR check completion'
+COMPLETION_WORKFLOW = '.github/workflows/pr-check-completion.yml'
 
 
 def _context_module():
@@ -59,33 +62,82 @@ def readiness(context):
     open_threads = sum(1 for thread in context.get('threads', []) if not thread.get('isResolved'))
     if open_threads:
         reasons.append(f'{open_threads} unresolved review thread(s)')
-    for check in context.get('checks', []):
+    reasons += check_reasons(context.get('checks', []), context.get('statuses', []))
+    return reasons
+
+
+def has_completion_gate(statuses):
+    return any(status.get('context') == COMPLETION_GATE
+               and (status.get('creator') or {}).get('login') == 'github-actions[bot]'
+               for status in statuses)
+
+
+def check_reasons(checks, statuses, completion_gate=None):
+    if completion_gate is None:
+        completion_gate = has_completion_gate(statuses)
+    reasons = []
+    for check in checks:
+        # The observer summarizes other checks and can fail while inspecting
+        # another PR. Its result is not an application quality check.
+        if (completion_gate and check.get('name') == COMPLETION_OBSERVER
+                and (check.get('app') or {}).get('slug') == 'github-actions'):
+            continue
         if check.get('status') != 'completed':
             reasons.append(f"check {check.get('name')} is {check.get('status')}")
         elif check.get('conclusion') not in GOOD_CHECKS:
             reasons.append(f"check {check.get('name')} {check.get('conclusion')}")
-    for status in context.get('statuses', []):
-        if status.get('context') != CONTEXT and status.get('state') != 'success':
+    for status in statuses:
+        if status.get('context') == CONTEXT:
+            continue
+        # This derived completion signal may itself be waiting for agent/ready.
+        # recheck independently validates head AND test-merge checks/workflows.
+        if completion_gate and status.get('context') == COMPLETION_GATE:
+            continue
+        if status.get('state') != 'success':
             reasons.append(f"status {status.get('context')} is {status.get('state')}")
     return reasons
 
 
-def recheck(api, context):
-    """Reread the head, checks and statuses just before posting success: the
-    snapshot reads them partway through a longer fetch."""
-    head = context['pr']['head']['sha']
-    if api.api(api.pull)['head']['sha'] != head:
-        return ['the PR head changed']
-    reasons = []
-    for check in api.pages(f'{api.prefix}/commits/{head}/check-runs?filter=latest', 'check_runs'):
-        if check.get('status') != 'completed' or check.get('conclusion') not in GOOD_CHECKS:
-            reasons.append(f"check {check.get('name')} is {check.get('conclusion') or check.get('status')}")
+def latest_statuses(api, ref):
+    history = api.pages(f'{api.prefix}/commits/{ref}/statuses')
+    if len(history) >= 1000:
+        raise pr_context.FetchError('Commit-status API limit reached; cannot verify readiness.')
     latest = {}
-    for status in sorted(api.pages(f'{api.prefix}/commits/{head}/statuses'),
-                         key=lambda s: (s.get('updated_at') or '', s.get('id') or 0)):
-        latest[status.get('context')] = status.get('state')
-    reasons += [f'status {name} is {state}' for name, state in latest.items()
-                if name != CONTEXT and state != 'success']
+    for status in sorted(history,
+                         key=lambda s: (s.get('updated_at') or s.get('created_at') or '',
+                                        s.get('id') or 0), reverse=True):
+        latest.setdefault(status.get('context'), status)
+    return list(latest.values())
+
+
+def recheck(api, context):
+    """Verify raw quality signals, independent of derived completion observers."""
+    head = context['pr']['head']['sha']
+    pull = api.api(api.pull)
+    if pull['head']['sha'] != head or pull.get('state') != 'open':
+        return ['the PR head changed or the PR is no longer open']
+    statuses = latest_statuses(api, head)
+    completion_gate = has_completion_gate(statuses)
+    merge = pull.get('merge_commit_sha')
+    if completion_gate and not merge:
+        return ['waiting for the test-merge revision to verify completion inputs']
+    refs = list(dict.fromkeys([head, merge] if completion_gate else [head]))
+    reasons = []
+    for ref in refs:
+        checks = api.pages(f'{api.prefix}/commits/{ref}/check-runs?filter=latest', 'check_runs')
+        ref_statuses = statuses if ref == head else latest_statuses(api, ref)
+        reasons += check_reasons(checks, ref_statuses, completion_gate)
+        if completion_gate:
+            for run in api.pages(f'{api.prefix}/actions/runs?head_sha={ref}', 'workflow_runs'):
+                if run.get('path', '').split('@')[0] == COMPLETION_WORKFLOW:
+                    continue
+                if run.get('status') != 'completed' or run.get('conclusion') not in GOOD_CHECKS:
+                    reasons.append(f"workflow {run.get('name')} is {run.get('conclusion') or run.get('status')}")
+    current = api.api(api.pull)
+    if current['head']['sha'] != head or current.get('state') != 'open':
+        reasons.append('the PR head changed or the PR is no longer open')
+    if completion_gate and current.get('merge_commit_sha') != merge:
+        reasons.append('the test-merge revision changed')
     return reasons
 
 
